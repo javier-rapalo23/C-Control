@@ -92,7 +92,7 @@ export default function PurchasesPanel() {
       <p>Registrar y listar compras del día seleccionado.</p>
 
       <section className="card" style={{ marginTop: 12 }}>
-        <form onSubmit={(e) => void createPurchase()} className="row">
+        <form onSubmit={(e) => void createPurchase(e)} className="row">
           <label style={{ gridColumn: 'span 4' }}>
             Fecha
             <input type="date" value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} />
