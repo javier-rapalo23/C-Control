@@ -79,6 +79,27 @@ export default function ExpensesPanel() {
       <p>Registrar gastos y ver el histórico del día seleccionado.</p>
 
       <section className="card" style={{ marginTop: 12 }}>
+        <div className="row">
+          <label style={{ gridColumn: 'span 4' }}>
+            Fecha de negocio
+            <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
+          </label>
+          <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
+            <button className="btn-primary" type="button" onClick={() => void fetchLedger()}>
+              Recargar
+            </button>
+          </div>
+          <div style={{ gridColumn: 'span 6', alignSelf: 'end', textAlign: 'right' }}>
+            <a href={`/api/export?businessDate=${businessDate}`} target="_blank" rel="noreferrer">
+              <button className="btn-primary" type="button">
+                Exportar JSON
+              </button>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section className="card" style={{ marginTop: 12 }}>
         <form onSubmit={(e) => void createExpense(e)} className="row">
           <label style={{ gridColumn: 'span 12' }}>
             Categoria

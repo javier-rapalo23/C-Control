@@ -6,6 +6,19 @@ export type MaterialDTO = {
   updatedAt: string;
 };
 
+export type ClientDTO = {
+  id: string;
+  nombre: string;
+  telefono?: string | null;
+  direccion?: string | null;
+  rtn?: string | null;
+  cuentaBancaria?: string | null;
+  notas?: string | null;
+  esGeneral: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PurchaseDTO = {
   id: string;
   businessDate: string;
@@ -14,7 +27,21 @@ export type PurchaseDTO = {
   precioPorLibra: number;
   libras: number;
   total: number;
+  purchaseTransactionId?: string | null;
   createdAt: string;
+};
+
+export type PurchaseTransactionItemDTO = PurchaseDTO;
+
+export type PurchaseTransactionDTO = {
+  id: string;
+  businessDate: string;
+  clientId: string;
+  total: number;
+  createdAt: string;
+  updatedAt: string;
+  client: ClientDTO;
+  items: PurchaseTransactionItemDTO[];
 };
 
 export type SaleDTO = {

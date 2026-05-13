@@ -27,8 +27,13 @@
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 20px;
   justify-content: space-between;
+  gap: 20px;
+}
+.site-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .brand {
   color: var(--text-main);
@@ -39,6 +44,7 @@
 .nav {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .nav a {
   color: var(--text-soft);
@@ -55,6 +61,33 @@
 .nav .active {
   background: var(--ring);
   color: white;
+}
+.menu-toggle {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.menu-toggle:hover {
+  transform: none;
+  box-shadow: var(--shadow-md);
+}
+.menu-toggle__icon {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.menu-toggle__icon span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--text-main);
 }
 
 * {
@@ -278,14 +311,21 @@ button:hover {
     align-items: stretch;
     gap: 10px;
   }
+  .site-topbar {
+    width: 100%;
+    justify-content: space-between;
+  }
   .brand {
     text-align: left;
   }
   .nav {
     width: 100%;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 8px;
+  }
+  .nav.nav--open {
+    display: flex;
   }
   .nav a {
     display: block;
@@ -293,6 +333,9 @@ button:hover {
     padding: 12px 14px;
     text-align: center;
     border-radius: 10px;
+  }
+  .menu-toggle {
+    display: inline-flex;
   }
   .page-shell {
     width: calc(100vw - 32px);
@@ -328,3 +371,4 @@ button:hover {
     font-size: 0.95rem;
   }
 }
+

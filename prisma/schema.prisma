@@ -21,6 +21,34 @@ model Material {
   purchases      Purchase[]
 }
 
+model Client {
+  id              String                @id @default(cuid())
+  nombre          String                @unique
+  telefono        String?
+  direccion       String?
+  rtn             String?
+  cuentaBancaria  String?
+  notas           String?
+  esGeneral       Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  purchaseTransactions PurchaseTransaction[]
+}
+
+model PurchaseTransaction {
+  id           String     @id @default(cuid())
+  businessDate DateTime   @db.Date
+  clientId     String
+  total        Decimal    @db.Decimal(12, 2)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  client       Client     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  items        Purchase[]
+
+  @@index([businessDate])
+  @@index([clientId])
+}
+
 model DailyBalance {
   id           String   @id @default(cuid())
   businessDate DateTime @db.Date @unique
@@ -31,17 +59,20 @@ model DailyBalance {
 }
 
 model Purchase {
-  id             String   @id @default(cuid())
-  businessDate   DateTime @db.Date
-  materialId     String
-  materialNombre String
-  precioPorLibra Decimal  @db.Decimal(10, 2)
-  libras         Decimal  @db.Decimal(10, 2)
-  total          Decimal  @db.Decimal(12, 2)
-  createdAt      DateTime @default(now())
-  material       Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  id                   String              @id @default(cuid())
+  businessDate         DateTime            @db.Date
+  materialId           String
+  materialNombre       String
+  precioPorLibra       Decimal             @db.Decimal(10, 2)
+  libras               Decimal             @db.Decimal(10, 2)
+  total                Decimal             @db.Decimal(12, 2)
+  purchaseTransactionId String?
+  createdAt            DateTime            @default(now())
+  material             Material            @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  purchaseTransaction  PurchaseTransaction? @relation(fields: [purchaseTransactionId], references: [id], onDelete: Cascade)
 
   @@index([businessDate])
+  @@index([purchaseTransactionId])
 }
 
 model Sale {

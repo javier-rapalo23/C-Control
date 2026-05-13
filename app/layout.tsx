@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Space_Grotesk, Newsreader } from 'next/font/google';
+import SiteHeader from '@/components/site-header';
 import './globals.css';
 
 const spaceGrotesk = Space_Grotesk({
@@ -22,17 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="es">
       <body className={`${spaceGrotesk.variable} ${newsreader.variable}`}>
-        <header className="site-header">
-          <div className="site-row">
-            <div className="brand">R Control</div>
-            <nav className="nav">
-              <Link href="/">Dashboard</Link>
-              <Link href="/purchases">Compras</Link>
-              <Link href="/sales">Ventas</Link>
-              <Link href="/expenses">Reportar gastos</Link>
-            </nav>
-          </div>
-        </header>
+        <SiteHeader />
 
         {children}
       </body>

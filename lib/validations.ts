@@ -9,6 +9,15 @@ export const createMaterialSchema = z.object({
   precioPorLibra: z.number().positive(),
 });
 
+export const createClientSchema = z.object({
+  nombre: z.string().trim().min(2).max(120),
+  telefono: z.string().trim().min(2).max(50).optional(),
+  direccion: z.string().trim().min(2).max(250).optional(),
+  rtn: z.string().trim().min(2).max(50).optional(),
+  cuentaBancaria: z.string().trim().min(2).max(120).optional(),
+  notas: z.string().trim().max(500).optional(),
+});
+
 export const setInitialBalanceSchema = z.object({
   businessDate: businessDateField,
   saldoInicial: z.number(),
@@ -19,6 +28,18 @@ export const createPurchaseSchema = z.object({
   materialId: z.string().min(1),
   libras: z.number().positive(),
   precioPorLibra: z.number().positive().optional(),
+});
+
+export const createPurchaseLineSchema = z.object({
+  materialId: z.string().min(1),
+  libras: z.number().positive(),
+  precioPorLibra: z.number().positive().optional(),
+});
+
+export const createPurchaseTransactionSchema = z.object({
+  businessDate: businessDateField,
+  clientId: z.string().min(1),
+  items: z.array(createPurchaseLineSchema).min(1),
 });
 
 export const createSaleSchema = z.object({
