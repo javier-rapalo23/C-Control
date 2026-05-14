@@ -65,10 +65,10 @@ npm run dev
 5. En Build Command de Vercel usa:
 
 ```bash
-npm run prisma:generate && npm run build
+npm run vercel-build
 ```
 
-6. (Recomendado) Ejecuta migraciones en CI/CD antes del release con:
+6. (Recomendado) Verifica que la base de Railway tenga aplicadas las migraciones con:
 
 ```bash
 npx prisma migrate deploy
