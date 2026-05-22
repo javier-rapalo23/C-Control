@@ -13,32 +13,61 @@ Archivo `.env`:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME?schema=public"
+RBAC_ENABLED="false"
+RBAC_USERS_JSON='{"admin":"admin","operador1":"editor","consulta1":"viewer"}'
 ```
 
 Puedes usar `.env.example` como base.
 
+## Seguridad por roles y usuarios (RBAC)
+
+La API ahora soporta control de acceso por usuario y rol.
+
+- Header requerido cuando RBAC esta activo: `x-user-id`
+- Usuarios permitidos y rol se definen en `RBAC_USERS_JSON`
+- Jerarquia de roles: `viewer < editor < admin`
+
+Reglas por endpoint/metodo:
+
+- `GET` requiere rol `viewer` o superior
+- `POST` requiere rol `editor` o superior
+- `DELETE` requiere rol `admin`
+- `GET /api/export` requiere `admin`
+- `POST /api/ledger/initial-balance` requiere `admin`
+- `GET /api/health` es publico
+
+Ejemplo de llamada desde app movil:
+
+```http
+POST /api/purchases
+x-user-id: operador1
+Content-Type: application/json
+```
+
+Si el usuario no existe en `RBAC_USERS_JSON`, la API responde `403 FORBIDDEN`.
+
 ## Scripts
 
 ```bash
-npm run dev
-npm run build
-npm run start
-npm run lint
-npm run test
-npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:studio
+pnpm dev
+pnpm build
+pnpm start
+pnpm lint
+pnpm test
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm prisma:studio
 ```
 
 ## Correr localmente
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
 # Edita DATABASE_URL en .env
-npm run prisma:generate
-npm run prisma:migrate
-npm run dev
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm dev
 ```
 
 ## Endpoints
@@ -65,13 +94,13 @@ npm run dev
 5. En Build Command de Vercel usa:
 
 ```bash
-npm run vercel-build
+pnpm vercel-build
 ```
 
 6. (Recomendado) Verifica que la base de Railway tenga aplicadas las migraciones con:
 
 ```bash
-npx prisma migrate deploy
+pnpm prisma migrate deploy
 ```
 
 7. Despliega y valida `/api/health`.
