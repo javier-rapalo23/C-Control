@@ -5,6 +5,16 @@ import Link from 'next/link';
 import type { ApiResponse } from '@/types/api';
 import type { LedgerDTO } from '@/types/domain';
 
+type ImportApiData = {
+  imported: {
+    importedDays: number;
+    importedMaterials: number;
+    importedPurchases: number;
+    importedSales: number;
+    importedExpenses: number;
+  };
+};
+
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
   if (!body.ok) throw new Error(body.error.message);
@@ -20,6 +30,11 @@ export default function DashboardHome() {
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importUserId, setImportUserId] = useState('admin');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -38,6 +53,49 @@ export default function DashboardHome() {
   useEffect(() => {
     void fetchLedger();
   }, [fetchLedger]);
+
+  async function importData(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!importFile) {
+      setImportError('Selecciona un archivo .txt o .json para importar.');
+      setImportSuccess(null);
+      return;
+    }
+
+    if (!importUserId.trim()) {
+      setImportError('Ingresa el usuario autorizado para importar.');
+      setImportSuccess(null);
+      return;
+    }
+
+    try {
+      setImporting(true);
+      setImportError(null);
+      setImportSuccess(null);
+
+      const raw = await importFile.text();
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        headers: {
+          'content-type': 'text/plain',
+          'x-user-id': importUserId.trim(),
+        },
+        body: raw,
+      });
+
+      const data = await parseApiResponse<ImportApiData>(response);
+      setImportSuccess(
+        `Importación lista: ${data.imported.importedDays} días, ${data.imported.importedPurchases} compras, ${data.imported.importedSales} ventas, ${data.imported.importedExpenses} gastos.`,
+      );
+      setImportFile(null);
+      await fetchLedger();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'No fue posible importar el archivo.');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   return (
     <main className="page-shell">
@@ -95,6 +153,37 @@ export default function DashboardHome() {
               <button className="btn-primary">Reportar Gastos</button>
             </Link>
           </div>
+        </article>
+
+        <article className="card wide">
+          <h3>Importar TXT/JSON</h3>
+          <form onSubmit={(event) => void importData(event)} className="row" style={{ marginTop: 8 }}>
+            <label style={{ gridColumn: 'span 3' }}>
+              Usuario (admin)
+              <input
+                value={importUserId}
+                onChange={(event) => setImportUserId(event.target.value)}
+                placeholder="admin"
+                required
+              />
+            </label>
+            <label style={{ gridColumn: 'span 7' }}>
+              Archivo
+              <input
+                type="file"
+                accept=".txt,.json,text/plain,application/json"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                required
+              />
+            </label>
+            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
+              <button className="btn-primary" type="submit" disabled={importing}>
+                {importing ? 'Importando...' : 'Importar'}
+              </button>
+            </div>
+          </form>
+          {importSuccess ? <p style={{ color: 'var(--ok)' }}>{importSuccess}</p> : null}
+          {importError ? <p style={{ color: 'var(--danger)' }}>{importError}</p> : null}
         </article>
       </section>
 
