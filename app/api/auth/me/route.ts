@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const cookie = request.cookies.get('rcontrol_user');
   const userId = cookie?.value ?? null;
   const usersByRoleRaw = process.env.RBAC_USERS_JSON ?? '{}';
