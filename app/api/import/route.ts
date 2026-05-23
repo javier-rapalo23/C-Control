@@ -150,49 +150,49 @@ export async function POST(request: Request) {
       throw new Error('materials cannot be empty');
     }
 
-    const imported = await prisma.$transaction(async (tx) => {
-      const mobileIdToName = new Map<string, string>();
+    const mobileIdToName = new Map<string, string>();
 
-      for (const item of payload.materials) {
-        const nombre = item.nombre?.trim();
-        const precioPorLibra = Number(item.precioPorLibra);
+    for (const item of payload.materials) {
+      const nombre = item.nombre?.trim();
+      const precioPorLibra = Number(item.precioPorLibra);
 
-        if (!nombre) {
-          continue;
-        }
-
-        if (!Number.isFinite(precioPorLibra) || precioPorLibra <= 0) {
-          continue;
-        }
-
-        if (item.id?.trim()) {
-          mobileIdToName.set(item.id.trim(), nombre);
-        }
-
-        await tx.material.upsert({
-          where: { nombre },
-          update: { precioPorLibra: new Prisma.Decimal(precioPorLibra) },
-          create: {
-            nombre,
-            precioPorLibra: new Prisma.Decimal(precioPorLibra),
-          },
-        });
+      if (!nombre) {
+        continue;
       }
 
-      let materials = await tx.material.findMany();
-      const materialByNormalizedName = new Map<string, (typeof materials)[number]>();
-      for (const material of materials) {
-        materialByNormalizedName.set(normalizeName(material.nombre), material);
+      if (!Number.isFinite(precioPorLibra) || precioPorLibra <= 0) {
+        continue;
       }
 
-      let importedDays = 0;
-      let importedPurchases = 0;
-      let importedSales = 0;
-      let importedExpenses = 0;
+      if (item.id?.trim()) {
+        mobileIdToName.set(item.id.trim(), nombre);
+      }
 
-      for (const ledger of payload.ledgers) {
-        const businessDate = parseBusinessDate(ledger.businessDate);
+      await prisma.material.upsert({
+        where: { nombre },
+        update: { precioPorLibra: new Prisma.Decimal(precioPorLibra) },
+        create: {
+          nombre,
+          precioPorLibra: new Prisma.Decimal(precioPorLibra),
+        },
+      });
+    }
 
+    let materials = await prisma.material.findMany();
+    const materialByNormalizedName = new Map<string, (typeof materials)[number]>();
+    for (const material of materials) {
+      materialByNormalizedName.set(normalizeName(material.nombre), material);
+    }
+
+    let importedDays = 0;
+    let importedPurchases = 0;
+    let importedSales = 0;
+    let importedExpenses = 0;
+
+    for (const ledger of payload.ledgers) {
+      const businessDate = parseBusinessDate(ledger.businessDate);
+
+      await prisma.$transaction(async (tx) => {
         await tx.purchase.deleteMany({ where: { businessDate } });
         await tx.purchaseTransaction.deleteMany({ where: { businessDate } });
         await tx.sale.deleteMany({ where: { businessDate } });
@@ -297,17 +297,18 @@ export async function POST(request: Request) {
         }
 
         await recalculateDailyBalance(tx, ledger.businessDate);
-        importedDays += 1;
-      }
+      });
 
-      return {
-        importedDays,
-        importedMaterials: materials.length,
-        importedPurchases,
-        importedSales,
-        importedExpenses,
-      };
-    });
+      importedDays += 1;
+    }
+
+    const imported = {
+      importedDays,
+      importedMaterials: materials.length,
+      importedPurchases,
+      importedSales,
+      importedExpenses,
+    };
 
     return success(
       {
