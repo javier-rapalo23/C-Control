@@ -191,22 +191,31 @@ export async function POST(request: Request) {
 
     for (const ledger of payload.ledgers) {
       const businessDate = parseBusinessDate(ledger.businessDate);
+      const purchaseRows: Array<{
+        businessDate: Date;
+        materialId: string;
+        materialNombre: string;
+        precioPorLibra: Prisma.Decimal;
+        libras: Prisma.Decimal;
+        total: Prisma.Decimal;
+      }> = [];
+      const saleRows: Array<{
+        businessDate: Date;
+        descripcion: string;
+        monto: Prisma.Decimal;
+      }> = [];
+      const expenseRows: Array<{
+        businessDate: Date;
+        categoria: string;
+        descripcion: string;
+        monto: Prisma.Decimal;
+      }> = [];
 
       await prisma.$transaction(async (tx) => {
         await tx.purchase.deleteMany({ where: { businessDate } });
         await tx.purchaseTransaction.deleteMany({ where: { businessDate } });
         await tx.sale.deleteMany({ where: { businessDate } });
         await tx.expense.deleteMany({ where: { businessDate } });
-
-        await tx.dailyBalance.upsert({
-          where: { businessDate },
-          update: { saldoInicial: new Prisma.Decimal(Number(ledger.saldoInicial ?? 0)) },
-          create: {
-            businessDate,
-            saldoInicial: new Prisma.Decimal(Number(ledger.saldoInicial ?? 0)),
-            saldoActual: 0,
-          },
-        });
 
         for (const purchase of ledger.purchases ?? []) {
           const materialNameFromId = purchase.materialId ? mobileIdToName.get(purchase.materialId) : undefined;
@@ -244,15 +253,13 @@ export async function POST(request: Request) {
 
           const total = new Prisma.Decimal(precioPorLibra).mul(new Prisma.Decimal(libras));
 
-          await tx.purchase.create({
-            data: {
-              businessDate,
-              materialId: material.id,
-              materialNombre: material.nombre,
-              precioPorLibra: new Prisma.Decimal(precioPorLibra),
-              libras: new Prisma.Decimal(libras),
-              total,
-            },
+          purchaseRows.push({
+            businessDate,
+            materialId: material.id,
+            materialNombre: material.nombre,
+            precioPorLibra: new Prisma.Decimal(precioPorLibra),
+            libras: new Prisma.Decimal(libras),
+            total,
           });
 
           importedPurchases += 1;
@@ -265,12 +272,10 @@ export async function POST(request: Request) {
             continue;
           }
 
-          await tx.sale.create({
-            data: {
-              businessDate,
-              descripcion,
-              monto: new Prisma.Decimal(monto),
-            },
+          saleRows.push({
+            businessDate,
+            descripcion,
+            monto: new Prisma.Decimal(monto),
           });
 
           importedSales += 1;
@@ -284,20 +289,30 @@ export async function POST(request: Request) {
             continue;
           }
 
-          await tx.expense.create({
-            data: {
-              businessDate,
-              categoria,
-              descripcion,
-              monto: new Prisma.Decimal(monto),
-            },
+          expenseRows.push({
+            businessDate,
+            categoria,
+            descripcion,
+            monto: new Prisma.Decimal(monto),
           });
 
           importedExpenses += 1;
         }
 
-        await recalculateDailyBalance(tx, ledger.businessDate);
+        if (purchaseRows.length > 0) {
+          await tx.purchase.createMany({ data: purchaseRows });
+        }
+
+        if (saleRows.length > 0) {
+          await tx.sale.createMany({ data: saleRows });
+        }
+
+        if (expenseRows.length > 0) {
+          await tx.expense.createMany({ data: expenseRows });
+        }
       });
+
+      await recalculateDailyBalance(prisma, ledger.businessDate);
 
       importedDays += 1;
     }
