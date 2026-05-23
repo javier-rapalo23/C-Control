@@ -5,9 +5,15 @@ export type AuthUserConfig = {
   password?: string;
 };
 
+const defaultAuthUsers: Record<string, AuthUserConfig> = {
+  admin: { role: 'admin', password: 'admin123' },
+  operador1: { role: 'editor', password: 'operador123' },
+  consulta1: { role: 'viewer', password: 'consulta123' },
+};
+
 export function parseAuthUsers(rawValue: string | undefined): Record<string, AuthUserConfig> {
   if (!rawValue) {
-    return {};
+    return defaultAuthUsers;
   }
 
   try {
@@ -38,9 +44,10 @@ export function parseAuthUsers(rawValue: string | undefined): Record<string, Aut
       ]>;
     });
 
-    return Object.fromEntries(entries);
+    const parsedUsers = Object.fromEntries(entries);
+    return Object.keys(parsedUsers).length > 0 ? parsedUsers : defaultAuthUsers;
   } catch {
-    return {};
+    return defaultAuthUsers;
   }
 }
 

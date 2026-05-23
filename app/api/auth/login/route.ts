@@ -16,7 +16,16 @@ export async function POST(request: Request) {
 
     const userConfig = getAuthUserConfig(userId, process.env.RBAC_USERS_JSON);
     if (!userConfig) {
-      return NextResponse.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Unknown user' } }, { status: 403 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Unknown user. Revisa RBAC_USERS_JSON o usa las cuentas por defecto de desarrollo.',
+          },
+        },
+        { status: 403 },
+      );
     }
 
     if (!userConfig.password) {
