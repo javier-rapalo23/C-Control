@@ -240,15 +240,15 @@ export default function PurchasesPanel() {
 
         <article className="card third kpi">
           <div className="label">Saldo actual</div>
-          <div className="value">$ {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
+          <div className="value">L {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
           <div className="label">Compras del día</div>
-          <div className="value">$ {ledger?.totals.totalCompras.toFixed(2) ?? '0.00'}</div>
+          <div className="value">L {ledger?.totals.totalCompras.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
           <div className="label">Transacciones</div>
-          <div className="value">{transactions.length}</div>
+          <div className="value"> {transactions.length}</div>
         </article>
 
         <article className="card half">
@@ -284,7 +284,7 @@ export default function PurchasesPanel() {
               <select value={itemMaterialId} onChange={(event) => setItemMaterialId(event.target.value)} required>
                 {materials.map((material) => (
                   <option key={material.id} value={material.id}>
-                    {material.nombre} (${material.precioPorLibra.toFixed(2)})
+                    {material.nombre} (L{material.precioPorLibra.toFixed(2)})
                   </option>
                 ))}
               </select>
@@ -344,7 +344,7 @@ export default function PurchasesPanel() {
                           step="0.01"
                         />
                       </td>
-                      <td>$ {subtotal.toFixed(2)}</td>
+                      <td>L {subtotal.toFixed(2)}</td>
                       <td>
                         <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button">
                           Eliminar
@@ -357,7 +357,7 @@ export default function PurchasesPanel() {
             </tbody>
           </table>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
-            <strong>Total carrito: $ {cartTotal.toFixed(2)}</strong>
+            <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
             <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>
               Guardar compra por cliente
             </button>
@@ -376,7 +376,7 @@ export default function PurchasesPanel() {
                     <div style={{ color: 'var(--text-soft)' }}>{transaction.items.length} items</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <strong>$ {transaction.total.toFixed(2)}</strong>
+                    <strong>L {transaction.total.toFixed(2)}</strong>
                     <div>
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar transacción
@@ -398,8 +398,8 @@ export default function PurchasesPanel() {
                       <tr key={item.id}>
                         <td>{item.materialNombre}</td>
                         <td>{item.libras.toFixed(2)}</td>
-                        <td>$ {item.precioPorLibra.toFixed(2)}</td>
-                        <td>$ {item.total.toFixed(2)}</td>
+                        <td>L {item.precioPorLibra.toFixed(2)}</td>
+                        <td>L {item.total.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>

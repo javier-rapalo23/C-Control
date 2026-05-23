@@ -131,7 +131,7 @@ export default function SalesPanel() {
             {ledger?.sales.map((item) => (
               <tr key={item.id}>
                 <td>{item.descripcion}</td>
-                <td>$ {item.monto.toFixed(2)}</td>
+                <td>L {item.monto.toFixed(2)}</td>
                 <td>
                   <button className="btn-danger" onClick={() => void removeEntry(item.id)}>
                     Eliminar
