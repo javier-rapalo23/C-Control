@@ -18,6 +18,7 @@ type LoginResponse =
 export default function LoginPage() {
   const router = useRouter();
   const [userId, setUserId] = useState('admin');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,7 +31,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, password }),
       });
 
       const body = (await response.json()) as LoginResponse;
@@ -55,7 +56,7 @@ export default function LoginPage() {
           <Image src={rControlLogo} alt="R Control" width={120} height={120} priority />
           <div>
             <h1>Iniciar sesión</h1>
-            <p>Ingresa con tu usuario autorizado para acceder al sistema.</p>
+            <p>Ingresa con tu usuario y contraseña autorizados para acceder al sistema.</p>
           </div>
         </div>
 
@@ -67,6 +68,18 @@ export default function LoginPage() {
               onChange={(event) => setUserId(event.target.value)}
               placeholder="admin"
               autoComplete="username"
+              required
+            />
+          </label>
+
+          <label>
+            Contraseña
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
               required
             />
           </label>

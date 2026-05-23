@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-
-type UserRole = 'viewer' | 'editor' | 'admin';
+import { parseAuthUsers, type UserRole } from '@/lib/auth';
 
 const roleRank: Record<UserRole, number> = {
   viewer: 1,
@@ -20,25 +19,6 @@ function jsonError(status: number, code: string, message: string) {
     },
     { status },
   );
-}
-
-function parseUsersByRole(rawValue: string | undefined): Record<string, UserRole> {
-  if (!rawValue) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as Record<string, unknown>;
-    const validEntries = Object.entries(parsed).filter(
-      (entry): entry is [string, UserRole] =>
-        typeof entry[0] === 'string' &&
-        (entry[1] === 'viewer' || entry[1] === 'editor' || entry[1] === 'admin'),
-    );
-
-    return Object.fromEntries(validEntries);
-  } catch {
-    return {};
-  }
 }
 
 function requiredRole(pathname: string, method: string): UserRole {
@@ -91,7 +71,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const usersByRole = parseUsersByRole(process.env.RBAC_USERS_JSON);
+  const usersByRole = Object.fromEntries(
+    Object.entries(parseAuthUsers(process.env.RBAC_USERS_JSON)).map(([userId, config]) => [userId, config.role]),
+  ) as Record<string, UserRole>;
   if (Object.keys(usersByRole).length === 0) {
     return jsonError(500, 'RBAC_CONFIG_ERROR', 'RBAC_USERS_JSON is empty or invalid');
   }

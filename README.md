@@ -14,7 +14,7 @@ Archivo `.env`:
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME?schema=public"
 RBAC_ENABLED="false"
-RBAC_USERS_JSON='{"admin":"admin","operador1":"editor","consulta1":"viewer"}'
+RBAC_USERS_JSON='{"admin":{"role":"admin","password":"admin123"},"operador1":{"role":"editor","password":"operador123"},"consulta1":{"role":"viewer","password":"consulta123"}}'
 ```
 
 Puedes usar `.env.example` como base.
@@ -23,8 +23,10 @@ Puedes usar `.env.example` como base.
 
 La API ahora soporta control de acceso por usuario y rol.
 
-- Header requerido cuando RBAC esta activo: `x-user-id`
-- Usuarios permitidos y rol se definen en `RBAC_USERS_JSON`
+- Login web en `/login` con usuario y contraseña
+- La sesion se guarda en una cookie HttpOnly llamada `rcontrol_user`
+- Header requerido cuando RBAC esta activo para llamadas directas: `x-user-id`
+- Usuarios permitidos, rol y contrasena se definen en `RBAC_USERS_JSON`
 - Jerarquia de roles: `viewer < editor < admin`
 
 Reglas por endpoint/metodo:
@@ -45,6 +47,8 @@ Content-Type: application/json
 ```
 
 Si el usuario no existe en `RBAC_USERS_JSON`, la API responde `403 FORBIDDEN`.
+
+Para la autenticacion web, el endpoint `POST /api/auth/login` valida usuario y contrasena, y `POST /api/auth/logout` cierra la sesion.
 
 ## Scripts
 

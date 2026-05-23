@@ -1,26 +1,42 @@
 import { NextResponse } from 'next/server';
+import { getAuthUserConfig } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const userId = String(body.userId ?? '').trim();
+    const password = String(body.password ?? '').trim();
     if (!userId) {
       return NextResponse.json({ ok: false, error: { code: 'INVALID', message: 'userId is required' } }, { status: 400 });
     }
 
-    const usersByRoleRaw = process.env.RBAC_USERS_JSON ?? '{}';
-    let usersByRole: Record<string, string> = {};
-    try {
-      usersByRole = JSON.parse(usersByRoleRaw);
-    } catch {
-      // fall through
+    if (!password) {
+      return NextResponse.json({ ok: false, error: { code: 'INVALID', message: 'password is required' } }, { status: 400 });
     }
 
-    if (!usersByRole[userId]) {
+    const userConfig = getAuthUserConfig(userId, process.env.RBAC_USERS_JSON);
+    if (!userConfig) {
       return NextResponse.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Unknown user' } }, { status: 403 });
     }
 
-    const response = NextResponse.json({ ok: true, data: { userId, role: usersByRole[userId] } });
+    if (!userConfig.password) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: 'CONFIG_ERROR',
+            message: 'User password is not configured in RBAC_USERS_JSON',
+          },
+        },
+        { status: 500 },
+      );
+    }
+
+    if (userConfig.password !== password) {
+      return NextResponse.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Invalid password' } }, { status: 401 });
+    }
+
+    const response = NextResponse.json({ ok: true, data: { userId, role: userConfig.role } });
     // set HttpOnly cookie for subsequent requests
     response.cookies.set('rcontrol_user', userId, {
       httpOnly: true,
