@@ -86,12 +86,23 @@ export function middleware(request: NextRequest) {
     return jsonError(500, 'RBAC_CONFIG_ERROR', 'RBAC_USERS_JSON is empty or invalid');
   }
 
+  // allow x-user-id header or fallback to cookie `rcontrol_user`
   const userId = request.headers.get('x-user-id')?.trim();
-  if (!userId) {
-    return jsonError(401, 'UNAUTHORIZED', 'Missing x-user-id header');
+  let effectiveUserId = userId;
+  if (!effectiveUserId) {
+    try {
+      const cookie = request.cookies.get('rcontrol_user');
+      if (cookie) effectiveUserId = cookie.value?.trim();
+    } catch {
+      // ignore cookie parse errors
+    }
   }
 
-  const userRole = usersByRole[userId];
+  if (!effectiveUserId) {
+    return jsonError(401, 'UNAUTHORIZED', 'Missing x-user-id header or rcontrol_user cookie');
+  }
+
+  const userRole = usersByRole[effectiveUserId];
   if (!userRole) {
     return jsonError(403, 'FORBIDDEN', 'User is not authorized');
   }
@@ -102,7 +113,7 @@ export function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
-  response.headers.set('x-auth-user-id', userId);
+  response.headers.set('x-auth-user-id', effectiveUserId);
   response.headers.set('x-auth-role', userRole);
   return response;
 }

@@ -35,6 +35,7 @@ export default function DashboardHome() {
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ userId: string | null; role: string | null } | null>(null);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -53,6 +54,18 @@ export default function DashboardHome() {
   useEffect(() => {
     void fetchLedger();
   }, [fetchLedger]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await parseApiResponse<{ userId: string | null; role: string | null }>(res);
+        setCurrentUser(data);
+      } catch {
+        setCurrentUser(null);
+      }
+    })();
+  }, []);
 
   async function importData(event: React.FormEvent) {
     event.preventDefault();
@@ -129,20 +142,66 @@ export default function DashboardHome() {
 
         <article className="card third kpi">
           <div className="label">Saldo actual</div>
-          <div className="value">$ {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
+          <div className="value">L {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
           <div className="label">Ventas del día</div>
-          <div className="value">$ {ledger?.totals.totalVentas.toFixed(2) ?? '0.00'}</div>
+          <div className="value">L {ledger?.totals.totalVentas.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
           <div className="label">Movimientos</div>
-          <div className="value">{ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
+          <div className="value">L {ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
         </article>
 
         <article className="card wide">
           <h3>Módulos</h3>
           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              {currentUser?.userId ? (
+                <>
+                  <div style={{ fontSize: 12 }}>
+                    Usuario: <strong>{currentUser.userId}</strong> ({currentUser.role})
+                  </div>
+                  <button
+                    className="btn-secondary"
+                    onClick={async () => {
+                      await fetch('/api/auth/logout', { method: 'POST' });
+                      setCurrentUser({ userId: null, role: null });
+                    }}
+                  >
+                    Salir
+                  </button>
+                </>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ userId: importUserId }),
+                      });
+                      const data = await parseApiResponse<{ userId: string; role: string }>(res);
+                      setCurrentUser(data);
+                    } catch (err) {
+                      // ignore
+                    }
+                  }}
+                  style={{ display: 'flex', gap: 8, alignItems: 'center' }}
+                >
+                  <input
+                    value={importUserId}
+                    onChange={(e) => setImportUserId(e.target.value)}
+                    placeholder="usuario"
+                    style={{ width: 120 }}
+                  />
+                  <button className="btn-primary" type="submit">
+                    Entrar
+                  </button>
+                </form>
+              )}
+            </div>
             <Link href="/purchases">
               <button className="btn-primary">Ir a Compras</button>
             </Link>
