@@ -1,9 +1,11 @@
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { ApiResponse } from '@/types/api';
 import type { LedgerDTO } from '@/types/domain';
+import rControlLogo from '../R-CONTROL.png';
 
 type ImportApiData = {
   imported: {
@@ -35,7 +37,6 @@ export default function DashboardHome() {
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ userId: string | null; role: string | null } | null>(null);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -54,18 +55,6 @@ export default function DashboardHome() {
   useEffect(() => {
     void fetchLedger();
   }, [fetchLedger]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch('/api/auth/me');
-        const data = await parseApiResponse<{ userId: string | null; role: string | null }>(res);
-        setCurrentUser(data);
-      } catch {
-        setCurrentUser(null);
-      }
-    })();
-  }, []);
 
   async function importData(event: React.FormEvent) {
     event.preventDefault();
@@ -112,9 +101,12 @@ export default function DashboardHome() {
 
   return (
     <main className="page-shell">
-      <section className="hero">
-        <h1>Control Diario — Resumen</h1>
-        <p>Resumen rápido del día y accesos a los módulos de Compras, Ventas y Gastos.</p>
+      <section className="hero hero--brand">
+        <Image src={rControlLogo} width={132} height={132} className="hero-logo" alt="R Control" priority />
+        <div>
+          <h1>Control Diario — Resumen</h1>
+          <p>Resumen rápido del día y accesos a los módulos de Compras, Ventas y Gastos.</p>
+        </div>
       </section>
 
       <section className="card-grid">
@@ -156,52 +148,6 @@ export default function DashboardHome() {
         <article className="card wide">
           <h3>Módulos</h3>
           <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-              {currentUser?.userId ? (
-                <>
-                  <div style={{ fontSize: 12 }}>
-                    Usuario: <strong>{currentUser.userId}</strong> ({currentUser.role})
-                  </div>
-                  <button
-                    className="btn-secondary"
-                    onClick={async () => {
-                      await fetch('/api/auth/logout', { method: 'POST' });
-                      setCurrentUser({ userId: null, role: null });
-                    }}
-                  >
-                    Salir
-                  </button>
-                </>
-              ) : (
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    try {
-                      const res = await fetch('/api/auth/login', {
-                        method: 'POST',
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({ userId: importUserId }),
-                      });
-                      const data = await parseApiResponse<{ userId: string; role: string }>(res);
-                      setCurrentUser(data);
-                    } catch (err) {
-                      // ignore
-                    }
-                  }}
-                  style={{ display: 'flex', gap: 8, alignItems: 'center' }}
-                >
-                  <input
-                    value={importUserId}
-                    onChange={(e) => setImportUserId(e.target.value)}
-                    placeholder="usuario"
-                    style={{ width: 120 }}
-                  />
-                  <button className="btn-primary" type="submit">
-                    Entrar
-                  </button>
-                </form>
-              )}
-            </div>
             <Link href="/purchases">
               <button className="btn-primary">Ir a Compras</button>
             </Link>

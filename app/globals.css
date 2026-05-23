@@ -36,15 +36,65 @@
   gap: 12px;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   color: var(--text-main);
   font-weight: 700;
   font-size: 1.1rem;
   letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.brand--link:hover {
+  opacity: 0.9;
+}
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  display: block;
 }
 .nav {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+.auth-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.auth-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-form input {
+  width: 140px;
+}
+.auth-pill {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border-color);
+  font-size: 0.88rem;
+}
+.auth-pill span {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+.auth-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+.btn-secondary {
+  background: var(--surface-alt);
+  color: var(--text-main);
+}
+.btn-secondary:hover {
+  background: #e5edf5;
 }
 .nav a {
   color: var(--text-soft);
@@ -128,6 +178,21 @@ h3 {
 .hero {
   color: var(--text-main);
   margin-bottom: 24px;
+}
+
+.hero--brand {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: center;
+}
+
+.hero-logo {
+  width: 132px;
+  height: 132px;
+  border-radius: 28px;
+  box-shadow: var(--shadow-lg);
+  background: white;
 }
 
 .hero h1 {
@@ -318,6 +383,19 @@ button:hover {
   .brand {
     text-align: left;
   }
+  .auth-panel {
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .auth-form {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .auth-form input {
+    width: 100%;
+  }
   .nav {
     width: 100%;
     display: none;
@@ -344,6 +422,13 @@ button:hover {
   }
   .hero h1 {
     font-size: 1.4rem;
+  }
+  .hero--brand {
+    grid-template-columns: 1fr;
+  }
+  .hero-logo {
+    width: 108px;
+    height: 108px;
   }
   .card {
     padding: 16px;
