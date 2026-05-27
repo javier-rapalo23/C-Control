@@ -84,6 +84,37 @@ export default function DashboardHome() {
     };
   }, []);
 
+  const DailyBarChart = ({ daily }: { daily: any[] }) => {
+    if (!daily || daily.length === 0) return null;
+    const nums = daily.map((d) => Number(d.libras) || 0);
+    const max = Math.max(...nums, 0);
+    const svgWidth = 600;
+    const svgHeight = 120;
+    const padding = 20;
+    const gap = 6;
+    const barWidth = (svgWidth - padding * 2 - gap * (daily.length - 1)) / daily.length;
+    return (
+      <div style={{ overflowX: 'auto', marginTop: 8 }}>
+        <svg width="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMinYMin meet">
+          {daily.map((d, i) => {
+            const v = Number(d.libras) || 0;
+            const h = max > 0 ? (v / max) * (svgHeight - padding * 2) : 0;
+            const x = padding + i * (barWidth + gap);
+            const y = svgHeight - padding - h;
+            return (
+              <g key={d.businessDate}>
+                <rect x={x} y={y} width={barWidth} height={h} fill="#2563eb" rx={3} />
+                <text x={x + barWidth / 2} y={svgHeight - padding + 12} fontSize={10} fill="#111" textAnchor="middle">
+                  {d.businessDate.slice(5)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  };
+
   async function importData(event: React.FormEvent) {
     event.preventDefault();
 
@@ -187,7 +218,7 @@ export default function DashboardHome() {
                   const nombre = m.nombre ?? m.materialNombre ?? m.name ?? m.material_nombre ?? id;
                   return (
                     <option key={id} value={id}>
-                      {`${nombre} (${id})`}
+                      {nombre}
                     </option>
                   );
                 })}
@@ -238,6 +269,7 @@ export default function DashboardHome() {
                 <div>
                   <div><strong>Total libras:</strong> {stockResult.data.totalLibras ?? 0}</div>
                   <h4>Desglose diario</h4>
+                  <DailyBarChart daily={stockResult.data.daily ?? []} />
                   <ul>
                     {stockResult.data.daily?.map((d: any) => (
                       <li key={d.businessDate}>{d.businessDate}: {d.libras}</li>

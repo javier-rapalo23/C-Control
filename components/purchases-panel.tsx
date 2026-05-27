@@ -281,7 +281,16 @@ export default function PurchasesPanel() {
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 8 }}>
             <label style={{ gridColumn: 'span 12' }}>
               Material
-              <select value={itemMaterialId} onChange={(event) => setItemMaterialId(event.target.value)} required>
+              <select
+                value={itemMaterialId}
+                onChange={(event) => {
+                  const val = event.target.value;
+                  setItemMaterialId(val);
+                  const mat = materials.find((m) => m.id === val);
+                  if (mat) setItemPrice(String(Number(mat.precioPorLibra).toFixed(2)));
+                }}
+                required
+              >
                 {materials.map((material) => (
                   <option key={material.id} value={material.id}>
                     {material.nombre} (L{material.precioPorLibra.toFixed(2)})
