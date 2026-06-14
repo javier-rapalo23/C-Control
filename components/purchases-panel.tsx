@@ -40,6 +40,8 @@ export default function PurchasesPanel() {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [newClientName, setNewClientName] = useState('');
 
+  const [saldoInicial, setSaldoInicial] = useState('');
+
   const [itemMaterialId, setItemMaterialId] = useState('');
   const [itemLibras, setItemLibras] = useState('');
   const [itemPrice, setItemPrice] = useState('');
@@ -69,6 +71,7 @@ export default function PurchasesPanel() {
     const response = await fetch(`/api/ledger?businessDate=${businessDate}`, { cache: 'no-store' });
     const data = await parseApiResponse<LedgerDTO>(response);
     setLedger(data);
+    setSaldoInicial(data.balance.saldoInicial.toFixed(2));
   }, [businessDate]);
 
   const fetchTransactions = useCallback(async () => {
@@ -196,6 +199,23 @@ export default function PurchasesPanel() {
     }
   }
 
+  async function saveSaldoInicial() {
+    try {
+      setLoading(true);
+      setError(null);
+      await fetch('/api/ledger/initial-balance', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessDate, saldoInicial: Number(saldoInicial) }),
+      }).then(parseApiResponse);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error guardando saldo inicial');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function deleteTransaction(id: string) {
     try {
       setLoading(true);
@@ -237,7 +257,13 @@ export default function PurchasesPanel() {
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
-
+<article className="card third kpi">
+          <div className="label">Saldo Inicial</div>
+          <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
+          <button className="btn-primary" type="button" onClick={() => void saveSaldoInicial()} style={{ marginTop: 8 }}>
+            Guardar
+          </button>
+        </article>
         <article className="card third kpi">
           <div className="label">Saldo actual</div>
           <div className="value">L {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
