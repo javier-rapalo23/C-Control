@@ -13,10 +13,11 @@ type AuthMe = {
 };
 
 const navigationItems = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/purchases', label: 'Compras' },
-  { href: '/sales', label: 'Ventas' },
-  { href: '/expenses', label: 'Reportar gastos' },
+  { href: '/', label: 'Dashboard', roles: null },
+  { href: '/purchases', label: 'Compras', roles: null },
+  { href: '/sales', label: 'Ventas', roles: null },
+  { href: '/expenses', label: 'Reportar gastos', roles: null },
+  { href: '/maintenance', label: 'Mantenimiento', roles: ['admin'] },
 ];
 
 export default function SiteHeader() {
@@ -122,15 +123,16 @@ export default function SiteHeader() {
         </div>
 
         <nav id="main-navigation" className={`nav ${isOpen ? 'nav--open' : ''}`}>
-          {navigationItems.map((item) => {
-            const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-
-            return (
-              <Link key={item.href} href={item.href} className={isActive ? 'active' : ''}>
-                {item.label}
-              </Link>
-            );
-          })}
+          {navigationItems
+            .filter((item) => !item.roles || item.roles.includes(authUser.role ?? ''))
+            .map((item) => {
+              const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+              return (
+                <Link key={item.href} href={item.href} className={isActive ? 'active' : ''}>
+                  {item.label}
+                </Link>
+              );
+            })}
         </nav>
       </div>
     </header>

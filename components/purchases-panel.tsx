@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ClientDTO, LedgerDTO, MaterialDTO, PurchaseTransactionDTO } from '@/types/domain';
+import type { ClientDTO, CompanySettingsDTO, LedgerDTO, MaterialDTO, PurchaseTransactionDTO } from '@/types/domain';
 
 type CartItem = {
   id: string;
@@ -36,6 +36,8 @@ export default function PurchasesPanel() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [company, setCompany] = useState<CompanySettingsDTO | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [newClientName, setNewClientName] = useState('');
@@ -95,6 +97,13 @@ export default function PurchasesPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    fetch('/api/settings/company', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((body: { ok: boolean; data?: CompanySettingsDTO }) => { if (body.ok && body.data) setCompany(body.data); })
+      .catch(() => undefined);
+  }, []);
 
   const cartTotal = useMemo(
     () =>
@@ -216,6 +225,74 @@ export default function PurchasesPanel() {
     }
   }
 
+  function printTicket(transaction: PurchaseTransactionDTO) {
+    const win = window.open('', '_blank', 'width=420,height=650');
+    if (!win) return;
+
+    const rows = transaction.items
+      .map(
+        (item) => `
+        <tr>
+          <td>${item.materialNombre}</td>
+          <td class="r">${Number(item.libras).toFixed(2)}</td>
+          <td class="r">L ${Number(item.precioPorLibra).toFixed(2)}</td>
+          <td class="r">L ${Number(item.total).toFixed(2)}</td>
+        </tr>`,
+      )
+      .join('');
+
+    win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Ticket</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Courier New',monospace;font-size:12px;padding:20px;max-width:320px;margin:auto}
+    h1{text-align:center;font-size:15px;letter-spacing:2px;margin-bottom:2px}
+    .sub{text-align:center;font-size:11px;color:#555;margin-bottom:8px}
+    .dash{border:none;border-top:1px dashed #000;margin:8px 0}
+    p{margin:2px 0;font-size:12px}
+    table{width:100%;border-collapse:collapse;margin:6px 0}
+    th{font-size:10px;padding-bottom:3px;border-bottom:1px solid #000}
+    td{font-size:11px;padding:2px 0}
+    .r{text-align:right}
+    th.r{text-align:right}
+    .total{font-size:14px;font-weight:bold;text-align:right;margin-top:6px}
+    .footer{text-align:center;font-size:11px;margin-top:14px;color:#555}
+    @media print{body{padding:0}}
+  </style>
+</head>
+<body>
+  <h1>${company?.nombre || 'R-CONTROL'}</h1>
+  <p class="sub">Comprobante de Compra</p>
+  ${company?.rtn ? `<p class="sub">RTN: ${company.rtn}</p>` : ''}
+  ${company?.telefono ? `<p class="sub">Tel: ${company.telefono}</p>` : ''}
+  ${company?.direccion ? `<p class="sub">${company.direccion}</p>` : ''}
+  <hr class="dash"/>
+  <p>Fecha: ${transaction.businessDate}</p>
+  <p>Cliente: ${transaction.client.nombre}</p>
+  <hr class="dash"/>
+  <table>
+    <thead>
+      <tr>
+        <th>Material</th>
+        <th class="r">Lb</th>
+        <th class="r">L/lb</th>
+        <th class="r">Total</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <hr class="dash"/>
+  <p class="total">TOTAL: L ${Number(transaction.total).toFixed(2)}</p>
+  <p class="footer">— Gracias por su visita —</p>
+  <script>window.onload=function(){window.print();window.close()}<\/script>
+</body>
+</html>`);
+    win.document.close();
+  }
+
   async function deleteTransaction(id: string) {
     try {
       setLoading(true);
@@ -302,28 +379,42 @@ export default function PurchasesPanel() {
           </label>
         </article>
 
-        <article className="card half">
+        <article className="card wide">
           <h3>Agregar item al carrito</h3>
-          <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 12' }}>
-              Material
-              <select
-                value={itemMaterialId}
-                onChange={(event) => {
-                  const val = event.target.value;
-                  setItemMaterialId(val);
-                  const mat = materials.find((m) => m.id === val);
-                  if (mat) setItemPrice(String(Number(mat.precioPorLibra).toFixed(2)));
-                }}
-                required
-              >
-                {materials.map((material) => (
-                  <option key={material.id} value={material.id}>
-                    {material.nombre} (L{material.precioPorLibra.toFixed(2)})
-                  </option>
-                ))}
-              </select>
-            </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
+            {materials.map((material) => {
+              const selected = itemMaterialId === material.id;
+              return (
+                <button
+                  key={material.id}
+                  type="button"
+                  onClick={() => {
+                    setItemMaterialId(material.id);
+                    setItemPrice(String(Number(material.precioPorLibra).toFixed(2)));
+                  }}
+                  style={{
+                    padding: '12px 10px',
+                    border: `2px solid ${selected ? '#2563eb' : 'var(--border-color)'}`,
+                    borderRadius: 'var(--radius)',
+                    background: selected ? '#eff6ff' : 'var(--surface)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? '#1d4ed8' : 'inherit' }}>
+                    {material.nombre}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
+                    L {Number(material.precioPorLibra).toFixed(2)} / lb
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
             <label style={{ gridColumn: 'span 6' }}>
               Libras
               <input value={itemLibras} onChange={(event) => setItemLibras(event.target.value)} type="number" step="0.01" required />
@@ -333,7 +424,7 @@ export default function PurchasesPanel() {
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
             <div style={{ gridColumn: 'span 12' }}>
-              <button className="btn-primary" type="submit">
+              <button className="btn-primary" type="submit" disabled={!itemMaterialId}>
                 Agregar al carrito
               </button>
             </div>
@@ -359,8 +450,8 @@ export default function PurchasesPanel() {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <strong style={{ fontSize: 14 }}>{item.materialNombre}</strong>
-                      <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button" style={{ flexShrink: 0 }}>
+                      <strong style={{ fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.materialNombre}</strong>
+                      <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button" style={{ flexShrink: 0, padding: '4px 10px', fontSize: 12 }}>
                         Eliminar
                       </button>
                     </div>
@@ -414,9 +505,12 @@ export default function PurchasesPanel() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>
-                    <div>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+                      <button className="btn-primary" type="button" onClick={() => printTicket(transaction)}>
+                        Imprimir
+                      </button>
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
-                        Eliminar transacción
+                        Eliminar
                       </button>
                     </div>
                   </div>

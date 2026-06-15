@@ -55,3 +55,14 @@ export function getAuthUserConfig(userId: string, rawValue: string | undefined):
   const users = parseAuthUsers(rawValue);
   return users[userId] ?? null;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getDbUserConfig(userId: string, prismaClient: any): Promise<AuthUserConfig | null> {
+  try {
+    const user = await (prismaClient.user.findUnique({ where: { userId } }) as Promise<{ password: string; role: string; activo: boolean } | null>);
+    if (!user || !user.activo) return null;
+    return { role: user.role as UserRole, password: user.password };
+  } catch {
+    return null;
+  }
+}

@@ -58,3 +58,25 @@ export const createExpenseSchema = z.object({
 export const updateMaterialSchema = createMaterialSchema.partial();
 
 export const updateClientSchema = createClientSchema.partial();
+
+export const companySettingsSchema = z.object({
+  nombre: z.string().trim().max(200).optional(),
+  rtn: z.string().trim().max(50).optional(),
+  telefono: z.string().trim().max(50).optional(),
+  direccion: z.string().trim().max(300).optional(),
+  email: z.string().trim().email().max(120).optional().or(z.literal('')),
+});
+
+export const createUserSchema = z.object({
+  userId: z.string().trim().min(2).max(60),
+  nombre: z.string().trim().max(120).optional(),
+  password: z.string().min(4).max(100),
+  role: z.enum(['viewer', 'editor', 'admin']),
+});
+
+export const updateUserSchema = z.object({
+  nombre: z.string().trim().max(120).optional(),
+  password: z.string().min(4).max(100).optional(),
+  role: z.enum(['viewer', 'editor', 'admin']).optional(),
+  activo: z.boolean().optional(),
+});

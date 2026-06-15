@@ -70,6 +70,26 @@ export type DailyBalanceDTO = {
   updatedAt: string;
 };
 
+export type CompanySettingsDTO = {
+  id: string;
+  nombre: string;
+  rtn: string;
+  telefono: string;
+  direccion: string;
+  email: string;
+  updatedAt: string;
+};
+
+export type UserDTO = {
+  id: string;
+  userId: string;
+  nombre: string;
+  role: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LedgerDTO = {
   businessDate: string;
   balance: DailyBalanceDTO;
