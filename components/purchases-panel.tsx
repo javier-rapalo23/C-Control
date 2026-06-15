@@ -236,7 +236,7 @@ export default function PurchasesPanel() {
       </section>
 
       <section className="card-grid">
-        <article className="card wide">
+        <article className="card half">
           <div className="row">
             <label style={{ gridColumn: 'span 3' }}>
               Fecha de negocio
@@ -257,7 +257,7 @@ export default function PurchasesPanel() {
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
-<article className="card third kpi">
+        <article className="card half">
           <div className="label">Saldo Inicial</div>
           <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
           <button className="btn-primary" type="button" onClick={() => void saveSaldoInicial()} style={{ marginTop: 8 }}>

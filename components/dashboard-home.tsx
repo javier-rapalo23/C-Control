@@ -84,6 +84,40 @@ export default function DashboardHome() {
     };
   }, []);
 
+  const MaterialBarChart = ({ items }: { items: any[] }) => {
+    if (!items || items.length === 0) return null;
+    const max = Math.max(...items.map((m) => Number(m.totalLibras) || 0), 0);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        {items.map((m) => {
+          const v = Number(m.totalLibras) || 0;
+          const pct = max > 0 ? (v / max) * 100 : 0;
+          return (
+            <div key={m.materialId} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 130, textAlign: 'right', fontSize: 13, color: 'var(--text-soft)', flexShrink: 0 }}>
+                {m.materialNombre}
+              </div>
+              <div style={{ flex: 1, background: 'var(--border-color)', borderRadius: 4, height: 22 }}>
+                <div
+                  style={{
+                    width: `${pct}%`,
+                    background: 'var(--primary, #2563eb)',
+                    borderRadius: 4,
+                    height: '100%',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <div style={{ width: 100, fontSize: 13, flexShrink: 0 }}>
+                {v.toLocaleString('es-HN')} lb
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const DailyBarChart = ({ daily }: { daily: any[] }) => {
     if (!daily || daily.length === 0) return null;
     const nums = daily.map((d) => Number(d.libras) || 0);
@@ -279,11 +313,7 @@ export default function DashboardHome() {
               ) : (
                 <div>
                   <h4>Totales por material</h4>
-                  <ul>
-                    {stockResult.data?.materials?.map((m: any) => (
-                      <li key={m.materialId}>{m.materialNombre} ({m.materialId}): {m.totalLibras} libras</li>
-                    ))}
-                  </ul>
+                  <MaterialBarChart items={stockResult.data?.materials ?? []} />
                 </div>
               )}
             </div>
