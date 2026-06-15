@@ -235,7 +235,7 @@ export default function DashboardHome() {
         </article>
         <article className="card third kpi">
           <div className="label">Movimientos</div>
-          <div className="value">L {ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
+          <div className="value"> {ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
         </article>
 
         
