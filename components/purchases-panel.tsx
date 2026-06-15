@@ -342,55 +342,57 @@ export default function PurchasesPanel() {
 
         <article className="card wide">
           <h3>Carrito de compra</h3>
-          <table className="table-like" style={{ marginTop: 8 }}>
-            <thead>
-              <tr>
-                <th>Material</th>
-                <th>Libras</th>
-                <th>Precio / libra</th>
-                <th>Subtotal</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cart.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>Aún no agregaste items al carrito.</td>
-                </tr>
-              ) : (
-                cart.map((item) => {
-                  const subtotal = decimalOrZero(item.libras) * decimalOrZero(item.precioPorLibra);
-                  return (
-                    <tr key={item.id}>
-                      <td>{item.materialNombre}</td>
-                      <td>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            {cart.length === 0 ? (
+              <p style={{ color: 'var(--text-soft)', margin: 0 }}>Aún no agregaste items al carrito.</p>
+            ) : (
+              cart.map((item) => {
+                const subtotal = decimalOrZero(item.libras) * decimalOrZero(item.precioPorLibra);
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius)',
+                      padding: '10px 12px',
+                      background: 'var(--surface-alt)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <strong style={{ fontSize: 14 }}>{item.materialNombre}</strong>
+                      <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button" style={{ flexShrink: 0 }}>
+                        Eliminar
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <label style={{ flex: '1 1 100px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Libras</span>
                         <input
                           value={item.libras}
                           onChange={(event) => updateCartItem(item.id, 'libras', event.target.value)}
                           type="number"
                           step="0.01"
                         />
-                      </td>
-                      <td>
+                      </label>
+                      <label style={{ flex: '1 1 100px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Precio / libra</span>
                         <input
                           value={item.precioPorLibra}
                           onChange={(event) => updateCartItem(item.id, 'precioPorLibra', event.target.value)}
                           type="number"
                           step="0.01"
                         />
-                      </td>
-                      <td>L {subtotal.toFixed(2)}</td>
-                      <td>
-                        <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button">
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </label>
+                      <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Subtotal</div>
+                        <strong>L {subtotal.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
             <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
             <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>

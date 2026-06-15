@@ -54,3 +54,7 @@ export const createExpenseSchema = z.object({
   descripcion: z.string().trim().min(2).max(250),
   monto: z.number().positive(),
 });
+
+export const updateMaterialSchema = createMaterialSchema.partial();
+
+export const updateClientSchema = createClientSchema.partial();
