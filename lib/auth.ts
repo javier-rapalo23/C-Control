@@ -1,4 +1,4 @@
-export type UserRole = 'viewer' | 'editor' | 'admin';
+export type UserRole = 'viewer' | 'editor' | 'admin' | 'comprador';
 
 export type AuthUserConfig = {
   role: UserRole;
@@ -9,6 +9,7 @@ const defaultAuthUsers: Record<string, AuthUserConfig> = {
   admin: { role: 'admin', password: 'admin123' },
   operador1: { role: 'editor', password: 'operador123' },
   consulta1: { role: 'viewer', password: 'consulta123' },
+  comprador1: { role: 'comprador', password: 'comprador123' },
 };
 
 export function parseAuthUsers(rawValue: string | undefined): Record<string, AuthUserConfig> {
@@ -20,7 +21,7 @@ export function parseAuthUsers(rawValue: string | undefined): Record<string, Aut
     const parsed = JSON.parse(rawValue) as Record<string, unknown>;
     const entries = Object.entries(parsed).flatMap(([userId, value]) => {
       if (typeof value === 'string') {
-        if (value === 'viewer' || value === 'editor' || value === 'admin') {
+        if (value === 'viewer' || value === 'editor' || value === 'admin' || value === 'comprador') {
           return [[userId, { role: value } satisfies AuthUserConfig]] as Array<[string, AuthUserConfig]>;
         }
 
@@ -34,7 +35,7 @@ export function parseAuthUsers(rawValue: string | undefined): Record<string, Aut
       const role = (value as { role?: unknown }).role;
       const password = (value as { password?: unknown }).password;
 
-      if (role !== 'viewer' && role !== 'editor' && role !== 'admin') {
+      if (role !== 'viewer' && role !== 'editor' && role !== 'admin' && role !== 'comprador') {
         return [] as Array<[string, AuthUserConfig]>;
       }
 

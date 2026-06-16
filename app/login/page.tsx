@@ -40,7 +40,7 @@ export default function LoginPage() {
       }
 
       window.dispatchEvent(new Event('rcontrol-auth-changed'));
-      router.replace('/');
+      router.replace(body.data.role === 'comprador' ? '/purchases' : '/');
       router.refresh();
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'No se pudo iniciar sesión');

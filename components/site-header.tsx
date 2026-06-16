@@ -13,7 +13,7 @@ type AuthMe = {
 };
 
 const navigationItems = [
-  { href: '/', label: 'Dashboard', roles: null },
+  { href: '/', label: 'Dashboard', roles: ['admin', 'editor', 'viewer'] },
   { href: '/purchases', label: 'Compras', roles: null },
   { href: '/sales', label: 'Ventas', roles: null },
   { href: '/expenses', label: 'Reportar gastos', roles: null },

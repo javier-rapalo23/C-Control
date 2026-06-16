@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { CompanySettingsDTO, UserDTO } from '@/types/domain';
+import type { ClientDTO, CompanySettingsDTO, MaterialDTO, UserDTO } from '@/types/domain';
+import { useRoleGuard } from '@/lib/use-role-guard';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -10,18 +11,42 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-type Section = 'empresa' | 'usuarios' | 'roles';
+type Section = 'empresa' | 'usuarios' | 'roles' | 'materiales' | 'clientes';
 
 type UserForm = { userId: string; nombre: string; password: string; role: string };
 const emptyUserForm: UserForm = { userId: '', nombre: '', password: '', role: 'viewer' };
+
+type ClientForm = {
+  nombre: string;
+  telefono: string;
+  direccion: string;
+  rtn: string;
+  cuentaBancaria: string;
+  notas: string;
+};
+
+const emptyClientForm: ClientForm = {
+  nombre: '',
+  telefono: '',
+  direccion: '',
+  rtn: '',
+  cuentaBancaria: '',
+  notas: '',
+};
 
 const ROLES = [
   { id: 'admin', label: 'Administrador', desc: 'Acceso total: configuración, usuarios, todos los módulos.' },
   { id: 'editor', label: 'Editor', desc: 'Puede registrar compras, ventas y gastos. No accede a mantenimiento.' },
   { id: 'viewer', label: 'Visualizador', desc: 'Solo lectura. No puede crear ni eliminar registros.' },
+  {
+    id: 'comprador',
+    label: 'Comprador',
+    desc: 'Solo puede registrar compras, ventas y gastos. Sin acceso al dashboard ni a mantenimiento.',
+  },
 ];
 
 export default function MaintenancePanel() {
+  const roleGuardStatus = useRoleGuard((role) => role === 'admin');
   const [section, setSection] = useState<Section>('empresa');
 
   // --- Company ---
@@ -38,6 +63,21 @@ export default function MaintenancePanel() {
   const [userForm, setUserForm] = useState<UserForm>(emptyUserForm);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  // --- Materials ---
+  const [materials, setMaterials] = useState<MaterialDTO[]>([]);
+  const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [materialsError, setMaterialsError] = useState<string | null>(null);
+  const [editingMaterial, setEditingMaterial] = useState<{ id: string; nombre: string; precioPorLibra: string } | null>(null);
+  const [newMatNombre, setNewMatNombre] = useState('');
+  const [newMatPrecio, setNewMatPrecio] = useState('');
+
+  // --- Clients ---
+  const [clients, setClients] = useState<ClientDTO[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState<string | null>(null);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
 
   const fetchCompany = useCallback(async () => {
     try {
@@ -68,6 +108,34 @@ export default function MaintenancePanel() {
     }
   }, []);
 
+  const fetchMaterials = useCallback(async () => {
+    try {
+      setMaterialsLoading(true);
+      const res = await fetch('/api/materials', { cache: 'no-store' });
+      const data = await parseApiResponse<MaterialDTO[]>(res);
+      setMaterials(data);
+      setMaterialsError(null);
+    } catch (err) {
+      setMaterialsError(err instanceof Error ? err.message : 'Error cargando materiales');
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }, []);
+
+  const fetchClients = useCallback(async () => {
+    try {
+      setClientsLoading(true);
+      const res = await fetch('/api/clients', { cache: 'no-store' });
+      const data = await parseApiResponse<ClientDTO[]>(res);
+      setClients(data);
+      setClientsError(null);
+    } catch (err) {
+      setClientsError(err instanceof Error ? err.message : 'Error cargando clientes');
+    } finally {
+      setClientsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchCompany();
   }, [fetchCompany]);
@@ -75,6 +143,14 @@ export default function MaintenancePanel() {
   useEffect(() => {
     if (section === 'usuarios') void fetchUsers();
   }, [section, fetchUsers]);
+
+  useEffect(() => {
+    if (section === 'materiales') void fetchMaterials();
+  }, [section, fetchMaterials]);
+
+  useEffect(() => {
+    if (section === 'clientes') void fetchClients();
+  }, [section, fetchClients]);
 
   async function saveCompany(event: React.FormEvent) {
     event.preventDefault();
@@ -166,6 +242,124 @@ export default function MaintenancePanel() {
     }
   }
 
+  // --- Materials CRUD ---
+
+  async function createMaterial(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      setMaterialsLoading(true);
+      await fetch('/api/materials', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nombre: newMatNombre, precioPorLibra: Number(newMatPrecio) }),
+      }).then(parseApiResponse);
+      setNewMatNombre('');
+      setNewMatPrecio('');
+      await fetchMaterials();
+    } catch (err) {
+      setMaterialsError(err instanceof Error ? err.message : 'Error creando material');
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }
+
+  async function updateMaterial(id: string) {
+    if (!editingMaterial) return;
+    try {
+      setMaterialsLoading(true);
+      await fetch(`/api/materials/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nombre: editingMaterial.nombre, precioPorLibra: Number(editingMaterial.precioPorLibra) }),
+      }).then(parseApiResponse);
+      setEditingMaterial(null);
+      await fetchMaterials();
+    } catch (err) {
+      setMaterialsError(err instanceof Error ? err.message : 'Error actualizando material');
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }
+
+  async function deleteMaterial(id: string) {
+    try {
+      setMaterialsLoading(true);
+      await fetch(`/api/materials/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchMaterials();
+    } catch (err) {
+      setMaterialsError(err instanceof Error ? err.message : 'Error eliminando material');
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }
+
+  // --- Clients CRUD ---
+
+  function startEditClient(client: ClientDTO) {
+    setEditingClientId(client.id);
+    setClientForm({
+      nombre: client.nombre,
+      telefono: client.telefono ?? '',
+      direccion: client.direccion ?? '',
+      rtn: client.rtn ?? '',
+      cuentaBancaria: client.cuentaBancaria ?? '',
+      notas: client.notas ?? '',
+    });
+  }
+
+  function cancelClientEdit() {
+    setEditingClientId(null);
+    setClientForm(emptyClientForm);
+  }
+
+  async function saveClient(event: React.FormEvent) {
+    event.preventDefault();
+    const payload = {
+      nombre: clientForm.nombre,
+      ...(clientForm.telefono ? { telefono: clientForm.telefono } : {}),
+      ...(clientForm.direccion ? { direccion: clientForm.direccion } : {}),
+      ...(clientForm.rtn ? { rtn: clientForm.rtn } : {}),
+      ...(clientForm.cuentaBancaria ? { cuentaBancaria: clientForm.cuentaBancaria } : {}),
+      ...(clientForm.notas ? { notas: clientForm.notas } : {}),
+    };
+    try {
+      setClientsLoading(true);
+      if (editingClientId) {
+        await fetch(`/api/clients/${editingClientId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(parseApiResponse);
+      } else {
+        await fetch('/api/clients', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(parseApiResponse);
+      }
+      cancelClientEdit();
+      await fetchClients();
+    } catch (err) {
+      setClientsError(err instanceof Error ? err.message : 'Error guardando cliente');
+    } finally {
+      setClientsLoading(false);
+    }
+  }
+
+  async function deleteClient(id: string) {
+    try {
+      setClientsLoading(true);
+      await fetch(`/api/clients/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchClients();
+    } catch (err) {
+      setClientsError(err instanceof Error ? err.message : 'Error eliminando cliente');
+    } finally {
+      setClientsLoading(false);
+    }
+  }
+
+  if (roleGuardStatus !== 'allowed') return null;
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -174,14 +368,22 @@ export default function MaintenancePanel() {
       </section>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['empresa', 'usuarios', 'roles'] as Section[]).map((s) => (
+        {(['empresa', 'usuarios', 'roles', 'materiales', 'clientes'] as Section[]).map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => setSection(s)}
             className={section === s ? 'btn-primary' : 'btn-secondary'}
           >
-            {s === 'empresa' ? 'Empresa' : s === 'usuarios' ? 'Usuarios' : 'Roles'}
+            {s === 'empresa'
+              ? 'Empresa'
+              : s === 'usuarios'
+                ? 'Usuarios'
+                : s === 'roles'
+                  ? 'Roles'
+                  : s === 'materiales'
+                    ? 'Materiales'
+                    : 'Clientes'}
           </button>
         ))}
       </div>
@@ -369,6 +571,177 @@ export default function MaintenancePanel() {
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {/* ── MATERIALES ── */}
+      {section === 'materiales' ? (
+        <section className="card">
+          <h3>Materiales</h3>
+          {materialsError ? <p style={{ color: 'var(--danger)' }}>{materialsError}</p> : null}
+
+          <table className="table-like">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Precio / libra</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materials.map((m) =>
+                editingMaterial?.id === m.id ? (
+                  <tr key={m.id}>
+                    <td>
+                      <input
+                        value={editingMaterial.nombre}
+                        onChange={(e) => setEditingMaterial((prev) => prev && { ...prev, nombre: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={editingMaterial.precioPorLibra}
+                        onChange={(e) => setEditingMaterial((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
+                        type="number"
+                        step="0.01"
+                      />
+                    </td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn-primary" type="button" onClick={() => void updateMaterial(m.id)}>
+                        Guardar
+                      </button>
+                      <button className="btn-danger" type="button" onClick={() => setEditingMaterial(null)}>
+                        Cancelar
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={m.id}>
+                    <td>{m.nombre}</td>
+                    <td>L {Number(m.precioPorLibra).toFixed(2)}</td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        onClick={() =>
+                          setEditingMaterial({ id: m.id, nombre: m.nombre, precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)) })
+                        }
+                      >
+                        Editar
+                      </button>
+                      <button className="btn-danger" type="button" onClick={() => void deleteMaterial(m.id)}>
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ),
+              )}
+              {materials.length === 0 && !materialsLoading ? (
+                <tr>
+                  <td colSpan={3}>No hay materiales registrados.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+
+          <h4 style={{ marginTop: 16 }}>Nuevo material</h4>
+          <form onSubmit={(e) => void createMaterial(e)} className="row" style={{ marginTop: 8 }}>
+            <label style={{ gridColumn: 'span 6' }}>
+              Nombre
+              <input value={newMatNombre} onChange={(e) => setNewMatNombre(e.target.value)} required />
+            </label>
+            <label style={{ gridColumn: 'span 4' }}>
+              Precio por libra
+              <input value={newMatPrecio} onChange={(e) => setNewMatPrecio(e.target.value)} type="number" step="0.01" required />
+            </label>
+            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
+              <button className="btn-primary" type="submit" disabled={materialsLoading}>
+                Agregar
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {/* ── CLIENTES ── */}
+      {section === 'clientes' ? (
+        <section className="card">
+          <h3>Clientes</h3>
+          {clientsError ? <p style={{ color: 'var(--danger)' }}>{clientsError}</p> : null}
+
+          <table className="table-like">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clients.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    {c.nombre}
+                    {c.esGeneral ? <span style={{ color: 'var(--text-soft)', fontSize: 12 }}> (general)</span> : null}
+                  </td>
+                  <td>{c.telefono ?? '—'}</td>
+                  <td style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn-primary" type="button" onClick={() => startEditClient(c)}>
+                      Editar
+                    </button>
+                    {!c.esGeneral ? (
+                      <button className="btn-danger" type="button" onClick={() => void deleteClient(c.id)}>
+                        Eliminar
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+              {clients.length === 0 && !clientsLoading ? (
+                <tr>
+                  <td colSpan={3}>No hay clientes registrados.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+
+          <h4 style={{ marginTop: 16 }}>{editingClientId ? 'Editar cliente' : 'Nuevo cliente'}</h4>
+          <form onSubmit={(e) => void saveClient(e)} className="row" style={{ marginTop: 8 }}>
+            <label style={{ gridColumn: 'span 6' }}>
+              Nombre *
+              <input value={clientForm.nombre} onChange={(e) => setClientForm((f) => ({ ...f, nombre: e.target.value }))} required />
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
+              Teléfono
+              <input value={clientForm.telefono} onChange={(e) => setClientForm((f) => ({ ...f, telefono: e.target.value }))} />
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
+              Dirección
+              <input value={clientForm.direccion} onChange={(e) => setClientForm((f) => ({ ...f, direccion: e.target.value }))} />
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
+              RTN
+              <input value={clientForm.rtn} onChange={(e) => setClientForm((f) => ({ ...f, rtn: e.target.value }))} />
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
+              Cuenta bancaria
+              <input value={clientForm.cuentaBancaria} onChange={(e) => setClientForm((f) => ({ ...f, cuentaBancaria: e.target.value }))} />
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
+              Notas
+              <input value={clientForm.notas} onChange={(e) => setClientForm((f) => ({ ...f, notas: e.target.value }))} />
+            </label>
+            <div style={{ gridColumn: 'span 12', display: 'flex', gap: 8, marginTop: 4 }}>
+              <button className="btn-primary" type="submit" disabled={clientsLoading}>
+                {editingClientId ? 'Guardar cambios' : 'Crear cliente'}
+              </button>
+              {editingClientId ? (
+                <button className="btn-danger" type="button" onClick={cancelClientEdit}>
+                  Cancelar
+                </button>
+              ) : null}
+            </div>
+          </form>
         </section>
       ) : null}
     </main>

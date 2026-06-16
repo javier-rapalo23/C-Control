@@ -4,6 +4,7 @@ import { parseAuthUsers, type UserRole } from '@/lib/auth';
 
 const roleRank: Record<UserRole, number> = {
   viewer: 1,
+  comprador: 2,
   editor: 2,
   admin: 3,
 };

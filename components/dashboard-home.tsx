@@ -4,7 +4,8 @@ import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { ApiResponse } from '@/types/api';
-import type { LedgerDTO } from '@/types/domain';
+import type { CompanySettingsDTO, LedgerDTO } from '@/types/domain';
+import { useRoleGuard } from '@/lib/use-role-guard';
 import rControlLogo from '../R-CONTROL.png';
 
 type ImportApiData = {
@@ -28,6 +29,7 @@ function todayDateString() {
 }
 
 export default function DashboardHome() {
+  const roleGuardStatus = useRoleGuard((role) => role !== 'comprador', '/purchases');
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,7 @@ export default function DashboardHome() {
   const [stockResult, setStockResult] = useState<any | null>(null);
   const [materials, setMaterials] = useState<any[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [companyName, setCompanyName] = useState<string | null>(null);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -68,6 +71,22 @@ export default function DashboardHome() {
     let mounted = true;
     (async () => {
       try {
+        const res = await fetch('/api/settings/company', { cache: 'no-store' });
+        const data = await parseApiResponse<CompanySettingsDTO>(res);
+        if (mounted && data.nombre) setCompanyName(data.nombre);
+      } catch {
+        // ignore errors fetching company name
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
         setMaterialsLoading(true);
         const res = await fetch('/api/materials', { cache: 'no-store' });
         const data = await parseApiResponse<any>(res);
@@ -84,18 +103,17 @@ export default function DashboardHome() {
     };
   }, []);
 
-  const MaterialBarChart = ({ items }: { items: any[] }) => {
+  const BarList = ({ items }: { items: { key: string; label: string; value: number }[] }) => {
     if (!items || items.length === 0) return null;
-    const max = Math.max(...items.map((m) => Number(m.totalLibras) || 0), 0);
+    const max = Math.max(...items.map((i) => i.value), 0);
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-        {items.map((m) => {
-          const v = Number(m.totalLibras) || 0;
-          const pct = max > 0 ? (v / max) * 100 : 0;
+        {items.map((item) => {
+          const pct = max > 0 ? (item.value / max) * 100 : 0;
           return (
-            <div key={m.materialId} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 130, textAlign: 'right', fontSize: 13, color: 'var(--text-soft)', flexShrink: 0 }}>
-                {m.materialNombre}
+                {item.label}
               </div>
               <div style={{ flex: 1, background: 'var(--border-color)', borderRadius: 4, height: 22 }}>
                 <div
@@ -109,7 +127,7 @@ export default function DashboardHome() {
                 />
               </div>
               <div style={{ width: 100, fontSize: 13, flexShrink: 0 }}>
-                {v.toLocaleString('es-HN')} lb
+                {item.value.toLocaleString('es-HN')} lb
               </div>
             </div>
           );
@@ -118,36 +136,16 @@ export default function DashboardHome() {
     );
   };
 
-  const DailyBarChart = ({ daily }: { daily: any[] }) => {
-    if (!daily || daily.length === 0) return null;
-    const nums = daily.map((d) => Number(d.libras) || 0);
-    const max = Math.max(...nums, 0);
-    const svgWidth = 600;
-    const svgHeight = 120;
-    const padding = 20;
-    const gap = 6;
-    const barWidth = (svgWidth - padding * 2 - gap * (daily.length - 1)) / daily.length;
-    return (
-      <div style={{ overflowX: 'auto', marginTop: 8 }}>
-        <svg width="100%" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="xMinYMin meet">
-          {daily.map((d, i) => {
-            const v = Number(d.libras) || 0;
-            const h = max > 0 ? (v / max) * (svgHeight - padding * 2) : 0;
-            const x = padding + i * (barWidth + gap);
-            const y = svgHeight - padding - h;
-            return (
-              <g key={d.businessDate}>
-                <rect x={x} y={y} width={barWidth} height={h} fill="#2563eb" rx={3} />
-                <text x={x + barWidth / 2} y={svgHeight - padding + 12} fontSize={10} fill="#111" textAnchor="middle">
-                  {d.businessDate.slice(5)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    );
-  };
+  const dailyPurchasesSummary = (() => {
+    if (!ledger) return [];
+    const byMaterial: Record<string, { materialNombre: string; libras: number; total: number }> = {};
+    for (const p of ledger.purchases) {
+      if (!byMaterial[p.materialId]) byMaterial[p.materialId] = { materialNombre: p.materialNombre, libras: 0, total: 0 };
+      byMaterial[p.materialId].libras += p.libras;
+      byMaterial[p.materialId].total += p.total;
+    }
+    return Object.values(byMaterial).sort((a, b) => b.total - a.total);
+  })();
 
   async function importData(event: React.FormEvent) {
     event.preventDefault();
@@ -192,12 +190,15 @@ export default function DashboardHome() {
     }
   }
 
+  if (roleGuardStatus !== 'allowed') return null;
+
   return (
     <main className="page-shell">
       <section className="hero hero--brand">
         <Image src={rControlLogo} width={132} height={132} className="hero-logo" alt="R Control" priority />
         <div>
           <h1>Control Diario — Resumen</h1>
+          {companyName ? <h2 style={{ fontWeight: 600, marginBottom: 2 }}>{companyName}</h2> : null}
           <p>Resumen rápido del día y accesos a los módulos de Compras, Ventas y Gastos.</p>
         </div>
       </section>
@@ -230,15 +231,40 @@ export default function DashboardHome() {
           <div className="value">L {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
-          <div className="label">Ventas del día</div>
-          <div className="value">L {ledger?.totals.totalVentas.toFixed(2) ?? '0.00'}</div>
+          <div className="label">Compras del día</div>
+          <div className="value">L {ledger?.totals.totalCompras.toFixed(2) ?? '0.00'}</div>
         </article>
         <article className="card third kpi">
           <div className="label">Movimientos</div>
           <div className="value"> {ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
         </article>
 
-        
+        <article className="card wide">
+          <h3>Resumen de compras del día</h3>
+          <table className="table-like" style={{ marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th>Libras</th>
+                <th>Total (L)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyPurchasesSummary.map((item) => (
+                <tr key={item.materialNombre}>
+                  <td>{item.materialNombre}</td>
+                  <td>{item.libras.toLocaleString('es-HN')} lb</td>
+                  <td>L {item.total.toFixed(2)}</td>
+                </tr>
+              ))}
+              {dailyPurchasesSummary.length === 0 ? (
+                <tr>
+                  <td colSpan={3}>No hay compras registradas para este día.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </article>
 
         <article className="card wide">
           <h3>Consultar stock por material</h3>
@@ -303,17 +329,24 @@ export default function DashboardHome() {
                 <div>
                   <div><strong>Total libras:</strong> {stockResult.data.totalLibras ?? 0}</div>
                   <h4>Desglose diario</h4>
-                  <DailyBarChart daily={stockResult.data.daily ?? []} />
-                  <ul>
-                    {stockResult.data.daily?.map((d: any) => (
-                      <li key={d.businessDate}>{d.businessDate}: {d.libras}</li>
-                    ))}
-                  </ul>
+                  <BarList
+                    items={(stockResult.data.daily ?? []).map((d: any) => ({
+                      key: d.businessDate,
+                      label: d.businessDate,
+                      value: Number(d.libras) || 0,
+                    }))}
+                  />
                 </div>
               ) : (
                 <div>
                   <h4>Totales por material</h4>
-                  <MaterialBarChart items={stockResult.data?.materials ?? []} />
+                  <BarList
+                    items={(stockResult.data?.materials ?? []).map((m: any) => ({
+                      key: m.materialId,
+                      label: m.materialNombre,
+                      value: Number(m.totalLibras) || 0,
+                    }))}
+                  />
                 </div>
               )}
             </div>

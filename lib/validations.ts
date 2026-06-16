@@ -71,12 +71,12 @@ export const createUserSchema = z.object({
   userId: z.string().trim().min(2).max(60),
   nombre: z.string().trim().max(120).optional(),
   password: z.string().min(4).max(100),
-  role: z.enum(['viewer', 'editor', 'admin']),
+  role: z.enum(['viewer', 'editor', 'admin', 'comprador']),
 });
 
 export const updateUserSchema = z.object({
   nombre: z.string().trim().max(120).optional(),
   password: z.string().min(4).max(100).optional(),
-  role: z.enum(['viewer', 'editor', 'admin']).optional(),
+  role: z.enum(['viewer', 'editor', 'admin', 'comprador']).optional(),
   activo: z.boolean().optional(),
 });
