@@ -46,6 +46,8 @@ export default function InventoryPanel() {
       }
 
       // Fetch stock and cargas for each material in parallel
+      type StockApiData = { filters: unknown; ultimaCarga: MaterialCargaDTO | null; data: MaterialStockDTO };
+
       const stockResults = await Promise.all(
         mats.map(async (mat) => {
           const [stockRes, cargasRes] = await Promise.all([
@@ -53,11 +55,11 @@ export default function InventoryPanel() {
             fetch(`/api/material-cargas?materialId=${mat.id}`, { cache: 'no-store' }),
           ]);
 
-          const stockBody = (await stockRes.json()) as { ok: boolean; data?: MaterialStockDTO; ultimaCarga?: MaterialCargaDTO | null };
+          const stockBody = (await stockRes.json()) as { ok: boolean; data?: StockApiData };
           const cargasBody = (await cargasRes.json()) as { ok: boolean; data?: MaterialCargaDTO[] };
 
-          const stock = stockBody.ok && stockBody.data ? stockBody.data : null;
-          const ultimaCarga = stockBody.ok && stockBody.ultimaCarga ? stockBody.ultimaCarga : null;
+          const stock = stockBody.ok && stockBody.data ? stockBody.data.data : null;
+          const ultimaCarga = stockBody.ok && stockBody.data ? stockBody.data.ultimaCarga : null;
           const matCargas = cargasBody.ok && cargasBody.data ? cargasBody.data : [];
 
           return { mat, stock, ultimaCarga, matCargas };

@@ -2,14 +2,20 @@ import { handleApiError, success } from '@/lib/api-response';
 import { toBusinessDateString } from '@/lib/business-date';
 import { prisma } from '@/lib/prisma';
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+type Params = {
+  params: Promise<{ id: string }>;
+};
+
+export async function DELETE(_request: Request, { params }: Params) {
   try {
-    const carga = await prisma.materialCarga.findUnique({ where: { id: params.id } });
+    const { id } = await params;
+
+    const carga = await prisma.materialCarga.findUnique({ where: { id } });
     if (!carga) {
       return handleApiError(new Error('Carga no encontrada'));
     }
 
-    await prisma.materialCarga.delete({ where: { id: params.id } });
+    await prisma.materialCarga.delete({ where: { id } });
 
     return success({
       data: {

@@ -15,14 +15,14 @@ export async function GET(request: Request) {
       orderBy: [{ businessDate: 'desc' }, { createdAt: 'desc' }],
     });
 
-    return success({
-      data: cargas.map((c) => ({
+    return success(
+      cargas.map((c) => ({
         ...c,
         businessDate: toBusinessDateString(c.businessDate),
         libras: c.libras !== null ? Number(c.libras) : null,
         createdAt: c.createdAt.toISOString(),
       })),
-    });
+    );
   } catch (error) {
     return handleApiError(error);
   }
@@ -53,12 +53,10 @@ export async function POST(request: Request) {
     });
 
     return success({
-      data: {
-        ...carga,
-        businessDate: toBusinessDateString(carga.businessDate),
-        libras: carga.libras !== null ? Number(carga.libras) : null,
-        createdAt: carga.createdAt.toISOString(),
-      },
+      ...carga,
+      businessDate: toBusinessDateString(carga.businessDate),
+      libras: carga.libras !== null ? Number(carga.libras) : null,
+      createdAt: carga.createdAt.toISOString(),
     });
   } catch (error) {
     return handleApiError(error);
