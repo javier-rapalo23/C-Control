@@ -17,6 +17,7 @@ const navigationItems = [
   { href: '/purchases', label: 'Compras', roles: null },
   { href: '/sales', label: 'Ventas', roles: null },
   { href: '/expenses', label: 'Reportar gastos', roles: null },
+  { href: '/inventory', label: 'Inventario', roles: null },
   { href: '/maintenance', label: 'Mantenimiento', roles: ['admin'] },
 ];
 

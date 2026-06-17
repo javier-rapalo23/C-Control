@@ -90,6 +90,23 @@ export type UserDTO = {
   updatedAt: string;
 };
 
+export type MaterialCargaDTO = {
+  id: string;
+  businessDate: string;
+  materialId: string;
+  materialNombre: string;
+  libras: number | null;
+  descripcion: string | null;
+  createdAt: string;
+};
+
+export type MaterialStockDTO = {
+  materialId: string;
+  totalLibras: number;
+  daily: { businessDate: string; libras: number }[];
+  purchases: PurchaseDTO[];
+};
+
 export type LedgerDTO = {
   businessDate: string;
   balance: DailyBalanceDTO;

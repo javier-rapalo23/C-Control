@@ -13,12 +13,27 @@ datasource db {
 }
 
 model Material {
-  id             String     @id @default(cuid())
-  nombre         String     @unique
-  precioPorLibra Decimal    @db.Decimal(10, 2)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id             String           @id @default(cuid())
+  nombre         String           @unique
+  precioPorLibra Decimal          @db.Decimal(10, 2)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   purchases      Purchase[]
+  cargas         MaterialCarga[]
+}
+
+model MaterialCarga {
+  id             String   @id @default(cuid())
+  businessDate   DateTime @db.Date
+  materialId     String
+  materialNombre String
+  libras         Decimal? @db.Decimal(10, 2)
+  descripcion    String?
+  createdAt      DateTime @default(now())
+  material       Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
+  @@index([materialId])
 }
 
 model Client {

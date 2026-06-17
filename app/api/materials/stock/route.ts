@@ -17,9 +17,37 @@ export async function GET(request: Request) {
       where.businessDate = {};
       if (from) where.businessDate.gte = parseBusinessDate(from);
       if (to) where.businessDate.lte = parseBusinessDate(to);
+    } else if (materialId) {
+      // Sin filtro de fecha: buscar la última carga de este material y partir desde ahí
+      const ultimaCarga = await prisma.materialCarga.findFirst({
+        where: { materialId },
+        orderBy: { businessDate: 'desc' },
+      });
+
+      if (ultimaCarga) {
+        // Solo compras DESPUÉS de la fecha de la última carga
+        where.businessDate = { gt: ultimaCarga.businessDate };
+      }
     }
 
     const purchases = await prisma.purchase.findMany({ where, orderBy: [{ businessDate: 'asc' }, { createdAt: 'asc' }] });
+
+    // Obtener info de la última carga para incluirla en la respuesta
+    let ultimaCargaInfo = null;
+    if (materialId) {
+      const ultimaCarga = await prisma.materialCarga.findFirst({
+        where: { materialId },
+        orderBy: { businessDate: 'desc' },
+      });
+      if (ultimaCarga) {
+        ultimaCargaInfo = {
+          id: ultimaCarga.id,
+          businessDate: toBusinessDateString(ultimaCarga.businessDate),
+          libras: ultimaCarga.libras !== null ? Number(ultimaCarga.libras) : null,
+          descripcion: ultimaCarga.descripcion,
+        };
+      }
+    }
 
     if (materialId) {
       // Group by day for the specified material
@@ -39,6 +67,7 @@ export async function GET(request: Request) {
 
       return success({
         filters: { materialId, from, to },
+        ultimaCarga: ultimaCargaInfo,
         data: { materialId, totalLibras, daily, purchases: purchases.map((p) => ({
           ...p,
           businessDate: toBusinessDateString(p.businessDate),
