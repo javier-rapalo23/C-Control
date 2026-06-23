@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="light"] {
   --bg-deep: #ffffff;
   --bg-soft: #f8f9fa;
   --surface: #ffffff;
@@ -13,6 +14,22 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  --bg-deep: #0f1117;
+  --bg-soft: #1a1d27;
+  --surface: #1e2130;
+  --surface-alt: #262b3d;
+  --text-main: #e2e8f0;
+  --text-soft: #94a3b8;
+  --danger: #fc8181;
+  --success: #68d391;
+  --ring: #63b3ed;
+  --border-color: #2d3748;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
 }
 
 /* Navigation */
@@ -125,6 +142,25 @@
 }
 .menu-toggle:hover {
   transform: none;
+  box-shadow: var(--shadow-md);
+}
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: var(--surface-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm);
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  transform: rotate(20deg) translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 .menu-toggle__icon {
@@ -397,7 +433,7 @@ button:hover {
 
 .kpi {
   animation: rise-in 380ms ease-out both;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f3f7 100%);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
 }
 
 @keyframes rise-in {

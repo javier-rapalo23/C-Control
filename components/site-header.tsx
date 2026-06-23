@@ -3,8 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import rControlLogo from '../R-CONTROL.png';
 
 type AuthMe = {
@@ -27,6 +26,34 @@ export default function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthMe>({ userId: null, role: null });
   const [loadingAuth, setLoadingAuth] = useState(false);
+  const [theme, setTheme] = useState('light');
+  const [mounted, setMounted] = useState(false);
+  // --- LÓGICA DEL TEMA ---
+  
+
+  useEffect(() => {
+  setMounted(true); // Avisamos que el componente ya está listo en el cliente
+  
+  const savedTheme = localStorage.getItem('rcontrol-theme');
+  if (savedTheme) {
+    setTheme(savedTheme);
+  } else {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setTheme(prefersDark ? 'dark' : 'light');
+  }
+}, []);
+useEffect(() => {
+  if (mounted) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('rcontrol-theme', theme);
+  }
+}, [theme, mounted]);
+
+const toggleTheme = () => {
+  setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+};
+
+ 
 
   useEffect(() => {
     setIsOpen(false);
@@ -135,6 +162,17 @@ export default function SiteHeader() {
               );
             })}
         </nav>
+
+        <button
+          type="button"
+          className="theme-toggle"
+          aria-label="Cambiar tema"
+          onClick={toggleTheme}
+        >
+          <span className="theme-toggle__icon" aria-hidden="true">
+            {theme === 'dark' ? '🌞' : '🌜'}
+          </span>
+        </button>
       </div>
     </header>
   );
