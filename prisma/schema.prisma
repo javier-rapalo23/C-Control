@@ -112,13 +112,15 @@ model Expense {
 }
 
 model CompanySettings {
-  id        String   @id @default("singleton")
-  nombre    String   @default("")
-  rtn       String   @default("")
-  telefono  String   @default("")
-  direccion String   @default("")
-  email     String   @default("")
-  updatedAt DateTime @updatedAt
+  id          String   @id @default("singleton")
+  nombre      String   @default("")
+  rtn         String   @default("")
+  telefono    String   @default("")
+  direccion   String   @default("")
+  email       String   @default("")
+  printerIp   String   @default("")
+  printerPort Int      @default(9100)
+  updatedAt   DateTime @updatedAt
 }
 
 model User {

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "CompanySettings"
+  ADD COLUMN "printerIp" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "printerPort" INTEGER NOT NULL DEFAULT 9100;

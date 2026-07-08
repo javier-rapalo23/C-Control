@@ -65,6 +65,8 @@ export const companySettingsSchema = z.object({
   telefono: z.string().trim().max(50).optional(),
   direccion: z.string().trim().max(300).optional(),
   email: z.string().trim().email().max(120).optional().or(z.literal('')),
+  printerIp: z.string().trim().max(100).optional().or(z.literal('')),
+  printerPort: z.number().int().min(1).max(65535).optional(),
 });
 
 export const createUserSchema = z.object({

@@ -51,7 +51,15 @@ export default function MaintenancePanel() {
 
   // --- Company ---
   const [company, setCompany] = useState<CompanySettingsDTO | null>(null);
-  const [companyForm, setCompanyForm] = useState({ nombre: '', rtn: '', telefono: '', direccion: '', email: '' });
+  const [companyForm, setCompanyForm] = useState({
+    nombre: '',
+    rtn: '',
+    telefono: '',
+    direccion: '',
+    email: '',
+    printerIp: '',
+    printerPort: '9100',
+  });
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [companySuccess, setCompanySuccess] = useState(false);
@@ -85,7 +93,15 @@ export default function MaintenancePanel() {
       const res = await fetch('/api/settings/company', { cache: 'no-store' });
       const data = await parseApiResponse<CompanySettingsDTO>(res);
       setCompany(data);
-      setCompanyForm({ nombre: data.nombre, rtn: data.rtn, telefono: data.telefono, direccion: data.direccion, email: data.email });
+      setCompanyForm({
+        nombre: data.nombre,
+        rtn: data.rtn,
+        telefono: data.telefono,
+        direccion: data.direccion,
+        email: data.email,
+        printerIp: data.printerIp,
+        printerPort: String(data.printerPort || 9100),
+      });
       setCompanyError(null);
     } catch (err) {
       setCompanyError(err instanceof Error ? err.message : 'Error cargando empresa');
@@ -161,7 +177,10 @@ export default function MaintenancePanel() {
       const res = await fetch('/api/settings/company', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(companyForm),
+        body: JSON.stringify({
+          ...companyForm,
+          printerPort: companyForm.printerPort ? Number(companyForm.printerPort) : undefined,
+        }),
       });
       const data = await parseApiResponse<CompanySettingsDTO>(res);
       setCompany(data);
@@ -418,6 +437,31 @@ export default function MaintenancePanel() {
               Correo electrónico
               <input value={companyForm.email} onChange={(e) => setCompanyForm((f) => ({ ...f, email: e.target.value }))} type="email" />
             </label>
+
+            <div style={{ gridColumn: 'span 12', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ margin: '0 0 4px' }}>Impresora térmica</h4>
+              <p style={{ color: 'var(--text-soft)', fontSize: 13, margin: '0 0 12px' }}>
+                Los tickets se envían directamente a esta impresora de red (sin vista previa).
+              </p>
+            </div>
+            <label style={{ gridColumn: 'span 8' }}>
+              IP de la impresora
+              <input
+                value={companyForm.printerIp}
+                onChange={(e) => setCompanyForm((f) => ({ ...f, printerIp: e.target.value }))}
+                placeholder="192.168.101.98"
+              />
+            </label>
+            <label style={{ gridColumn: 'span 4' }}>
+              Puerto
+              <input
+                value={companyForm.printerPort}
+                onChange={(e) => setCompanyForm((f) => ({ ...f, printerPort: e.target.value }))}
+                type="number"
+                placeholder="9100"
+              />
+            </label>
+
             <div style={{ gridColumn: 'span 12' }}>
               <button className="btn-primary" type="submit" disabled={companyLoading}>
                 {companyLoading ? 'Guardando...' : 'Guardar datos'}

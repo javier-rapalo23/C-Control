@@ -2,7 +2,17 @@ import { companySettingsSchema } from '@/lib/validations';
 import { handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 
-function formatCompany(c: { id: string; nombre: string; rtn: string; telefono: string; direccion: string; email: string; updatedAt: Date }) {
+function formatCompany(c: {
+  id: string;
+  nombre: string;
+  rtn: string;
+  telefono: string;
+  direccion: string;
+  email: string;
+  printerIp: string;
+  printerPort: number;
+  updatedAt: Date;
+}) {
   return { ...c, updatedAt: c.updatedAt.toISOString() };
 }
 

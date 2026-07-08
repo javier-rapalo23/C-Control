@@ -77,6 +77,8 @@ export type CompanySettingsDTO = {
   telefono: string;
   direccion: string;
   email: string;
+  printerIp: string;
+  printerPort: number;
   updatedAt: string;
 };
 
