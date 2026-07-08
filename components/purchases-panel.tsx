@@ -27,6 +27,8 @@ function decimalOrZero(input: string) {
   return Number.isFinite(value) ? value : 0;
 }
 
+const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
+
 export default function PurchasesPanel() {
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
@@ -36,6 +38,8 @@ export default function PurchasesPanel() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
+  const [rawbtEnabled, setRawbtEnabled] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [newClientName, setNewClientName] = useState('');
@@ -96,6 +100,14 @@ export default function PurchasesPanel() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    setRawbtEnabled(localStorage.getItem(RAWBT_STORAGE_KEY) === 'true');
+  }, []);
+
+  function toggleRawbt(value: boolean) {
+    setRawbtEnabled(value);
+    localStorage.setItem(RAWBT_STORAGE_KEY, value ? 'true' : 'false');
+  }
 
   const cartTotal = useMemo(
     () =>
@@ -220,13 +232,45 @@ export default function PurchasesPanel() {
   async function printTicket(transaction: PurchaseTransactionDTO) {
     try {
       setError(null);
-      await fetch('/api/print/ticket', {
+      setPrintingId(transaction.id);
+
+      if (rawbtEnabled) {
+        const { payloadB64 } = await fetch(`/api/print/ticket/data?transactionId=${transaction.id}`, {
+          cache: 'no-store',
+        }).then(parseApiResponse<{ payloadB64: string }>);
+        window.location.href = `rawbt:base64,${payloadB64}`;
+        return;
+      }
+
+      const { jobId } = await fetch('/api/print/ticket', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ transactionId: transaction.id }),
-      }).then(parseApiResponse);
+      }).then(parseApiResponse<{ jobId: string; status: string }>);
+
+      const deadline = Date.now() + 20000;
+      let status = 'pending';
+      let jobError: string | null = null;
+
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const job = await fetch(`/api/print/jobs/${jobId}`, { cache: 'no-store' }).then(
+          parseApiResponse<{ status: string; error: string | null }>,
+        );
+        status = job.status;
+        jobError = job.error;
+        if (status === 'done' || status === 'error') break;
+      }
+
+      if (status === 'error') {
+        setError(jobError || 'Error imprimiendo ticket');
+      } else if (status !== 'done') {
+        setError('La impresora no respondió a tiempo. Verifica que esté encendida y conectada a la red.');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error imprimiendo ticket');
+    } finally {
+      setPrintingId(null);
     }
   }
 
@@ -430,7 +474,13 @@ export default function PurchasesPanel() {
         </article>
 
         <article className="card wide">
-          <h3>Transacciones del día</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3>Transacciones del día</h3>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-soft)' }}>
+              <input type="checkbox" checked={rawbtEnabled} onChange={(e) => toggleRawbt(e.target.checked)} />
+              Imprimir con RawBT en este dispositivo
+            </label>
+          </div>
           <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
             {transactions.length === 0 ? <p>No hay transacciones registradas para esta fecha.</p> : null}
             {transactions.map((transaction) => (
@@ -443,8 +493,13 @@ export default function PurchasesPanel() {
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
-                      <button className="btn-primary" type="button" onClick={() => void printTicket(transaction)}>
-                        Imprimir
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        disabled={printingId === transaction.id}
+                        onClick={() => void printTicket(transaction)}
+                      >
+                        {printingId === transaction.id ? 'Imprimiendo...' : 'Imprimir'}
                       </button>
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar

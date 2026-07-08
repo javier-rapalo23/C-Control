@@ -1,7 +1,6 @@
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { toBusinessDateString } from '@/lib/business-date';
-import { buildTicketBuffer, sendToPrinter } from '@/lib/thermal-printer';
+import { buildTicketForTransaction } from '@/lib/build-ticket';
 
 export async function POST(request: Request) {
   try {
@@ -11,21 +10,12 @@ export async function POST(request: Request) {
       return failure('VALIDATION_ERROR', 'transactionId es requerido', 400);
     }
 
-    const [transaction, company] = await Promise.all([
-      prisma.purchaseTransaction.findUnique({
-        where: { id: transactionId },
-        include: { client: true, items: { orderBy: { createdAt: 'asc' } } },
-      }),
-      prisma.companySettings.upsert({
-        where: { id: 'singleton' },
-        update: {},
-        create: { id: 'singleton' },
-      }),
-    ]);
-
-    if (!transaction) {
+    const result = await buildTicketForTransaction(transactionId);
+    if (!result) {
       return failure('NOT_FOUND', 'Transacción no encontrada', 404);
     }
+
+    const { buffer, company } = result;
 
     if (!company.printerIp) {
       return failure(
@@ -35,31 +25,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const buffer = buildTicketBuffer({
-      company: {
-        nombre: company.nombre,
-        rtn: company.rtn,
-        telefono: company.telefono,
-        direccion: company.direccion,
+    const job = await prisma.printJob.create({
+      data: {
+        printerIp: company.printerIp,
+        printerPort: company.printerPort,
+        payloadB64: buffer.toString('base64'),
       },
-      businessDate: toBusinessDateString(transaction.businessDate),
-      clientNombre: transaction.client.nombre,
-      items: transaction.items.map((item) => ({
-        materialNombre: item.materialNombre,
-        libras: Number(item.libras),
-        precioPorLibra: Number(item.precioPorLibra),
-        total: Number(item.total),
-      })),
-      total: Number(transaction.total),
     });
 
-    await sendToPrinter(company.printerIp, company.printerPort, buffer);
-
-    return success({ printed: true });
+    return success({ jobId: job.id, status: job.status });
   } catch (error) {
-    if (error instanceof Error && /impresora/i.test(error.message)) {
-      return failure('PRINTER_ERROR', error.message, 502);
-    }
     return handleApiError(error);
   }
 }

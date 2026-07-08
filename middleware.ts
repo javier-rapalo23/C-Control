@@ -67,6 +67,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith('/api/print/agent/')) {
+    return NextResponse.next();
+  }
+
   const isRbacEnabled = (process.env.RBAC_ENABLED ?? 'false').toLowerCase() === 'true';
   if (!isRbacEnabled) {
     return NextResponse.next();
