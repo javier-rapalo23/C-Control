@@ -85,6 +85,58 @@ export function buildTicketBuffer(data: TicketData): Buffer {
   return Buffer.concat(chunks);
 }
 
+export type SummaryData = {
+  company: { nombre: string; rtn: string; telefono: string; direccion: string };
+  businessDate: string;
+  materials: Array<{ materialNombre: string; libras: number; total: number }>;
+  totalCompras: number;
+  totalVentas: number;
+  totalGastos: number;
+  saldoInicial: number;
+  saldoActual: number;
+};
+
+export function buildSummaryBuffer(data: SummaryData): Buffer {
+  const dash = '-'.repeat(LINE_WIDTH);
+  const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'R-CONTROL'), bold(false)];
+
+  chunks.push(text('Resumen del Dia'));
+  if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));
+  if (data.company.telefono) chunks.push(text(`Tel: ${data.company.telefono}`));
+  if (data.company.direccion) chunks.push(text(data.company.direccion));
+
+  chunks.push(align('left'));
+  chunks.push(text(dash));
+  chunks.push(text(`Fecha: ${data.businessDate}`));
+  chunks.push(text(dash));
+
+  chunks.push(bold(true));
+  chunks.push(text('COMPRAS POR MATERIAL'));
+  chunks.push(bold(false));
+  if (data.materials.length === 0) {
+    chunks.push(text('Sin compras registradas'));
+  }
+  for (const item of data.materials) {
+    chunks.push(text(item.materialNombre));
+    chunks.push(text(twoColumns(`${item.libras.toFixed(2)} lb`, `L ${item.total.toFixed(2)}`)));
+  }
+
+  chunks.push(text(dash));
+  chunks.push(text(twoColumns('Total Compras:', `L ${data.totalCompras.toFixed(2)}`)));
+  chunks.push(text(twoColumns('Total Ventas:', `L ${data.totalVentas.toFixed(2)}`)));
+  chunks.push(text(twoColumns('Total Gastos:', `L ${data.totalGastos.toFixed(2)}`)));
+  chunks.push(text(dash));
+  chunks.push(text(twoColumns('Saldo inicial:', `L ${data.saldoInicial.toFixed(2)}`)));
+  chunks.push(bold(true));
+  chunks.push(text(twoColumns('CIERRE EST. CAJA:', `L ${data.saldoActual.toFixed(2)}`)));
+  chunks.push(bold(false));
+  chunks.push(align('center'));
+  chunks.push(raw('\n\n\n'));
+  chunks.push(cut());
+
+  return Buffer.concat(chunks);
+}
+
 export function sendToPrinter(ip: string, port: number, buffer: Buffer, timeoutMs = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new Socket();

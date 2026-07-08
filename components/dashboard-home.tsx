@@ -38,6 +38,8 @@ function todayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
+
 export default function DashboardHome() {
   const roleGuardStatus = useRoleGuard((role) => role !== 'comprador', '/purchases');
   const [businessDate, setBusinessDate] = useState(todayDateString());
@@ -58,6 +60,8 @@ export default function DashboardHome() {
   const [materials, setMaterials] = useState<MaterialDTO[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [companyName, setCompanyName] = useState<string | null>(null);
+  const [rawbtEnabled, setRawbtEnabled] = useState(false);
+  const [printingSummary, setPrintingSummary] = useState(false);
 
   const fetchLedger = useCallback(async () => {
     try {
@@ -76,6 +80,60 @@ export default function DashboardHome() {
   useEffect(() => {
     void fetchLedger();
   }, [fetchLedger]);
+
+  useEffect(() => {
+    setRawbtEnabled(localStorage.getItem(RAWBT_STORAGE_KEY) === 'true');
+  }, []);
+
+  function toggleRawbt(value: boolean) {
+    setRawbtEnabled(value);
+    localStorage.setItem(RAWBT_STORAGE_KEY, value ? 'true' : 'false');
+  }
+
+  async function printSummary() {
+    try {
+      setError(null);
+      setPrintingSummary(true);
+
+      if (rawbtEnabled) {
+        const { payloadB64 } = await fetch(`/api/print/summary/data?businessDate=${businessDate}`, {
+          cache: 'no-store',
+        }).then(parseApiResponse<{ payloadB64: string }>);
+        window.location.href = `rawbt:base64,${payloadB64}`;
+        return;
+      }
+
+      const { jobId } = await fetch('/api/print/summary', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessDate }),
+      }).then(parseApiResponse<{ jobId: string; status: string }>);
+
+      const deadline = Date.now() + 20000;
+      let status = 'pending';
+      let jobError: string | null = null;
+
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const job = await fetch(`/api/print/jobs/${jobId}`, { cache: 'no-store' }).then(
+          parseApiResponse<{ status: string; error: string | null }>,
+        );
+        status = job.status;
+        jobError = job.error;
+        if (status === 'done' || status === 'error') break;
+      }
+
+      if (status === 'error') {
+        setError(jobError || 'Error imprimiendo resumen');
+      } else if (status !== 'done') {
+        setError('La impresora no respondió a tiempo. Verifica que esté encendida y conectada a la red.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error imprimiendo resumen');
+    } finally {
+      setPrintingSummary(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -249,7 +307,18 @@ export default function DashboardHome() {
         </article>
 
         <article className="card wide">
-          <h3>Resumen de compras del día</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3>Resumen de compras del día</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-soft)' }}>
+                <input type="checkbox" checked={rawbtEnabled} onChange={(e) => toggleRawbt(e.target.checked)} />
+                Imprimir con RawBT en este dispositivo
+              </label>
+              <button className="btn-primary" type="button" disabled={printingSummary} onClick={() => void printSummary()}>
+                {printingSummary ? 'Imprimiendo...' : 'Imprimir resumen del día'}
+              </button>
+            </div>
+          </div>
           <table className="table-like" style={{ marginTop: 8 }}>
             <thead>
               <tr>
