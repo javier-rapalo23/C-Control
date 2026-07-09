@@ -1,4 +1,5 @@
 const BUSINESS_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const BUSINESS_TIMEZONE = 'America/Tegucigalpa';
 
 export function parseBusinessDate(input: string): Date {
   if (!BUSINESS_DATE_REGEX.test(input)) {
@@ -18,5 +19,5 @@ export function toBusinessDateString(date: Date): string {
 }
 
 export function todayBusinessDate(): string {
-  return toBusinessDateString(new Date());
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE }).format(new Date());
 }
