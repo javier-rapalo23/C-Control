@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import rControlLogo from '../R-CONTROL.png';
+import rControlLogo from '../app/icon.png';
 
 type AuthMe = {
   userId: string | null;
@@ -112,8 +112,8 @@ const toggleTheme = () => {
       <div className="site-row">
         <div className="site-topbar">
           <Link href="/" className="brand brand--link" aria-label="Ir al inicio">
-            <Image src={rControlLogo} width={44} height={44} className="brand-mark" alt="R Control" priority />
-            <span>R Control</span>
+            <Image src={rControlLogo} width={44} height={44} className="brand-mark" alt="C Control" priority />
+            <span>C Control</span>
           </Link>
 
           <button

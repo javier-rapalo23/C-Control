@@ -1,20 +1,21 @@
 import type { Metadata } from 'next';
-import { Space_Grotesk, Newsreader } from 'next/font/google';
+import { Syne, Plus_Jakarta_Sans } from 'next/font/google';
 import SiteHeader from '@/components/site-header';
 import './globals.css';
 
-const spaceGrotesk = Space_Grotesk({
+const syne = Syne({
   subsets: ['latin'],
-  variable: '--font-space',
+  weight: ['600', '700', '800'],
+  variable: '--font-syne',
 });
 
-const newsreader = Newsreader({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-news',
+  variable: '--font-jakarta',
 });
 
 export const metadata: Metadata = {
-  title: 'R Control | Ledger Diario',
+  title: 'C Control | Ledger Diario',
   description: 'Control diario de compras, ventas y gastos.',
   icons: {
     icon: '/icon.png', 
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body className={`${spaceGrotesk.variable} ${newsreader.variable}`}>
+      <body className={`${syne.variable} ${plusJakarta.variable}`}>
         <SiteHeader />
 
         {children}

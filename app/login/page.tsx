@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import rControlLogo from '../../R-CONTROL.png';
+import rControlLogo from '../icon.png';
 
 type LoginResponse =
   | {
@@ -53,7 +53,7 @@ export default function LoginPage() {
     <main className="page-shell login-shell">
       <section className="login-card">
         <div className="login-brand">
-          <Image src={rControlLogo} alt="R Control" width={120} height={120} priority />
+          <Image src={rControlLogo} alt="C Control" width={120} height={120} priority />
           <div>
             <h1>Iniciar sesión</h1>
             <p>Ingresa con tu usuario y contraseña autorizados para acceder al sistema.</p>

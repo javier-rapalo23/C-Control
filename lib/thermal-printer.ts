@@ -53,7 +53,7 @@ export type TicketData = {
 
 export function buildTicketBuffer(data: TicketData): Buffer {
   const dash = '-'.repeat(LINE_WIDTH);
-  const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'R-CONTROL'), bold(false)];
+  const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'C-CONTROL'), bold(false)];
 
   chunks.push(text('Comprobante de Compra'));
   if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));
@@ -98,7 +98,7 @@ export type SummaryData = {
 
 export function buildSummaryBuffer(data: SummaryData): Buffer {
   const dash = '-'.repeat(LINE_WIDTH);
-  const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'R-CONTROL'), bold(false)];
+  const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'C-CONTROL'), bold(false)];
 
   chunks.push(text('Resumen del Dia'));
   if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));

@@ -1,32 +1,36 @@
 :root,
 [data-theme="light"] {
-  --bg-deep: #ffffff;
-  --bg-soft: #f8f9fa;
-  --surface: #ffffff;
-  --surface-alt: #f0f3f7;
-  --text-main: #1a202c;
-  --text-soft: #718096;
-  --danger: #e53e3e;
-  --success: #38a169;
-  --ring: #3182ce;
+  --bg-deep: #f7f1e5;
+  --bg-soft: #f1e7d4;
+  --surface: #fffdf8;
+  --surface-alt: #efe1c9;
+  --text-main: #3d2314;
+  --text-soft: #8b6a51;
+  --danger: #c0392b;
+  --success: #2c5e3b;
+  --ring: #2c5e3b;
+  --ring-soft: rgba(44, 94, 59, 0.1);
+  --cacao: #8b5e3c;
   --radius: 12px;
-  --border-color: #e2e8f0;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --border-color: #e4d5be;
+  --shadow-sm: 0 1px 2px rgba(61, 35, 20, 0.06);
+  --shadow-md: 0 4px 6px rgba(61, 35, 20, 0.1);
+  --shadow-lg: 0 10px 15px rgba(61, 35, 20, 0.12);
 }
 
 [data-theme="dark"] {
-  --bg-deep: #0f1117;
-  --bg-soft: #1a1d27;
-  --surface: #1e2130;
-  --surface-alt: #262b3d;
-  --text-main: #e2e8f0;
-  --text-soft: #94a3b8;
+  --bg-deep: #1c130d;
+  --bg-soft: #241a12;
+  --surface: #2a1e15;
+  --surface-alt: #33261a;
+  --text-main: #f7f1e5;
+  --text-soft: #c4a98a;
   --danger: #fc8181;
-  --success: #68d391;
-  --ring: #63b3ed;
-  --border-color: #2d3748;
+  --success: #4caf6d;
+  --ring: #4caf6d;
+  --ring-soft: rgba(76, 175, 109, 0.15);
+  --cacao: #a97a54;
+  --border-color: #3d2e20;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
@@ -57,8 +61,9 @@
   align-items: center;
   gap: 10px;
   color: var(--text-main);
+  font-family: var(--font-syne), sans-serif;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   letter-spacing: -0.02em;
   text-decoration: none;
 }
@@ -111,7 +116,7 @@
   color: var(--text-main);
 }
 .btn-secondary:hover {
-  background: #e5edf5;
+  background: var(--ring-soft);
 }
 .nav a {
   color: var(--text-soft);
@@ -188,7 +193,7 @@ body {
 }
 
 body {
-  font-family: var(--font-space), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text-main);
   background: var(--bg-deep);
 }
@@ -196,7 +201,8 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--font-news), serif;
+  font-family: var(--font-syne), sans-serif;
+  font-weight: 700;
   margin: 0;
   color: var(--text-main);
 }
@@ -362,12 +368,12 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--ring);
-  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+  box-shadow: 0 0 0 3px var(--ring-soft);
 }
 
 button:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+  box-shadow: 0 0 0 3px var(--ring-soft);
 }
 
 button {
@@ -395,7 +401,7 @@ button:hover {
 }
 
 .btn-primary:hover {
-  background: #2c5aa0;
+  filter: brightness(0.92);
 }
 
 .btn-danger {

@@ -380,15 +380,15 @@ export default function PurchasesPanel() {
                   }}
                   style={{
                     padding: '12px 10px',
-                    border: `2px solid ${selected ? '#2563eb' : 'var(--border-color)'}`,
+                    border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
                     borderRadius: 'var(--radius)',
-                    background: selected ? '#eff6ff' : 'var(--surface)',
+                    background: selected ? 'var(--ring-soft)' : 'var(--surface)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'border-color 0.15s, background 0.15s',
                   }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? '#1d4ed8' : 'inherit' }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
                     {material.nombre}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>

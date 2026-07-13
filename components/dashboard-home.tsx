@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { CompanySettingsDTO, LedgerDTO, MaterialDTO } from '@/types/domain';
 import { useRoleGuard } from '@/lib/use-role-guard';
-import rControlLogo from '../R-CONTROL.png';
+import rControlLogo from '../app/icon.png';
 
 type DailyStockEntry = { businessDate: string; libras: number };
 type MaterialStockSummary = { materialId: string; materialNombre: string; totalLibras: number };
@@ -190,7 +190,7 @@ export default function DashboardHome() {
                 <div
                   style={{
                     width: `${pct}%`,
-                    background: 'var(--primary, #2563eb)',
+                    background: 'var(--ring)',
                     borderRadius: 4,
                     height: '100%',
                     transition: 'width 0.4s ease',
@@ -266,7 +266,7 @@ export default function DashboardHome() {
   return (
     <main className="page-shell">
       <section className="hero hero--brand">
-        <Image src={rControlLogo} width={132} height={132} className="hero-logo" alt="R Control" priority />
+        <Image src={rControlLogo} width={132} height={132} className="hero-logo" alt="C Control" priority />
         <div>
           <h1>Control Diario — Resumen</h1>
           {companyName ? <h2 style={{ fontWeight: 600, marginBottom: 2 }}>{companyName}</h2> : null}
