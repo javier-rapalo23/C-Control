@@ -1,4 +1,4 @@
-export type MaterialDTO = {
+export type ProductoDTO = {
   id: string;
   nombre: string;
   precioPorLibra: number;
@@ -22,8 +22,8 @@ export type ClientDTO = {
 export type PurchaseDTO = {
   id: string;
   businessDate: string;
-  materialId: string;
-  materialNombre: string;
+  productoId: string;
+  productoNombre: string;
   precioPorLibra: number;
   libras: number;
   total: number;
@@ -92,18 +92,18 @@ export type UserDTO = {
   updatedAt: string;
 };
 
-export type MaterialCargaDTO = {
+export type ProductoCargaDTO = {
   id: string;
   businessDate: string;
-  materialId: string;
-  materialNombre: string;
+  productoId: string;
+  productoNombre: string;
   libras: number | null;
   descripcion: string | null;
   createdAt: string;
 };
 
-export type MaterialStockDTO = {
-  materialId: string;
+export type ProductoStockDTO = {
+  productoId: string;
   totalLibras: number;
   daily: { businessDate: string; libras: number }[];
   purchases: PurchaseDTO[];

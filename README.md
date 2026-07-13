@@ -77,8 +77,8 @@ pnpm dev
 ## Endpoints
 
 - GET `/api/health`
-- GET `/api/materials`
-- POST `/api/materials`
+- GET `/api/productos`
+- POST `/api/productos`
 - GET `/api/ledger?businessDate=YYYY-MM-DD`
 - POST `/api/ledger/initial-balance`
 - POST `/api/purchases`
@@ -92,6 +92,8 @@ pnpm dev
 ## Importar data historica
 
 Endpoint: `POST /api/import` (requiere rol `admin`).
+
+> Nota: el contrato JSON de este endpoint mantiene los campos `materials`/`materialId`/`material` por compatibilidad con archivos históricos existentes (ver ejemplo abajo), aunque el resto de la app ya usa la terminología "producto".
 
 Acepta dos formatos:
 

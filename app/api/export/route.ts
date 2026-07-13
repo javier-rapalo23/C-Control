@@ -13,12 +13,12 @@ export async function GET(request: Request) {
         }
       : undefined;
 
-    const [dailyBalances, purchases, sales, expenses, materials, syncEvents, clients, purchaseTransactions] = await Promise.all([
+    const [dailyBalances, purchases, sales, expenses, productos, syncEvents, clients, purchaseTransactions] = await Promise.all([
       prisma.dailyBalance.findMany({ where, orderBy: { businessDate: 'asc' } }),
       prisma.purchase.findMany({ where, orderBy: { createdAt: 'asc' } }),
       prisma.sale.findMany({ where, orderBy: { createdAt: 'asc' } }),
       prisma.expense.findMany({ where, orderBy: { createdAt: 'asc' } }),
-      prisma.material.findMany({ orderBy: { createdAt: 'asc' } }),
+      prisma.producto.findMany({ orderBy: { createdAt: 'asc' } }),
       prisma.syncEvent.findMany({ orderBy: { createdAt: 'asc' } }),
       prisma.client.findMany({ orderBy: [{ esGeneral: 'desc' }, { createdAt: 'asc' }] }),
       prisma.purchaseTransaction.findMany({
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
           monto: Number(item.monto),
           createdAt: item.createdAt.toISOString(),
         })),
-        materials: materials.map((item) => ({
+        productos: productos.map((item) => ({
           ...item,
           precioPorLibra: Number(item.precioPorLibra),
           createdAt: item.createdAt.toISOString(),

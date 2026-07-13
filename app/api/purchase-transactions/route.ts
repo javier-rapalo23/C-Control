@@ -27,8 +27,8 @@ function mapTransaction(transaction: {
   items: Array<{
     id: string;
     businessDate: Date;
-    materialId: string;
-    materialNombre: string;
+    productoId: string;
+    productoNombre: string;
     precioPorLibra: Prisma.Decimal;
     libras: Prisma.Decimal;
     total: Prisma.Decimal;
@@ -56,8 +56,8 @@ function mapTransaction(transaction: {
     items: transaction.items.map((item) => ({
       id: item.id,
       businessDate: toBusinessDateString(item.businessDate),
-      materialId: item.materialId,
-      materialNombre: item.materialNombre,
+      productoId: item.productoId,
+      productoNombre: item.productoNombre,
       precioPorLibra: Number(item.precioPorLibra),
       libras: Number(item.libras),
       total: Number(item.total),
@@ -107,19 +107,19 @@ export async function POST(request: Request) {
 
       const items = await Promise.all(
         payload.items.map(async (item) => {
-          const material = await tx.material.findUnique({ where: { id: item.materialId } });
-          if (!material) {
-            throw new Error(`Material not found: ${item.materialId}`);
+          const producto = await tx.producto.findUnique({ where: { id: item.productoId } });
+          if (!producto) {
+            throw new Error(`Producto not found: ${item.productoId}`);
           }
 
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(material.precioPorLibra));
+          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
           const libras = new Prisma.Decimal(item.libras);
           const total = precioPorLibra.mul(libras);
 
           return {
             businessDate: parseBusinessDate(payload.businessDate),
-            materialId: material.id,
-            materialNombre: material.nombre,
+            productoId: producto.id,
+            productoNombre: producto.nombre,
             precioPorLibra,
             libras,
             total,
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
       return failure('NOT_FOUND', error.message, 404);
     }
 
-    if (error instanceof Error && error.message.startsWith('Material not found:')) {
+    if (error instanceof Error && error.message.startsWith('Producto not found:')) {
       return failure('NOT_FOUND', error.message, 404);
     }
 

@@ -10,12 +10,12 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     const { id } = await params;
 
-    const carga = await prisma.materialCarga.findUnique({ where: { id } });
+    const carga = await prisma.productoCarga.findUnique({ where: { id } });
     if (!carga) {
       return handleApiError(new Error('Carga no encontrada'));
     }
 
-    await prisma.materialCarga.delete({ where: { id } });
+    await prisma.productoCarga.delete({ where: { id } });
 
     return success({
       data: {

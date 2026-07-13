@@ -37,10 +37,10 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - `POST /api/auth/logout`  
   - Borra cookie `rcontrol_user`.
 
-- `GET /api/materials`  
-  - Lista materiales: cada item incluye `id`, `nombre`, `precioPorLibra`, `createdAt`, `updatedAt`.
-- `POST /api/materials`  
-  - Crea material. Payload validado por `createMaterialSchema`.
+- `GET /api/productos`  
+  - Lista productos: cada item incluye `id`, `nombre`, `precioPorLibra`, `createdAt`, `updatedAt`.
+- `POST /api/productos`  
+  - Crea producto. Payload validado por `createProductoSchema`.
 
 - `GET /api/clients`  
   - Lista clientes (incluye cliente "General").
@@ -69,15 +69,16 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
   - Devuelve el `ledger` (totales, compras, ventas, gastos) para la fecha.
 
 - `GET /api/export?businessDate=YYYY-MM-DD`  
-  - Exporta lote completo (dailyBalances, purchases, sales, expenses, materials, clients, purchaseTransactions, syncEvents).
+  - Exporta lote completo (dailyBalances, purchases, sales, expenses, productos, clients, purchaseTransactions, syncEvents).
 
 - `POST /api/import`  
   - Importa payload con `materials` y `ledgers` (ver `app/api/import/route.ts`).
+  - Nota: este endpoint mantiene el contrato JSON legacy (`materials`/`materialId`/`material`) por compatibilidad con archivos históricos existentes, aunque el modelo interno ya se llama `Producto`.
   - IMPORTANT: la ruta elimina (`deleteMany`) compras, transacciones, ventas y gastos por `businessDate` antes de reinsertar las filas del payload — por tanto el payload debe contener exactamente las fechas/datos que se quieren reemplazar.
 
-- `GET /api/materials/stock?from=YYYY-MM-DD&to=YYYY-MM-DD`  
-  - Si no se envía `materialId`, devuelve totales por material en el rango.
-- `GET /api/materials/stock?materialId=ID&from=...&to=...`  
+- `GET /api/productos/stock?from=YYYY-MM-DD&to=YYYY-MM-DD`  
+  - Si no se envía `productoId`, devuelve totales por producto en el rango.
+- `GET /api/productos/stock?productoId=ID&from=...&to=...`  
   - Devuelve `totalLibras`, `daily` (libras por día) y `purchases` listadas.
 
 - `GET /api/health`  
@@ -106,7 +107,7 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 ## Notas de integración móvil (recomendaciones)
 - Autenticación: para pruebas rápidas enviar `x-user-id` en requests (útil para la app móvil en desarrollo). En producción migrar a un flow con login y cookie o a tokens si prefieres (añadir `/api/auth/refresh` si usas tokens).
 - Consumir endpoints concretos en lugar de un único endpoint genérico de sincronización para evitar borrados accidentales (especialmente evitar `POST /api/import` a menos que el payload sea exacto).
-- Cargar `materials`, `clients` y `ledger` en el startup de la app móvil; usar `GET /api/materials` y `GET /api/clients`.
+- Cargar `productos`, `clients` y `ledger` en el startup de la app móvil; usar `GET /api/productos` y `GET /api/clients`.
 - Para enviar compras/ventas/gastos usar `POST /api/purchases`, `POST /api/purchase-transactions`, `POST /api/sales`, `POST /api/expenses` según corresponda.
 
 ---

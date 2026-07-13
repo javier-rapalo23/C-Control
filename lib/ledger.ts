@@ -39,8 +39,8 @@ function mapBalance(balance: {
 function mapPurchase(purchase: {
   id: string;
   businessDate: Date;
-  materialId: string;
-  materialNombre: string;
+  productoId: string;
+  productoNombre: string;
   precioPorLibra: Prisma.Decimal;
   libras: Prisma.Decimal;
   total: Prisma.Decimal;
@@ -49,8 +49,8 @@ function mapPurchase(purchase: {
   return {
     id: purchase.id,
     businessDate: toBusinessDateString(purchase.businessDate),
-    materialId: purchase.materialId,
-    materialNombre: purchase.materialNombre,
+    productoId: purchase.productoId,
+    productoNombre: purchase.productoNombre,
     precioPorLibra: decimalToNumber(purchase.precioPorLibra),
     libras: decimalToNumber(purchase.libras),
     total: decimalToNumber(purchase.total),

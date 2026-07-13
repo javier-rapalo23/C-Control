@@ -92,13 +92,6 @@ export default function SalesPanel() {
               Recargar
             </button>
           </div>
-          <div style={{ gridColumn: 'span 6', alignSelf: 'end', textAlign: 'right' }}>
-            <a href={`/api/export?businessDate=${businessDate}`} target="_blank" rel="noreferrer">
-              <button className="btn-primary" type="button">
-                Exportar JSON
-              </button>
-            </a>
-          </div>
         </div>
       </section>
 

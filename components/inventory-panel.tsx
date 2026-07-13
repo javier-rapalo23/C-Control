@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { MaterialCargaDTO, MaterialDTO, MaterialStockDTO } from '@/types/domain';
+import type { ProductoCargaDTO, ProductoDTO, ProductoStockDTO } from '@/types/domain';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -18,21 +18,21 @@ function todayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-type MaterialStock = {
-  material: MaterialDTO;
-  stock: MaterialStockDTO | null;
-  ultimaCarga: MaterialCargaDTO | null;
+type ProductoStock = {
+  producto: ProductoDTO;
+  stock: ProductoStockDTO | null;
+  ultimaCarga: ProductoCargaDTO | null;
 };
 
 export default function InventoryPanel() {
-  const [materials, setMaterials] = useState<MaterialDTO[]>([]);
-  const [stockMap, setStockMap] = useState<Record<string, MaterialStock>>({});
-  const [cargas, setCargas] = useState<MaterialCargaDTO[]>([]);
+  const [productos, setProductos] = useState<ProductoDTO[]>([]);
+  const [stockMap, setStockMap] = useState<Record<string, ProductoStock>>({});
+  const [cargas, setCargas] = useState<ProductoCargaDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form state
-  const [formMaterialId, setFormMaterialId] = useState('');
+  const [formProductoId, setFormProductoId] = useState('');
   const [formDate, setFormDate] = useState(todayDateString());
   const [formLibras, setFormLibras] = useState('');
   const [formDescripcion, setFormDescripcion] = useState('');
@@ -41,41 +41,41 @@ export default function InventoryPanel() {
     setLoading(true);
     setError(null);
     try {
-      const matsResponse = await fetch('/api/materials', { cache: 'no-store' });
-      const mats = await parseApiResponse<MaterialDTO[]>(matsResponse);
-      setMaterials(mats);
+      const prodsResponse = await fetch('/api/productos', { cache: 'no-store' });
+      const prods = await parseApiResponse<ProductoDTO[]>(prodsResponse);
+      setProductos(prods);
 
-      if (mats.length > 0 && !formMaterialId) {
-        setFormMaterialId(mats[0].id);
+      if (prods.length > 0 && !formProductoId) {
+        setFormProductoId(prods[0].id);
       }
 
-      // Fetch stock and cargas for each material in parallel
-      type StockApiData = { filters: unknown; ultimaCarga: MaterialCargaDTO | null; data: MaterialStockDTO };
+      // Fetch stock and cargas for each producto in parallel
+      type StockApiData = { filters: unknown; ultimaCarga: ProductoCargaDTO | null; data: ProductoStockDTO };
 
       const stockResults = await Promise.all(
-        mats.map(async (mat) => {
+        prods.map(async (prod) => {
           const [stockRes, cargasRes] = await Promise.all([
-            fetch(`/api/materials/stock?materialId=${mat.id}`, { cache: 'no-store' }),
-            fetch(`/api/material-cargas?materialId=${mat.id}`, { cache: 'no-store' }),
+            fetch(`/api/productos/stock?productoId=${prod.id}`, { cache: 'no-store' }),
+            fetch(`/api/producto-cargas?productoId=${prod.id}`, { cache: 'no-store' }),
           ]);
 
           const stockBody = (await stockRes.json()) as { ok: boolean; data?: StockApiData };
-          const cargasBody = (await cargasRes.json()) as { ok: boolean; data?: MaterialCargaDTO[] };
+          const cargasBody = (await cargasRes.json()) as { ok: boolean; data?: ProductoCargaDTO[] };
 
           const stock = stockBody.ok && stockBody.data ? stockBody.data.data : null;
           const ultimaCarga = stockBody.ok && stockBody.data ? stockBody.data.ultimaCarga : null;
-          const matCargas = cargasBody.ok && cargasBody.data ? cargasBody.data : [];
+          const prodCargas = cargasBody.ok && cargasBody.data ? cargasBody.data : [];
 
-          return { mat, stock, ultimaCarga, matCargas };
+          return { prod, stock, ultimaCarga, prodCargas };
         }),
       );
 
-      const newStockMap: Record<string, MaterialStock> = {};
-      const allCargas: MaterialCargaDTO[] = [];
+      const newStockMap: Record<string, ProductoStock> = {};
+      const allCargas: ProductoCargaDTO[] = [];
 
-      for (const { mat, stock, ultimaCarga, matCargas } of stockResults) {
-        newStockMap[mat.id] = { material: mat, stock, ultimaCarga };
-        allCargas.push(...matCargas);
+      for (const { prod, stock, ultimaCarga, prodCargas } of stockResults) {
+        newStockMap[prod.id] = { producto: prod, stock, ultimaCarga };
+        allCargas.push(...prodCargas);
       }
 
       setStockMap(newStockMap);
@@ -86,7 +86,7 @@ export default function InventoryPanel() {
     } finally {
       setLoading(false);
     }
-  }, [formMaterialId]);
+  }, [formProductoId]);
 
   useEffect(() => {
     void fetchAll();
@@ -94,16 +94,16 @@ export default function InventoryPanel() {
 
   async function registrarCarga(event: React.FormEvent) {
     event.preventDefault();
-    if (!formMaterialId) return;
+    if (!formProductoId) return;
     try {
       setLoading(true);
       setError(null);
-      await fetch('/api/material-cargas', {
+      await fetch('/api/producto-cargas', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           businessDate: formDate,
-          materialId: formMaterialId,
+          productoId: formProductoId,
           libras: formLibras ? Number(formLibras) : null,
           descripcion: formDescripcion || null,
         }),
@@ -121,7 +121,7 @@ export default function InventoryPanel() {
   async function eliminarCarga(id: string) {
     try {
       setLoading(true);
-      await fetch(`/api/material-cargas/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetch(`/api/producto-cargas/${id}`, { method: 'DELETE' }).then(parseApiResponse);
       await fetchAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error eliminando carga');
@@ -133,7 +133,7 @@ export default function InventoryPanel() {
     <main className="page-shell">
       <section className="hero">
         <h1>Inventario</h1>
-        <p>Stock actual por material desde el último envío a venta. Registra cuándo mandas a vender un lote.</p>
+        <p>Stock actual por producto desde el último envío a venta. Registra cuándo mandas a vender un lote.</p>
       </section>
 
       <section className="card-grid">
@@ -143,15 +143,15 @@ export default function InventoryPanel() {
           </article>
         ) : null}
 
-        {/* Stock cards por material */}
-        {materials.map((mat) => {
-          const entry = stockMap[mat.id];
+        {/* Stock cards por producto */}
+        {productos.map((prod) => {
+          const entry = stockMap[prod.id];
           const totalLibras = entry?.stock?.totalLibras ?? 0;
           const ultimaCarga = entry?.ultimaCarga ?? null;
 
           return (
-            <article key={mat.id} className="card third kpi">
-              <div className="label">{mat.nombre}</div>
+            <article key={prod.id} className="card third kpi">
+              <div className="label">{prod.nombre}</div>
               <div className="value">{totalLibras.toFixed(2)} lb</div>
               {ultimaCarga ? (
                 <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 4 }}>
@@ -170,11 +170,11 @@ export default function InventoryPanel() {
           <h3>Registrar envío a venta</h3>
           <form onSubmit={(event) => void registrarCarga(event)} className="row" style={{ marginTop: 10 }}>
             <label style={{ gridColumn: 'span 12' }}>
-              Material
-              <select value={formMaterialId} onChange={(event) => setFormMaterialId(event.target.value)} required>
-                {materials.map((mat) => (
-                  <option key={mat.id} value={mat.id}>
-                    {mat.nombre}
+              Producto
+              <select value={formProductoId} onChange={(event) => setFormProductoId(event.target.value)} required>
+                {productos.map((prod) => (
+                  <option key={prod.id} value={prod.id}>
+                    {prod.nombre}
                   </option>
                 ))}
               </select>
@@ -202,7 +202,7 @@ export default function InventoryPanel() {
               />
             </label>
             <div style={{ gridColumn: 'span 12' }}>
-              <button className="btn-primary" type="submit" disabled={loading || !formMaterialId}>
+              <button className="btn-primary" type="submit" disabled={loading || !formProductoId}>
                 Registrar envío
               </button>
             </div>
@@ -219,7 +219,7 @@ export default function InventoryPanel() {
               <thead>
                 <tr>
                   <th>Fecha</th>
-                  <th>Material</th>
+                  <th>Producto</th>
                   <th>Libras</th>
                   <th>Descripción</th>
                   <th>Acción</th>
@@ -229,7 +229,7 @@ export default function InventoryPanel() {
                 {cargas.map((carga) => (
                   <tr key={carga.id}>
                     <td>{carga.businessDate}</td>
-                    <td>{carga.materialNombre}</td>
+                    <td>{carga.productoNombre}</td>
                     <td>{carga.libras !== null ? `${carga.libras.toFixed(2)} lb` : '—'}</td>
                     <td>{carga.descripcion ?? '—'}</td>
                     <td>

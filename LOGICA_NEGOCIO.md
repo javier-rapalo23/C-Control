@@ -6,7 +6,7 @@ Este documento resume la logica de negocio que tiene implementada la aplicacion 
 
 La aplicacion administra 4 bloques principales:
 
-- Materiales
+- Productos
 - Compras
 - Ventas
 - Gastos
@@ -19,7 +19,7 @@ La ecuacion base del balance es:
 
 ## 2. Entidades principales
 
-### Material
+### Producto
 
 Representa un producto recuperable o comprable.
 
@@ -33,7 +33,7 @@ Reglas:
 
 - El nombre no puede ir vacio.
 - El precio por libra debe ser mayor que 0.
-- Si no hay materiales creados, la app carga una lista por defecto.
+- Si no hay productos creados, la app carga una lista por defecto.
 
 ### DailyLedger
 
@@ -53,15 +53,15 @@ Campos principales:
 
 ### Compra legacy
 
-Es el modelo historico de compras de un solo material por registro.
+Es el modelo historico de compras de un solo producto por registro.
 
 Campos principales:
 
 - `id`
 - `businessDate`
 - `fecha`
-- `materialId`
-- `material`
+- `productoId`
+- `producto`
 - `precioPorLibra`
 - `libras`
 - `total`
@@ -77,7 +77,7 @@ Campos principales:
 
 ### Transaccion de compra por cliente
 
-Es el modelo nuevo para registrar varios materiales dentro de una sola compra asociada a un cliente.
+Es el modelo nuevo para registrar varios productos dentro de una sola compra asociada a un cliente.
 
 Estructura actual:
 
@@ -90,11 +90,11 @@ La pantalla de compras hoy soporta dos niveles de operacion:
 
 ### A. Flujo legacy
 
-Todavia existe el registro de una compra individual de un material.
+Todavia existe el registro de una compra individual de un producto.
 
 Reglas:
 
-- Debe existir un material seleccionado.
+- Debe existir un producto seleccionado.
 - Las libras deben ser mayores que 0.
 - La compra se guarda en SQLite.
 - Luego se recalcula el balance diario.
@@ -106,17 +106,17 @@ Este es el flujo nuevo.
 Proceso:
 
 1. Se crea o selecciona un cliente.
-2. Se selecciona un material.
+2. Se selecciona un producto.
 3. Se ingresa la cantidad de libras.
 4. El item se agrega al carrito.
-5. Se pueden agregar varios materiales antes de guardar.
+5. Se pueden agregar varios productos antes de guardar.
 6. Al registrar la compra, se guarda una transaccion completa por cliente.
 
 Reglas:
 
 - El cliente es obligatorio.
 - El carrito debe tener al menos un item.
-- Cada item debe tener material valido, precio mayor que 0 y libras mayores que 0.
+- Cada item debe tener producto valido, precio mayor que 0 y libras mayores que 0.
 - Al registrar, se recalcula el balance diario.
 
 Compatibilidad actual:
@@ -170,7 +170,7 @@ Esto evita que el balance quede desincronizado con respecto a compras, ventas y 
 
 La exportacion actual construye un payload con:
 
-- materiales
+- productos
 - ledgers diarios
 - fecha/hora de exportacion
 
@@ -198,7 +198,7 @@ La app usa SQLite local como fuente de verdad actual.
 
 Tablas principales:
 
-- `materials`
+- `productos`
 - `daily_balances`
 - `purchases`
 - `sales`
@@ -213,14 +213,14 @@ Tablas principales:
 ### Dashboard
 
 - Muestra resumen diario.
-- Agrupa compras por material.
+- Agrupa compras por producto.
 - Muestra resumen reciente.
 - Permite exportar datos.
 
 ### Compras
 
 - Administra saldo inicial.
-- Permite crear y editar materiales.
+- Permite crear y editar productos.
 - Permite registrar compras legacy.
 - Permite registrar compras por cliente con carrito.
 - Permite migrar compras antiguas al nuevo modelo.

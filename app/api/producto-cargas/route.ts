@@ -6,12 +6,12 @@ import { prisma } from '@/lib/prisma';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const materialId = searchParams.get('materialId');
+    const productoId = searchParams.get('productoId');
 
-    const where: Prisma.MaterialCargaWhereInput = {};
-    if (materialId) where.materialId = materialId;
+    const where: Prisma.ProductoCargaWhereInput = {};
+    if (productoId) where.productoId = productoId;
 
-    const cargas = await prisma.materialCarga.findMany({
+    const cargas = await prisma.productoCarga.findMany({
       where,
       orderBy: [{ businessDate: 'desc' }, { createdAt: 'desc' }],
     });
@@ -32,22 +32,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { businessDate, materialId, libras, descripcion } = body;
+    const { businessDate, productoId, libras, descripcion } = body;
 
-    if (!businessDate || !materialId) {
-      return handleApiError(new Error('businessDate y materialId son requeridos'));
+    if (!businessDate || !productoId) {
+      return handleApiError(new Error('businessDate y productoId son requeridos'));
     }
 
-    const material = await prisma.material.findUnique({ where: { id: materialId } });
-    if (!material) {
-      return handleApiError(new Error('Material no encontrado'));
+    const producto = await prisma.producto.findUnique({ where: { id: productoId } });
+    if (!producto) {
+      return handleApiError(new Error('Producto no encontrado'));
     }
 
-    const carga = await prisma.materialCarga.create({
+    const carga = await prisma.productoCarga.create({
       data: {
         businessDate: parseBusinessDate(businessDate),
-        materialId,
-        materialNombre: material.nombre,
+        productoId,
+        productoNombre: producto.nombre,
         libras: libras !== undefined && libras !== null ? libras : null,
         descripcion: descripcion ?? null,
       },

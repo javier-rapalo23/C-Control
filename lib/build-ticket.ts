@@ -30,7 +30,7 @@ export async function buildTicketForTransaction(transactionId: string) {
     businessDate: toBusinessDateString(transaction.businessDate),
     clientNombre: transaction.client.nombre,
     items: transaction.items.map((item) => ({
-      materialNombre: item.materialNombre,
+      productoNombre: item.productoNombre,
       libras: Number(item.libras),
       precioPorLibra: Number(item.precioPorLibra),
       total: Number(item.total),
@@ -51,11 +51,11 @@ export async function buildSummaryForDate(businessDate: string) {
     getLedgerByDate(prisma, businessDate),
   ]);
 
-  const byMaterial: Record<string, { materialNombre: string; libras: number; total: number }> = {};
+  const byProducto: Record<string, { productoNombre: string; libras: number; total: number }> = {};
   for (const p of ledger.purchases) {
-    if (!byMaterial[p.materialId]) byMaterial[p.materialId] = { materialNombre: p.materialNombre, libras: 0, total: 0 };
-    byMaterial[p.materialId].libras += p.libras;
-    byMaterial[p.materialId].total += p.total;
+    if (!byProducto[p.productoId]) byProducto[p.productoId] = { productoNombre: p.productoNombre, libras: 0, total: 0 };
+    byProducto[p.productoId].libras += p.libras;
+    byProducto[p.productoId].total += p.total;
   }
 
   const buffer = buildSummaryBuffer({
@@ -66,7 +66,7 @@ export async function buildSummaryForDate(businessDate: string) {
       direccion: company.direccion,
     },
     businessDate: ledger.businessDate,
-    materials: Object.values(byMaterial).sort((a, b) => b.total - a.total),
+    productos: Object.values(byProducto).sort((a, b) => b.total - a.total),
     totalCompras: ledger.totals.totalCompras,
     totalVentas: ledger.totals.totalVentas,
     totalGastos: ledger.totals.totalGastos,

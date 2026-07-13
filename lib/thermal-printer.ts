@@ -47,7 +47,7 @@ export type TicketData = {
   company: { nombre: string; rtn: string; telefono: string; direccion: string };
   businessDate: string;
   clientNombre: string;
-  items: Array<{ materialNombre: string; libras: number; precioPorLibra: number; total: number }>;
+  items: Array<{ productoNombre: string; libras: number; precioPorLibra: number; total: number }>;
   total: number;
 };
 
@@ -67,7 +67,7 @@ export function buildTicketBuffer(data: TicketData): Buffer {
   chunks.push(text(dash));
 
   for (const item of data.items) {
-    chunks.push(text(item.materialNombre));
+    chunks.push(text(item.productoNombre));
     const detail = `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`;
     chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
   }
@@ -88,7 +88,7 @@ export function buildTicketBuffer(data: TicketData): Buffer {
 export type SummaryData = {
   company: { nombre: string; rtn: string; telefono: string; direccion: string };
   businessDate: string;
-  materials: Array<{ materialNombre: string; libras: number; total: number }>;
+  productos: Array<{ productoNombre: string; libras: number; total: number }>;
   totalCompras: number;
   totalVentas: number;
   totalGastos: number;
@@ -111,13 +111,13 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
   chunks.push(text(dash));
 
   chunks.push(bold(true));
-  chunks.push(text('COMPRAS POR MATERIAL'));
+  chunks.push(text('COMPRAS POR PRODUCTO'));
   chunks.push(bold(false));
-  if (data.materials.length === 0) {
+  if (data.productos.length === 0) {
     chunks.push(text('Sin compras registradas'));
   }
-  for (const item of data.materials) {
-    chunks.push(text(item.materialNombre));
+  for (const item of data.productos) {
+    chunks.push(text(item.productoNombre));
     chunks.push(text(twoColumns(`${item.libras.toFixed(2)} lb`, `L ${item.total.toFixed(2)}`)));
   }
 

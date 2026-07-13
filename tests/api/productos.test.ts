@@ -1,31 +1,31 @@
 jest.mock('@/lib/prisma', () => ({
   prisma: {
-    material: {
+    producto: {
       create: jest.fn(),
     },
   },
 }));
 
-import { POST } from '@/app/api/materials/route';
+import { POST } from '@/app/api/productos/route';
 import { prisma } from '@/lib/prisma';
 
 const mockedPrisma = prisma as unknown as {
-  material: {
+  producto: {
     create: jest.Mock;
   };
 };
 
-describe('POST /api/materials', () => {
-  it('creates material and returns 201', async () => {
-    mockedPrisma.material.create.mockResolvedValue({
-      id: 'mat_1',
+describe('POST /api/productos', () => {
+  it('creates producto and returns 201', async () => {
+    mockedPrisma.producto.create.mockResolvedValue({
+      id: 'prod_1',
       nombre: 'Cobre',
       precioPorLibra: 4.25,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
-    const request = new Request('http://localhost/api/materials', {
+    const request = new Request('http://localhost/api/productos', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ nombre: 'Cobre', precioPorLibra: 4.25 }),
@@ -37,6 +37,6 @@ describe('POST /api/materials', () => {
     expect(response.status).toBe(201);
     expect(body.ok).toBe(true);
     expect(body.data.nombre).toBe('Cobre');
-    expect(mockedPrisma.material.create).toHaveBeenCalledTimes(1);
+    expect(mockedPrisma.producto.create).toHaveBeenCalledTimes(1);
   });
 });

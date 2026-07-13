@@ -6,22 +6,22 @@ import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const materialId = searchParams.get('materialId');
+    const productoId = searchParams.get('productoId');
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
     const where: Prisma.PurchaseWhereInput = {};
 
-    if (materialId) where.materialId = materialId;
+    if (productoId) where.productoId = productoId;
 
     if (from || to) {
       where.businessDate = {};
       if (from) where.businessDate.gte = parseBusinessDate(from);
       if (to) where.businessDate.lte = parseBusinessDate(to);
-    } else if (materialId) {
-      // Sin filtro de fecha: buscar la última carga de este material y partir desde ahí
-      const ultimaCarga = await prisma.materialCarga.findFirst({
-        where: { materialId },
+    } else if (productoId) {
+      // Sin filtro de fecha: buscar la última carga de este producto y partir desde ahí
+      const ultimaCarga = await prisma.productoCarga.findFirst({
+        where: { productoId },
         orderBy: { businessDate: 'desc' },
       });
 
@@ -35,9 +35,9 @@ export async function GET(request: Request) {
 
     // Obtener info de la última carga para incluirla en la respuesta
     let ultimaCargaInfo = null;
-    if (materialId) {
-      const ultimaCarga = await prisma.materialCarga.findFirst({
-        where: { materialId },
+    if (productoId) {
+      const ultimaCarga = await prisma.productoCarga.findFirst({
+        where: { productoId },
         orderBy: { businessDate: 'desc' },
       });
       if (ultimaCarga) {
@@ -50,8 +50,8 @@ export async function GET(request: Request) {
       }
     }
 
-    if (materialId) {
-      // Group by day for the specified material
+    if (productoId) {
+      // Group by day for the specified producto
       const dailyMap: Record<string, number> = {};
       let totalLibras = 0;
 
@@ -67,9 +67,9 @@ export async function GET(request: Request) {
         .map((businessDate) => ({ businessDate, libras: dailyMap[businessDate] }));
 
       return success({
-        filters: { materialId, from, to },
+        filters: { productoId, from, to },
         ultimaCarga: ultimaCargaInfo,
-        data: { materialId, totalLibras, daily, purchases: purchases.map((p) => ({
+        data: { productoId, totalLibras, daily, purchases: purchases.map((p) => ({
           ...p,
           businessDate: toBusinessDateString(p.businessDate),
           precioPorLibra: Number(p.precioPorLibra),
@@ -80,18 +80,18 @@ export async function GET(request: Request) {
       });
     }
 
-    // Aggregate by material when no materialId provided
-    const byMaterial: Record<string, { materialId: string; materialNombre: string; totalLibras: number }> = {};
+    // Aggregate by producto when no productoId provided
+    const byProducto: Record<string, { productoId: string; productoNombre: string; totalLibras: number }> = {};
     for (const p of purchases) {
-      const key = p.materialId;
+      const key = p.productoId;
       const libras = Number(p.libras);
-      if (!byMaterial[key]) byMaterial[key] = { materialId: p.materialId, materialNombre: p.materialNombre, totalLibras: 0 };
-      byMaterial[key].totalLibras += libras;
+      if (!byProducto[key]) byProducto[key] = { productoId: p.productoId, productoNombre: p.productoNombre, totalLibras: 0 };
+      byProducto[key].totalLibras += libras;
     }
 
-    const materials = Object.values(byMaterial).sort((a, b) => b.totalLibras - a.totalLibras);
+    const productos = Object.values(byProducto).sort((a, b) => b.totalLibras - a.totalLibras);
 
-    return success({ filters: { from, to }, data: { materials, purchases: purchases.map((p) => ({
+    return success({ filters: { from, to }, data: { productos, purchases: purchases.map((p) => ({
       ...p,
       businessDate: toBusinessDateString(p.businessDate),
       precioPorLibra: Number(p.precioPorLibra),

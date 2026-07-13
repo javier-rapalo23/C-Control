@@ -4,7 +4,7 @@ const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
 });
 
-export const createMaterialSchema = z.object({
+export const createProductoSchema = z.object({
   nombre: z.string().trim().min(2).max(120),
   precioPorLibra: z.number().positive(),
 });
@@ -25,13 +25,13 @@ export const setInitialBalanceSchema = z.object({
 
 export const createPurchaseSchema = z.object({
   businessDate: businessDateField,
-  materialId: z.string().min(1),
+  productoId: z.string().min(1),
   libras: z.number().positive(),
   precioPorLibra: z.number().positive().optional(),
 });
 
 export const createPurchaseLineSchema = z.object({
-  materialId: z.string().min(1),
+  productoId: z.string().min(1),
   libras: z.number().positive(),
   precioPorLibra: z.number().positive().optional(),
 });
@@ -55,7 +55,7 @@ export const createExpenseSchema = z.object({
   monto: z.number().positive(),
 });
 
-export const updateMaterialSchema = createMaterialSchema.partial();
+export const updateProductoSchema = createProductoSchema.partial();
 
 export const updateClientSchema = createClientSchema.partial();
 

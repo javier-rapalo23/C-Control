@@ -3,28 +3,18 @@
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { CompanySettingsDTO, LedgerDTO, MaterialDTO } from '@/types/domain';
+import type { CompanySettingsDTO, LedgerDTO, ProductoDTO } from '@/types/domain';
 import { useRoleGuard } from '@/lib/use-role-guard';
 import rControlLogo from '../app/icon.png';
 
 type DailyStockEntry = { businessDate: string; libras: number };
-type MaterialStockSummary = { materialId: string; materialNombre: string; totalLibras: number };
+type ProductoStockSummary = { productoId: string; productoNombre: string; totalLibras: number };
 type StockResult = {
   data?: {
-    materialId?: string;
+    productoId?: string;
     totalLibras?: number;
     daily?: DailyStockEntry[];
-    materials?: MaterialStockSummary[];
-  };
-};
-
-type ImportApiData = {
-  imported: {
-    importedDays: number;
-    importedMaterials: number;
-    importedPurchases: number;
-    importedSales: number;
-    importedExpenses: number;
+    productos?: ProductoStockSummary[];
   };
 };
 
@@ -50,19 +40,14 @@ export default function DashboardHome() {
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [importUserId, setImportUserId] = useState('admin');
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [materialQuery, setMaterialQuery] = useState<string>('');
+  const [productoQuery, setProductoQuery] = useState<string>('');
   const [fromDate, setFromDate] = useState<string>('2026-05-25');
   const [toDate, setToDate] = useState<string>(todayDateString());
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [stockResult, setStockResult] = useState<StockResult | null>(null);
-  const [materials, setMaterials] = useState<MaterialDTO[]>([]);
-  const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [productos, setProductos] = useState<ProductoDTO[]>([]);
+  const [productosLoading, setProductosLoading] = useState(false);
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [rawbtEnabled, setRawbtEnabled] = useState(false);
   const [printingSummary, setPrintingSummary] = useState(false);
@@ -159,14 +144,14 @@ export default function DashboardHome() {
     let mounted = true;
     (async () => {
       try {
-        setMaterialsLoading(true);
-        const res = await fetch('/api/materials', { cache: 'no-store' });
-        const list = await parseApiResponse<MaterialDTO[]>(res);
-        if (mounted) setMaterials(list);
+        setProductosLoading(true);
+        const res = await fetch('/api/productos', { cache: 'no-store' });
+        const list = await parseApiResponse<ProductoDTO[]>(res);
+        if (mounted) setProductos(list);
       } catch {
-        // ignore errors fetching materials for the select
+        // ignore errors fetching productos for the select
       } finally {
-        if (mounted) setMaterialsLoading(false);
+        if (mounted) setProductosLoading(false);
       }
     })();
     return () => {
@@ -209,57 +194,14 @@ export default function DashboardHome() {
 
   const dailyPurchasesSummary = (() => {
     if (!ledger) return [];
-    const byMaterial: Record<string, { materialNombre: string; libras: number; total: number }> = {};
+    const byProducto: Record<string, { productoNombre: string; libras: number; total: number }> = {};
     for (const p of ledger.purchases) {
-      if (!byMaterial[p.materialId]) byMaterial[p.materialId] = { materialNombre: p.materialNombre, libras: 0, total: 0 };
-      byMaterial[p.materialId].libras += p.libras;
-      byMaterial[p.materialId].total += p.total;
+      if (!byProducto[p.productoId]) byProducto[p.productoId] = { productoNombre: p.productoNombre, libras: 0, total: 0 };
+      byProducto[p.productoId].libras += p.libras;
+      byProducto[p.productoId].total += p.total;
     }
-    return Object.values(byMaterial).sort((a, b) => b.total - a.total);
+    return Object.values(byProducto).sort((a, b) => b.total - a.total);
   })();
-
-  async function importData(event: React.FormEvent) {
-    event.preventDefault();
-
-    if (!importFile) {
-      setImportError('Selecciona un archivo .txt o .json para importar.');
-      setImportSuccess(null);
-      return;
-    }
-
-    if (!importUserId.trim()) {
-      setImportError('Ingresa el usuario autorizado para importar.');
-      setImportSuccess(null);
-      return;
-    }
-
-    try {
-      setImporting(true);
-      setImportError(null);
-      setImportSuccess(null);
-
-      const raw = await importFile.text();
-      const response = await fetch('/api/import', {
-        method: 'POST',
-        headers: {
-          'content-type': 'text/plain',
-          'x-user-id': importUserId.trim(),
-        },
-        body: raw,
-      });
-
-      const data = await parseApiResponse<ImportApiData>(response);
-      setImportSuccess(
-        `Importación lista: ${data.imported.importedDays} días, ${data.imported.importedPurchases} compras, ${data.imported.importedSales} ventas, ${data.imported.importedExpenses} gastos.`,
-      );
-      setImportFile(null);
-      await fetchLedger();
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'No fue posible importar el archivo.');
-    } finally {
-      setImporting(false);
-    }
-  }
 
   if (roleGuardStatus !== 'allowed') return null;
 
@@ -285,13 +227,6 @@ export default function DashboardHome() {
               <button className="btn-primary" onClick={() => void fetchLedger()}>
                 Recargar
               </button>
-            </div>
-            <div style={{ gridColumn: 'span 6', alignSelf: 'end', textAlign: 'right' }}>
-              <a href={`/api/export?businessDate=${businessDate}`} target="_blank" rel="noreferrer">
-                <button className="btn-primary" type="button">
-                  Exportar JSON
-                </button>
-              </a>
             </div>
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
@@ -326,15 +261,15 @@ export default function DashboardHome() {
           <table className="table-like" style={{ marginTop: 8 }}>
             <thead>
               <tr>
-                <th>Material</th>
+                <th>Producto</th>
                 <th>Libras</th>
                 <th>Total (L)</th>
               </tr>
             </thead>
             <tbody>
               {dailyPurchasesSummary.map((item) => (
-                <tr key={item.materialNombre}>
-                  <td>{item.materialNombre}</td>
+                <tr key={item.productoNombre}>
+                  <td>{item.productoNombre}</td>
                   <td>{item.libras.toLocaleString('es-HN')} lb</td>
                   <td>L {item.total.toFixed(2)}</td>
                 </tr>
@@ -349,19 +284,19 @@ export default function DashboardHome() {
         </article>
 
         <article className="card wide">
-          <h3>Consultar stock por material</h3>
+          <h3>Consultar stock por producto</h3>
           <div className="row" style={{ marginTop: 8 }}>
             <label style={{ gridColumn: 'span 3' }}>
-              Material
-              <select value={materialQuery} onChange={(e) => setMaterialQuery(e.target.value)}>
+              Producto
+              <select value={productoQuery} onChange={(e) => setProductoQuery(e.target.value)}>
                 <option value="">-- Todos --</option>
-                {materials.map((m) => (
+                {productos.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.nombre}
                   </option>
                 ))}
               </select>
-              {materialsLoading ? <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Cargando materiales...</div> : null}
+              {productosLoading ? <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Cargando productos...</div> : null}
             </label>
             <label style={{ gridColumn: 'span 3' }}>
               Desde
@@ -382,10 +317,10 @@ export default function DashboardHome() {
                     setStockError(null);
                     setStockResult(null);
                     const qs = new URLSearchParams();
-                    if (materialQuery.trim()) qs.set('materialId', materialQuery.trim());
+                    if (productoQuery.trim()) qs.set('productoId', productoQuery.trim());
                     if (fromDate) qs.set('from', fromDate);
                     if (toDate) qs.set('to', toDate);
-                    const res = await fetch(`/api/materials/stock?${qs.toString()}`, { cache: 'no-store' });
+                    const res = await fetch(`/api/productos/stock?${qs.toString()}`, { cache: 'no-store' });
                     const body = await parseApiResponse<StockResult>(res);
                     setStockResult(body);
                   } catch (err) {
@@ -403,7 +338,7 @@ export default function DashboardHome() {
           {stockError ? <p style={{ color: 'var(--danger)' }}>{stockError}</p> : null}
           {stockResult ? (
             <div style={{ marginTop: 12 }}>
-              {stockResult.data?.materialId ? (
+              {stockResult.data?.productoId ? (
                 <div>
                   <div><strong>Total libras:</strong> {stockResult.data.totalLibras ?? 0}</div>
                   <h4>Desglose diario</h4>
@@ -417,11 +352,11 @@ export default function DashboardHome() {
                 </div>
               ) : (
                 <div>
-                  <h4>Totales por material</h4>
+                  <h4>Totales por producto</h4>
                   <BarList
-                    items={(stockResult.data?.materials ?? []).map((m: MaterialStockSummary) => ({
-                      key: m.materialId,
-                      label: m.materialNombre,
+                    items={(stockResult.data?.productos ?? []).map((m: ProductoStockSummary) => ({
+                      key: m.productoId,
+                      label: m.productoNombre,
                       value: Number(m.totalLibras) || 0,
                     }))}
                   />
@@ -429,37 +364,6 @@ export default function DashboardHome() {
               )}
             </div>
           ) : null}
-        </article>
-
-        <article className="card wide">
-          <h3>Importar TXT/JSON</h3>
-          <form onSubmit={(event) => void importData(event)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 3' }}>
-              Usuario (admin)
-              <input
-                value={importUserId}
-                onChange={(event) => setImportUserId(event.target.value)}
-                placeholder="admin"
-                required
-              />
-            </label>
-            <label style={{ gridColumn: 'span 7' }}>
-              Archivo
-              <input
-                type="file"
-                accept=".txt,.json,text/plain,application/json"
-                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                required
-              />
-            </label>
-            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
-              <button className="btn-primary" type="submit" disabled={importing}>
-                {importing ? 'Importando...' : 'Importar'}
-              </button>
-            </div>
-          </form>
-          {importSuccess ? <p style={{ color: 'var(--ok)' }}>{importSuccess}</p> : null}
-          {importError ? <p style={{ color: 'var(--danger)' }}>{importError}</p> : null}
         </article>
       </section>
 

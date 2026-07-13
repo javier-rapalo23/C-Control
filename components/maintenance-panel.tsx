@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ClientDTO, CompanySettingsDTO, MaterialDTO, UserDTO } from '@/types/domain';
+import type { ClientDTO, CompanySettingsDTO, ProductoDTO, UserDTO } from '@/types/domain';
 import { useRoleGuard } from '@/lib/use-role-guard';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -11,7 +11,7 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-type Section = 'empresa' | 'usuarios' | 'roles' | 'materiales' | 'clientes';
+type Section = 'empresa' | 'usuarios' | 'roles' | 'productos' | 'clientes';
 
 type UserForm = { userId: string; nombre: string; password: string; role: string };
 const emptyUserForm: UserForm = { userId: '', nombre: '', password: '', role: 'viewer' };
@@ -72,13 +72,13 @@ export default function MaintenancePanel() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // --- Materials ---
-  const [materials, setMaterials] = useState<MaterialDTO[]>([]);
-  const [materialsLoading, setMaterialsLoading] = useState(false);
-  const [materialsError, setMaterialsError] = useState<string | null>(null);
-  const [editingMaterial, setEditingMaterial] = useState<{ id: string; nombre: string; precioPorLibra: string } | null>(null);
-  const [newMatNombre, setNewMatNombre] = useState('');
-  const [newMatPrecio, setNewMatPrecio] = useState('');
+  // --- Productos ---
+  const [productos, setProductos] = useState<ProductoDTO[]>([]);
+  const [productosLoading, setProductosLoading] = useState(false);
+  const [productosError, setProductosError] = useState<string | null>(null);
+  const [editingProducto, setEditingProducto] = useState<{ id: string; nombre: string; precioPorLibra: string } | null>(null);
+  const [newProdNombre, setNewProdNombre] = useState('');
+  const [newProdPrecio, setNewProdPrecio] = useState('');
 
   // --- Clients ---
   const [clients, setClients] = useState<ClientDTO[]>([]);
@@ -124,17 +124,17 @@ export default function MaintenancePanel() {
     }
   }, []);
 
-  const fetchMaterials = useCallback(async () => {
+  const fetchProductos = useCallback(async () => {
     try {
-      setMaterialsLoading(true);
-      const res = await fetch('/api/materials', { cache: 'no-store' });
-      const data = await parseApiResponse<MaterialDTO[]>(res);
-      setMaterials(data);
-      setMaterialsError(null);
+      setProductosLoading(true);
+      const res = await fetch('/api/productos', { cache: 'no-store' });
+      const data = await parseApiResponse<ProductoDTO[]>(res);
+      setProductos(data);
+      setProductosError(null);
     } catch (err) {
-      setMaterialsError(err instanceof Error ? err.message : 'Error cargando materiales');
+      setProductosError(err instanceof Error ? err.message : 'Error cargando productos');
     } finally {
-      setMaterialsLoading(false);
+      setProductosLoading(false);
     }
   }, []);
 
@@ -161,8 +161,8 @@ export default function MaintenancePanel() {
   }, [section, fetchUsers]);
 
   useEffect(() => {
-    if (section === 'materiales') void fetchMaterials();
-  }, [section, fetchMaterials]);
+    if (section === 'productos') void fetchProductos();
+  }, [section, fetchProductos]);
 
   useEffect(() => {
     if (section === 'clientes') void fetchClients();
@@ -261,54 +261,54 @@ export default function MaintenancePanel() {
     }
   }
 
-  // --- Materials CRUD ---
+  // --- Productos CRUD ---
 
-  async function createMaterial(event: React.FormEvent) {
+  async function createProducto(event: React.FormEvent) {
     event.preventDefault();
     try {
-      setMaterialsLoading(true);
-      await fetch('/api/materials', {
+      setProductosLoading(true);
+      await fetch('/api/productos', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nombre: newMatNombre, precioPorLibra: Number(newMatPrecio) }),
+        body: JSON.stringify({ nombre: newProdNombre, precioPorLibra: Number(newProdPrecio) }),
       }).then(parseApiResponse);
-      setNewMatNombre('');
-      setNewMatPrecio('');
-      await fetchMaterials();
+      setNewProdNombre('');
+      setNewProdPrecio('');
+      await fetchProductos();
     } catch (err) {
-      setMaterialsError(err instanceof Error ? err.message : 'Error creando material');
+      setProductosError(err instanceof Error ? err.message : 'Error creando producto');
     } finally {
-      setMaterialsLoading(false);
+      setProductosLoading(false);
     }
   }
 
-  async function updateMaterial(id: string) {
-    if (!editingMaterial) return;
+  async function updateProducto(id: string) {
+    if (!editingProducto) return;
     try {
-      setMaterialsLoading(true);
-      await fetch(`/api/materials/${id}`, {
+      setProductosLoading(true);
+      await fetch(`/api/productos/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nombre: editingMaterial.nombre, precioPorLibra: Number(editingMaterial.precioPorLibra) }),
+        body: JSON.stringify({ nombre: editingProducto.nombre, precioPorLibra: Number(editingProducto.precioPorLibra) }),
       }).then(parseApiResponse);
-      setEditingMaterial(null);
-      await fetchMaterials();
+      setEditingProducto(null);
+      await fetchProductos();
     } catch (err) {
-      setMaterialsError(err instanceof Error ? err.message : 'Error actualizando material');
+      setProductosError(err instanceof Error ? err.message : 'Error actualizando producto');
     } finally {
-      setMaterialsLoading(false);
+      setProductosLoading(false);
     }
   }
 
-  async function deleteMaterial(id: string) {
+  async function deleteProducto(id: string) {
     try {
-      setMaterialsLoading(true);
-      await fetch(`/api/materials/${id}`, { method: 'DELETE' }).then(parseApiResponse);
-      await fetchMaterials();
+      setProductosLoading(true);
+      await fetch(`/api/productos/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchProductos();
     } catch (err) {
-      setMaterialsError(err instanceof Error ? err.message : 'Error eliminando material');
+      setProductosError(err instanceof Error ? err.message : 'Error eliminando producto');
     } finally {
-      setMaterialsLoading(false);
+      setProductosLoading(false);
     }
   }
 
@@ -387,7 +387,7 @@ export default function MaintenancePanel() {
       </section>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['empresa', 'usuarios', 'roles', 'materiales', 'clientes'] as Section[]).map((s) => (
+        {(['empresa', 'usuarios', 'roles', 'productos', 'clientes'] as Section[]).map((s) => (
           <button
             key={s}
             type="button"
@@ -400,8 +400,8 @@ export default function MaintenancePanel() {
                 ? 'Usuarios'
                 : s === 'roles'
                   ? 'Roles'
-                  : s === 'materiales'
-                    ? 'Materiales'
+                  : s === 'productos'
+                    ? 'Productos'
                     : 'Clientes'}
           </button>
         ))}
@@ -618,11 +618,11 @@ export default function MaintenancePanel() {
         </section>
       ) : null}
 
-      {/* ── MATERIALES ── */}
-      {section === 'materiales' ? (
+      {/* ── PRODUCTOS ── */}
+      {section === 'productos' ? (
         <section className="card">
-          <h3>Materiales</h3>
-          {materialsError ? <p style={{ color: 'var(--danger)' }}>{materialsError}</p> : null}
+          <h3>Productos</h3>
+          {productosError ? <p style={{ color: 'var(--danger)' }}>{productosError}</p> : null}
 
           <table className="table-like">
             <thead>
@@ -633,28 +633,28 @@ export default function MaintenancePanel() {
               </tr>
             </thead>
             <tbody>
-              {materials.map((m) =>
-                editingMaterial?.id === m.id ? (
+              {productos.map((m) =>
+                editingProducto?.id === m.id ? (
                   <tr key={m.id}>
                     <td>
                       <input
-                        value={editingMaterial.nombre}
-                        onChange={(e) => setEditingMaterial((prev) => prev && { ...prev, nombre: e.target.value })}
+                        value={editingProducto.nombre}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, nombre: e.target.value })}
                       />
                     </td>
                     <td>
                       <input
-                        value={editingMaterial.precioPorLibra}
-                        onChange={(e) => setEditingMaterial((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
+                        value={editingProducto.precioPorLibra}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
                         type="number"
                         step="0.01"
                       />
                     </td>
                     <td style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn-primary" type="button" onClick={() => void updateMaterial(m.id)}>
+                      <button className="btn-primary" type="button" onClick={() => void updateProducto(m.id)}>
                         Guardar
                       </button>
-                      <button className="btn-danger" type="button" onClick={() => setEditingMaterial(null)}>
+                      <button className="btn-danger" type="button" onClick={() => setEditingProducto(null)}>
                         Cancelar
                       </button>
                     </td>
@@ -668,38 +668,38 @@ export default function MaintenancePanel() {
                         className="btn-primary"
                         type="button"
                         onClick={() =>
-                          setEditingMaterial({ id: m.id, nombre: m.nombre, precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)) })
+                          setEditingProducto({ id: m.id, nombre: m.nombre, precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)) })
                         }
                       >
                         Editar
                       </button>
-                      <button className="btn-danger" type="button" onClick={() => void deleteMaterial(m.id)}>
+                      <button className="btn-danger" type="button" onClick={() => void deleteProducto(m.id)}>
                         Eliminar
                       </button>
                     </td>
                   </tr>
                 ),
               )}
-              {materials.length === 0 && !materialsLoading ? (
+              {productos.length === 0 && !productosLoading ? (
                 <tr>
-                  <td colSpan={3}>No hay materiales registrados.</td>
+                  <td colSpan={3}>No hay productos registrados.</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
 
-          <h4 style={{ marginTop: 16 }}>Nuevo material</h4>
-          <form onSubmit={(e) => void createMaterial(e)} className="row" style={{ marginTop: 8 }}>
+          <h4 style={{ marginTop: 16 }}>Nuevo producto</h4>
+          <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
             <label style={{ gridColumn: 'span 6' }}>
               Nombre
-              <input value={newMatNombre} onChange={(e) => setNewMatNombre(e.target.value)} required />
+              <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
             </label>
             <label style={{ gridColumn: 'span 4' }}>
               Precio por libra
-              <input value={newMatPrecio} onChange={(e) => setNewMatPrecio(e.target.value)} type="number" step="0.01" required />
+              <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
             </label>
             <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
-              <button className="btn-primary" type="submit" disabled={materialsLoading}>
+              <button className="btn-primary" type="submit" disabled={productosLoading}>
                 Agregar
               </button>
             </div>

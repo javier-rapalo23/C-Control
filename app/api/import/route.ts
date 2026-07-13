@@ -168,7 +168,7 @@ export async function POST(request: Request) {
         mobileIdToName.set(item.id.trim(), nombre);
       }
 
-      await prisma.material.upsert({
+      await prisma.producto.upsert({
         where: { nombre },
         update: { precioPorLibra: new Prisma.Decimal(precioPorLibra) },
         create: {
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
       });
     }
 
-    let materials = await prisma.material.findMany();
+    let materials = await prisma.producto.findMany();
     const materialByNormalizedName = new Map<string, (typeof materials)[number]>();
     for (const material of materials) {
       materialByNormalizedName.set(normalizeName(material.nombre), material);
@@ -193,8 +193,8 @@ export async function POST(request: Request) {
       const businessDate = parseBusinessDate(ledger.businessDate);
       const purchaseRows: Array<{
         businessDate: Date;
-        materialId: string;
-        materialNombre: string;
+        productoId: string;
+        productoNombre: string;
         precioPorLibra: Prisma.Decimal;
         libras: Prisma.Decimal;
         total: Prisma.Decimal;
@@ -226,23 +226,23 @@ export async function POST(request: Request) {
           }
 
           const normalized = normalizeName(candidateName);
-          let material = materialByNormalizedName.get(normalized);
+          let producto = materialByNormalizedName.get(normalized);
 
-          if (!material) {
+          if (!producto) {
             const safePrice = Number(purchase.precioPorLibra);
             if (!Number.isFinite(safePrice) || safePrice <= 0) {
               continue;
             }
 
-            material = await tx.material.create({
+            producto = await tx.producto.create({
               data: {
                 nombre: candidateName,
                 precioPorLibra: new Prisma.Decimal(safePrice),
               },
             });
 
-            materials = [...materials, material];
-            materialByNormalizedName.set(normalized, material);
+            materials = [...materials, producto];
+            materialByNormalizedName.set(normalized, producto);
           }
 
           const precioPorLibra = Number(purchase.precioPorLibra);
@@ -255,8 +255,8 @@ export async function POST(request: Request) {
 
           purchaseRows.push({
             businessDate,
-            materialId: material.id,
-            materialNombre: material.nombre,
+            productoId: producto.id,
+            productoNombre: producto.nombre,
             precioPorLibra: new Prisma.Decimal(precioPorLibra),
             libras: new Prisma.Decimal(libras),
             total,
@@ -319,7 +319,7 @@ export async function POST(request: Request) {
 
     const imported = {
       importedDays,
-      importedMaterials: materials.length,
+      importedProductos: materials.length,
       importedPurchases,
       importedSales,
       importedExpenses,

@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ClientDTO, LedgerDTO, MaterialDTO, PurchaseTransactionDTO } from '@/types/domain';
+import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 
 type CartItem = {
   id: string;
-  materialId: string;
-  materialNombre: string;
+  productoId: string;
+  productoNombre: string;
   libras: string;
   precioPorLibra: string;
 };
@@ -36,7 +36,7 @@ const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 export default function PurchasesPanel() {
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
-  const [materials, setMaterials] = useState<MaterialDTO[]>([]);
+  const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [clients, setClients] = useState<ClientDTO[]>([]);
   const [transactions, setTransactions] = useState<PurchaseTransactionDTO[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -50,20 +50,20 @@ export default function PurchasesPanel() {
 
   const [saldoInicial, setSaldoInicial] = useState('');
 
-  const [itemMaterialId, setItemMaterialId] = useState('');
+  const [itemProductoId, setItemProductoId] = useState('');
   const [itemLibras, setItemLibras] = useState('');
   const [itemPrice, setItemPrice] = useState('');
 
-  const fetchMaterials = useCallback(async () => {
-    const response = await fetch('/api/materials', { cache: 'no-store' });
-    const data = await parseApiResponse<MaterialDTO[]>(response);
-    setMaterials(data);
+  const fetchProductos = useCallback(async () => {
+    const response = await fetch('/api/productos', { cache: 'no-store' });
+    const data = await parseApiResponse<ProductoDTO[]>(response);
+    setProductos(data);
 
-    if (!itemMaterialId && data.length > 0) {
-      setItemMaterialId(data[0].id);
+    if (!itemProductoId && data.length > 0) {
+      setItemProductoId(data[0].id);
       setItemPrice(String(Number(data[0].precioPorLibra).toFixed(2)));
     }
-  }, [itemMaterialId]);
+  }, [itemProductoId]);
 
   const fetchClients = useCallback(async () => {
     const response = await fetch('/api/clients', { cache: 'no-store' });
@@ -92,13 +92,13 @@ export default function PurchasesPanel() {
     try {
       setLoading(true);
       setError(null);
-      await Promise.all([fetchMaterials(), fetchClients(), fetchLedger(), fetchTransactions()]);
+      await Promise.all([fetchProductos(), fetchClients(), fetchLedger(), fetchTransactions()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error sincronizando compras');
     } finally {
       setLoading(false);
     }
-  }, [fetchClients, fetchLedger, fetchMaterials, fetchTransactions]);
+  }, [fetchClients, fetchLedger, fetchProductos, fetchTransactions]);
 
   useEffect(() => {
     void refresh();
@@ -146,27 +146,27 @@ export default function PurchasesPanel() {
   function addItemToCart(event: FormEvent) {
     event.preventDefault();
 
-    const material = materials.find((entry) => entry.id === itemMaterialId);
-    if (!material) {
-      setError('Selecciona un material válido');
+    const producto = productos.find((entry) => entry.id === itemProductoId);
+    if (!producto) {
+      setError('Selecciona un producto válido');
       return;
     }
 
-    const precioPorLibra = itemPrice || String(Number(material.precioPorLibra).toFixed(2));
+    const precioPorLibra = itemPrice || String(Number(producto.precioPorLibra).toFixed(2));
 
     setCart((current) => [
       ...current,
       {
         id: crypto.randomUUID(),
-        materialId: material.id,
-        materialNombre: material.nombre,
+        productoId: producto.id,
+        productoNombre: producto.nombre,
         libras: itemLibras,
         precioPorLibra,
       },
     ]);
 
     setItemLibras('');
-    setItemPrice(String(Number(material.precioPorLibra).toFixed(2)));
+    setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
   }
 
   function updateCartItem(id: string, field: 'libras' | 'precioPorLibra', value: string) {
@@ -200,7 +200,7 @@ export default function PurchasesPanel() {
           businessDate,
           clientId: selectedClientId,
           items: cart.map((item) => ({
-            materialId: item.materialId,
+            productoId: item.productoId,
             libras: Number(item.libras),
             precioPorLibra: Number(item.precioPorLibra),
           })),
@@ -294,35 +294,30 @@ export default function PurchasesPanel() {
     <main className="page-shell">
       <section className="hero">
         <h1>Compras por cliente</h1>
-        <p>Selecciona un cliente, agrega varios materiales al carrito y guarda la transacción completa.</p>
+        <p>Selecciona un cliente, agrega varios productos al carrito y guarda la transacción completa.</p>
       </section>
 
       <section className="card-grid">
         <article className="card half">
-          <div className="row">
-            <label style={{ gridColumn: 'span 3' }}>
+          <div className="row" style={{ gap: '12px 24px' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               Fecha de negocio
               <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
             </label>
-            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
+            <div style={{ gridColumn: 'span 3', alignSelf: 'end' }}>
               <button className="btn-primary" onClick={() => void refresh()} type="button">
                 Recargar
               </button>
-            </div>
-            <div style={{ gridColumn: 'span 7', alignSelf: 'end', textAlign: 'right' }}>
-              <a href={`/api/export?businessDate=${businessDate}`} target="_blank" rel="noreferrer">
-                <button className="btn-primary" type="button">
-                  Exportar JSON
-                </button>
-              </a>
             </div>
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
         <article className="card half">
-          <div className="label">Saldo Inicial</div>
-          <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
-          <button className="btn-primary" type="button" onClick={() => void saveSaldoInicial()} style={{ marginTop: 8 }}>
+          <label>
+            Saldo Inicial
+            <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
+          </label>
+          <button className="btn-primary" type="button" onClick={() => void saveSaldoInicial()} style={{ marginTop: 16 }}>
             Guardar
           </button>
         </article>
@@ -368,15 +363,15 @@ export default function PurchasesPanel() {
           <h3>Agregar item al carrito</h3>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
-            {materials.map((material) => {
-              const selected = itemMaterialId === material.id;
+            {productos.map((producto) => {
+              const selected = itemProductoId === producto.id;
               return (
                 <button
-                  key={material.id}
+                  key={producto.id}
                   type="button"
                   onClick={() => {
-                    setItemMaterialId(material.id);
-                    setItemPrice(String(Number(material.precioPorLibra).toFixed(2)));
+                    setItemProductoId(producto.id);
+                    setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
                   }}
                   style={{
                     padding: '12px 10px',
@@ -389,10 +384,10 @@ export default function PurchasesPanel() {
                   }}
                 >
                   <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
-                    {material.nombre}
+                    {producto.nombre}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                    L {Number(material.precioPorLibra).toFixed(2)} / lb
+                    L {Number(producto.precioPorLibra).toFixed(2)} / lb
                   </div>
                 </button>
               );
@@ -409,7 +404,7 @@ export default function PurchasesPanel() {
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
             <div style={{ gridColumn: 'span 12' }}>
-              <button className="btn-primary" type="submit" disabled={!itemMaterialId}>
+              <button className="btn-primary" type="submit" disabled={!itemProductoId}>
                 Agregar al carrito
               </button>
             </div>
@@ -435,7 +430,7 @@ export default function PurchasesPanel() {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <strong style={{ fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.materialNombre}</strong>
+                      <strong style={{ fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.productoNombre}</strong>
                       <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button" style={{ flexShrink: 0, padding: '4px 10px', fontSize: 12 }}>
                         Eliminar
                       </button>
@@ -514,7 +509,7 @@ export default function PurchasesPanel() {
                 <table className="table-like" style={{ marginTop: 12 }}>
                   <thead>
                     <tr>
-                      <th>Material</th>
+                      <th>Producto</th>
                       <th>Libras</th>
                       <th>Precio / libra</th>
                       <th>Subtotal</th>
@@ -523,7 +518,7 @@ export default function PurchasesPanel() {
                   <tbody>
                     {transaction.items.map((item) => (
                       <tr key={item.id}>
-                        <td>{item.materialNombre}</td>
+                        <td>{item.productoNombre}</td>
                         <td>{item.libras.toFixed(2)}</td>
                         <td>L {item.precioPorLibra.toFixed(2)}</td>
                         <td>L {item.total.toFixed(2)}</td>

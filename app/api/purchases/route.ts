@@ -10,20 +10,20 @@ export async function POST(request: Request) {
     const payload = createPurchaseSchema.parse(await request.json());
 
     const result = await prisma.$transaction(async (tx) => {
-      const material = await tx.material.findUnique({ where: { id: payload.materialId } });
-      if (!material) {
-        throw new Error('Material not found');
+      const producto = await tx.producto.findUnique({ where: { id: payload.productoId } });
+      if (!producto) {
+        throw new Error('Producto not found');
       }
 
-      const precioPorLibra = new Prisma.Decimal(payload.precioPorLibra ?? Number(material.precioPorLibra));
+      const precioPorLibra = new Prisma.Decimal(payload.precioPorLibra ?? Number(producto.precioPorLibra));
       const libras = new Prisma.Decimal(payload.libras);
       const total = precioPorLibra.mul(libras);
 
       const created = await tx.purchase.create({
         data: {
           businessDate: parseBusinessDate(payload.businessDate),
-          materialId: material.id,
-          materialNombre: material.nombre,
+          productoId: producto.id,
+          productoNombre: producto.nombre,
           precioPorLibra,
           libras,
           total,
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       201,
     );
   } catch (error) {
-    if (error instanceof Error && error.message === 'Material not found') {
+    if (error instanceof Error && error.message === 'Producto not found') {
       return failure('NOT_FOUND', error.message, 404);
     }
 
