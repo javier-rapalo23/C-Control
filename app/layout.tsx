@@ -15,7 +15,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'C Control | Ledger Diario',
+  title: 'C Control',
   description: 'Control diario de compras, ventas y gastos.',
   icons: {
     icon: '/icon.png', 
@@ -27,9 +27,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="es">
       <body className={`${syne.variable} ${plusJakarta.variable}`}>
-        <SiteHeader />
-
-        {children}
+        <div className="app-shell">
+          <SiteHeader />
+          <div className="app-main">{children}</div>
+        </div>
       </body>
     </html>
   );

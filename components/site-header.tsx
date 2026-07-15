@@ -27,33 +27,40 @@ export default function SiteHeader() {
   const [authUser, setAuthUser] = useState<AuthMe>({ userId: null, role: null });
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [theme, setTheme] = useState('light');
+  const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
-  // --- LÓGICA DEL TEMA ---
-  
 
   useEffect(() => {
-  setMounted(true); // Avisamos que el componente ya está listo en el cliente
-  
-  const savedTheme = localStorage.getItem('rcontrol-theme');
-  if (savedTheme) {
-    setTheme(savedTheme);
-  } else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setTheme(prefersDark ? 'dark' : 'light');
-  }
-}, []);
-useEffect(() => {
-  if (mounted) {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('rcontrol-theme', theme);
-  }
-}, [theme, mounted]);
+    setMounted(true);
 
-const toggleTheme = () => {
-  setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-};
+    const savedTheme = localStorage.getItem('rcontrol-theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(prefersDark ? 'dark' : 'light');
+    }
 
- 
+    setCollapsed(localStorage.getItem('rcontrol-sidenav-collapsed') === 'true');
+  }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('rcontrol-theme', theme);
+    }
+  }, [theme, mounted]);
+
+  useEffect(() => {
+    if (mounted) {
+      document.documentElement.setAttribute('data-sidenav', collapsed ? 'collapsed' : 'expanded');
+      localStorage.setItem('rcontrol-sidenav-collapsed', String(collapsed));
+    }
+  }, [collapsed, mounted]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   useEffect(() => {
     setIsOpen(false);
@@ -108,49 +115,65 @@ const toggleTheme = () => {
   }
 
   return (
-    <header className="site-header">
-      <div className="site-row">
-        <div className="site-topbar">
-          <Link href="/" className="brand brand--link" aria-label="Ir al inicio">
-            <Image src={rControlLogo} width={44} height={44} className="brand-mark" alt="C Control" priority />
+    <>
+      <div className="mobile-topbar">
+        <Link href="/" className="brand brand--link" aria-label="Ir al inicio">
+          <Image src={rControlLogo} width={36} height={36} className="brand-mark" alt="C Control" priority />
+          <span>C Control</span>
+        </Link>
+
+        <button
+          type="button"
+          className="menu-toggle"
+          aria-expanded={isOpen}
+          aria-controls="main-navigation"
+          aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <span className="menu-toggle__icon" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </button>
+      </div>
+
+      <div
+        className={`sidenav-overlay ${isOpen ? 'sidenav-overlay--open' : ''}`}
+        onClick={() => setIsOpen(false)}
+        aria-hidden="true"
+      />
+
+      <button
+        type="button"
+        className="sidenav-reopen-btn"
+        aria-label="Mostrar menú lateral"
+        onClick={() => setCollapsed(false)}
+      >
+        <span className="menu-toggle__icon" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      </button>
+
+      <aside className={`sidenav ${isOpen ? 'sidenav--open' : ''}`}>
+        <div className="sidenav-brand-row">
+          <Link href="/" className="brand brand--link sidenav-brand" aria-label="Ir al inicio">
+            <Image src={rControlLogo} width={40} height={40} className="brand-mark" alt="C Control" priority />
             <span>C Control</span>
           </Link>
-
           <button
             type="button"
-            className="menu-toggle"
-            aria-expanded={isOpen}
-            aria-controls="main-navigation"
-            onClick={() => setIsOpen((current) => !current)}
+            className="sidenav-collapse-btn"
+            aria-label="Ocultar menú lateral"
+            onClick={() => setCollapsed(true)}
           >
-            <span className="menu-toggle__icon" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-            <span>{isOpen ? 'Cerrar' : 'Menú'}</span>
+            «
           </button>
         </div>
 
-        <div className="auth-panel">
-          {authUser.userId ? (
-            <>
-              <div className="auth-pill">
-                <strong>{authUser.userId}</strong>
-                <span>{authUser.role}</span>
-              </div>
-              <button type="button" className="btn-secondary" onClick={() => void logout()} disabled={loadingAuth}>
-                Salir
-              </button>
-            </>
-          ) : (
-            <Link href="/login" className="btn-primary auth-link">
-              Entrar
-            </Link>
-          )}
-        </div>
-
-        <nav id="main-navigation" className={`nav ${isOpen ? 'nav--open' : ''}`}>
+        <nav id="main-navigation" className="sidenav-links">
           {navigationItems
             .filter((item) => !item.roles || item.roles.includes(authUser.role ?? ''))
             .map((item) => {
@@ -163,17 +186,31 @@ const toggleTheme = () => {
             })}
         </nav>
 
-        <button
-          type="button"
-          className="theme-toggle"
-          aria-label="Cambiar tema"
-          onClick={toggleTheme}
-        >
-          <span className="theme-toggle__icon" aria-hidden="true">
-            {theme === 'dark' ? '🌞' : '🌜'}
-          </span>
-        </button>
-      </div>
-    </header>
+        <div className="sidenav-footer">
+          <div className="auth-panel">
+            {authUser.userId ? (
+              <>
+                <div className="auth-pill">
+                  <strong>{authUser.userId}</strong>
+                  <span>{authUser.role}</span>
+                </div>
+                <button type="button" className="btn-secondary" onClick={() => void logout()} disabled={loadingAuth}>
+                  Salir
+                </button>
+              </>
+            ) : (
+              <Link href="/login" className="btn-primary auth-link">
+                Entrar
+              </Link>
+            )}
+          </div>
+
+          <button type="button" className="theme-toggle-btn" aria-label="Cambiar tema" onClick={toggleTheme}>
+            <span aria-hidden="true">{theme === 'dark' ? '🌞' : '🌜'}</span>
+            <span>{theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
