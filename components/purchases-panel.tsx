@@ -3,14 +3,32 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
+import { useModuleGuard } from '@/lib/use-module-guard';
+import { useSucursal } from '@/lib/use-sucursal';
+import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
 type CartItem = {
   id: string;
   productoId: string;
   productoNombre: string;
-  libras: string;
+  pesoBruto: string;
+  numeroSacos: string;
+  taraPorSaco: string;
   precioPorLibra: string;
+  factorConversionOro: number;
 };
+
+function computeDerived(item: { pesoBruto: string; numeroSacos: string; taraPorSaco: string; precioPorLibra: string; factorConversionOro: number }) {
+  const pesoBruto = Number(item.pesoBruto) || 0;
+  const numeroSacos = Number(item.numeroSacos) || 0;
+  const taraPorSaco = Number(item.taraPorSaco) || 0;
+  const precioPorLibra = Number(item.precioPorLibra) || 0;
+  const taraTotal = numeroSacos * taraPorSaco;
+  const pesoNeto = Math.max(0, pesoBruto - taraTotal);
+  const quintalesOro = (pesoNeto / 100) * (item.factorConversionOro || 1);
+  const subtotal = pesoNeto * precioPorLibra;
+  return { pesoNeto, quintalesOro, subtotal };
+}
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -26,14 +44,12 @@ function todayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-function decimalOrZero(input: string) {
-  const value = Number(input);
-  return Number.isFinite(value) ? value : 0;
-}
 
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
 export default function PurchasesPanel() {
+  const roleGuardStatus = useModuleGuard('purchases');
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
@@ -46,12 +62,14 @@ export default function PurchasesPanel() {
   const [rawbtEnabled, setRawbtEnabled] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [newClientName, setNewClientName] = useState('');
+  const [clientModalOpen, setClientModalOpen] = useState(false);
 
   const [saldoInicial, setSaldoInicial] = useState('');
 
   const [itemProductoId, setItemProductoId] = useState('');
-  const [itemLibras, setItemLibras] = useState('');
+  const [itemPesoBruto, setItemPesoBruto] = useState('');
+  const [itemNumeroSacos, setItemNumeroSacos] = useState('');
+  const [itemTaraPorSaco, setItemTaraPorSaco] = useState('');
   const [itemPrice, setItemPrice] = useState('');
 
   const fetchProductos = useCallback(async () => {
@@ -62,6 +80,7 @@ export default function PurchasesPanel() {
     if (!itemProductoId && data.length > 0) {
       setItemProductoId(data[0].id);
       setItemPrice(String(Number(data[0].precioPorLibra).toFixed(2)));
+      setItemTaraPorSaco(data[0].taraPorSaco !== null && data[0].taraPorSaco !== undefined ? String(data[0].taraPorSaco) : '');
     }
   }, [itemProductoId]);
 
@@ -76,19 +95,22 @@ export default function PurchasesPanel() {
   }, [selectedClientId]);
 
   const fetchLedger = useCallback(async () => {
-    const response = await fetch(`/api/ledger?businessDate=${businessDate}`, { cache: 'no-store' });
+    const response = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });
     const data = await parseApiResponse<LedgerDTO>(response);
     setLedger(data);
     setSaldoInicial(data.balance.saldoInicial.toFixed(2));
-  }, [businessDate]);
+  }, [businessDate, sucursalId]);
 
   const fetchTransactions = useCallback(async () => {
-    const response = await fetch(`/api/purchase-transactions?businessDate=${businessDate}`, { cache: 'no-store' });
+    const response = await fetch(`/api/purchase-transactions?businessDate=${businessDate}&sucursalId=${sucursalId}`, {
+      cache: 'no-store',
+    });
     const data = await parseApiResponse<{ businessDate: string | null; transactions: PurchaseTransactionDTO[] }>(response);
     setTransactions(data.transactions);
-  }, [businessDate]);
+  }, [businessDate, sucursalId]);
 
   const refresh = useCallback(async () => {
+    if (!sucursalId) return;
     try {
       setLoading(true);
       setError(null);
@@ -98,7 +120,7 @@ export default function PurchasesPanel() {
     } finally {
       setLoading(false);
     }
-  }, [fetchClients, fetchLedger, fetchProductos, fetchTransactions]);
+  }, [fetchClients, fetchLedger, fetchProductos, fetchTransactions, sucursalId]);
 
   useEffect(() => {
     void refresh();
@@ -114,33 +136,13 @@ export default function PurchasesPanel() {
   }
 
   const cartTotal = useMemo(
-    () =>
-      cart.reduce((sum, item) => {
-        const libras = decimalOrZero(item.libras);
-        const precioPorLibra = decimalOrZero(item.precioPorLibra);
-        return sum + libras * precioPorLibra;
-      }, 0),
+    () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
     [cart],
   );
 
-  async function createClient(event: FormEvent) {
-    event.preventDefault();
-    try {
-      setLoading(true);
-      const response = await fetch('/api/clients', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nombre: newClientName }),
-      });
-      const client = await parseApiResponse<ClientDTO>(response);
-      setClients((current) => [client, ...current]);
-      setSelectedClientId(client.id);
-      setNewClientName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error creando cliente');
-    } finally {
-      setLoading(false);
-    }
+  function handleClientCreated(client: ClientDTO) {
+    setClients((current) => [client, ...current]);
+    setSelectedClientId(client.id);
   }
 
   function addItemToCart(event: FormEvent) {
@@ -153,6 +155,7 @@ export default function PurchasesPanel() {
     }
 
     const precioPorLibra = itemPrice || String(Number(producto.precioPorLibra).toFixed(2));
+    const taraPorSaco = itemTaraPorSaco || String(producto.taraPorSaco ?? 0);
 
     setCart((current) => [
       ...current,
@@ -160,16 +163,21 @@ export default function PurchasesPanel() {
         id: crypto.randomUUID(),
         productoId: producto.id,
         productoNombre: producto.nombre,
-        libras: itemLibras,
+        pesoBruto: itemPesoBruto,
+        numeroSacos: itemNumeroSacos || '0',
+        taraPorSaco,
         precioPorLibra,
+        factorConversionOro: producto.factorConversionOro ?? 1,
       },
     ]);
 
-    setItemLibras('');
+    setItemPesoBruto('');
+    setItemNumeroSacos('');
     setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
+    setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
   }
 
-  function updateCartItem(id: string, field: 'libras' | 'precioPorLibra', value: string) {
+  function updateCartItem(id: string, field: 'pesoBruto' | 'numeroSacos' | 'taraPorSaco' | 'precioPorLibra', value: string) {
     setCart((current) => current.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   }
 
@@ -198,10 +206,13 @@ export default function PurchasesPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           businessDate,
+          sucursalId,
           clientId: selectedClientId,
           items: cart.map((item) => ({
             productoId: item.productoId,
-            libras: Number(item.libras),
+            pesoBruto: Number(item.pesoBruto),
+            numeroSacos: Number(item.numeroSacos) || 0,
+            taraPorSaco: Number(item.taraPorSaco) || 0,
             precioPorLibra: Number(item.precioPorLibra),
           })),
         }),
@@ -223,7 +234,7 @@ export default function PurchasesPanel() {
       await fetch('/api/ledger/initial-balance', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ businessDate, saldoInicial: Number(saldoInicial) }),
+        body: JSON.stringify({ businessDate, sucursalId, saldoInicial: Number(saldoInicial) }),
       }).then(parseApiResponse);
       await refresh();
     } catch (err) {
@@ -290,6 +301,8 @@ export default function PurchasesPanel() {
     }
   }
 
+  if (roleGuardStatus !== 'allowed') return null;
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -300,15 +313,20 @@ export default function PurchasesPanel() {
       <section className="card-grid">
         <article className="card half">
           <div className="row" style={{ gap: '12px 24px' }}>
-            <label style={{ gridColumn: 'span 4' }}>
+            <label style={{ gridColumn: 'span 6' }}>
+              Sucursal
+              <select value={sucursalId} onChange={(event) => setSucursalId(event.target.value)}>
+                {sucursales.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>
+                    {sucursal.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
               Fecha de negocio
               <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
             </label>
-            <div style={{ gridColumn: 'span 3', alignSelf: 'end' }}>
-              <button className="btn-primary" onClick={() => void refresh()} type="button">
-                Recargar
-              </button>
-            </div>
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
@@ -336,28 +354,32 @@ export default function PurchasesPanel() {
 
         <article className="card half">
           <h3>Cliente</h3>
-          <form onSubmit={(event) => void createClient(event)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 8' }}>
-              Nuevo cliente
-              <input value={newClientName} onChange={(event) => setNewClientName(event.target.value)} placeholder="Nombre del cliente" />
-            </label>
-            <div style={{ gridColumn: 'span 4', alignSelf: 'end' }}>
-              <button className="btn-primary" type="submit">
-                Crear cliente
+          <label style={{ marginTop: 8 }}>
+            Cliente para la compra
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                value={selectedClientId}
+                onChange={(event) => setSelectedClientId(event.target.value)}
+                style={{ flex: 1 }}
+              >
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.esGeneral ? `${client.nombre} (general)` : client.nombre}
+                  </option>
+                ))}
+              </select>
+              <button className="btn-secondary" type="button" onClick={() => setClientModalOpen(true)} style={{ flexShrink: 0 }}>
+                + Nuevo cliente
               </button>
             </div>
-          </form>
-          <label style={{ marginTop: 12 }}>
-            Cliente para la compra
-            <select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)}>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.esGeneral ? `${client.nombre} (general)` : client.nombre}
-                </option>
-              ))}
-            </select>
           </label>
         </article>
+
+        <ClientQuickCreateModal
+          open={clientModalOpen}
+          onClose={() => setClientModalOpen(false)}
+          onCreated={handleClientCreated}
+        />
 
         <article className="card wide">
           <h3>Agregar item al carrito</h3>
@@ -372,6 +394,7 @@ export default function PurchasesPanel() {
                   onClick={() => {
                     setItemProductoId(producto.id);
                     setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
+                    setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
                   }}
                   style={{
                     padding: '12px 10px',
@@ -395,14 +418,45 @@ export default function PurchasesPanel() {
           </div>
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
-            <label style={{ gridColumn: 'span 6' }}>
-              Libras
-              <input value={itemLibras} onChange={(event) => setItemLibras(event.target.value)} type="number" step="0.01" required />
+            <label style={{ gridColumn: 'span 3' }}>
+              Peso bruto (lb)
+              <input value={itemPesoBruto} onChange={(event) => setItemPesoBruto(event.target.value)} type="number" step="0.01" required />
             </label>
-            <label style={{ gridColumn: 'span 6' }}>
+            <label style={{ gridColumn: 'span 3' }}>
+              Número de sacos
+              <input value={itemNumeroSacos} onChange={(event) => setItemNumeroSacos(event.target.value)} type="number" step="1" min="0" />
+            </label>
+            <label style={{ gridColumn: 'span 3' }}>
+              Tara / saco (lb)
+              <input value={itemTaraPorSaco} onChange={(event) => setItemTaraPorSaco(event.target.value)} type="number" step="0.01" />
+            </label>
+            <label style={{ gridColumn: 'span 3' }}>
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
+            {(() => {
+              const producto = productos.find((entry) => entry.id === itemProductoId);
+              const preview = computeDerived({
+                pesoBruto: itemPesoBruto,
+                numeroSacos: itemNumeroSacos,
+                taraPorSaco: itemTaraPorSaco,
+                precioPorLibra: itemPrice,
+                factorConversionOro: producto?.factorConversionOro ?? 1,
+              });
+              return (
+                <div style={{ gridColumn: 'span 12', display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-soft)' }}>
+                  <span>
+                    Peso neto: <strong style={{ color: 'var(--text-main)' }}>{preview.pesoNeto.toFixed(2)} lb</strong>
+                  </span>
+                  <span>
+                    Quintales oro: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesOro.toFixed(2)}</strong>
+                  </span>
+                  <span>
+                    Subtotal: <strong style={{ color: 'var(--text-main)' }}>L {preview.subtotal.toFixed(2)}</strong>
+                  </span>
+                </div>
+              );
+            })()}
             <div style={{ gridColumn: 'span 12' }}>
               <button className="btn-primary" type="submit" disabled={!itemProductoId}>
                 Agregar al carrito
@@ -418,7 +472,7 @@ export default function PurchasesPanel() {
               <p style={{ color: 'var(--text-soft)', margin: 0 }}>Aún no agregaste items al carrito.</p>
             ) : (
               cart.map((item) => {
-                const subtotal = decimalOrZero(item.libras) * decimalOrZero(item.precioPorLibra);
+                const derived = computeDerived(item);
                 return (
                   <div
                     key={item.id}
@@ -436,16 +490,35 @@ export default function PurchasesPanel() {
                       </button>
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <label style={{ flex: '1 1 100px' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Libras</span>
+                      <label style={{ flex: '1 1 90px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Peso bruto</span>
                         <input
-                          value={item.libras}
-                          onChange={(event) => updateCartItem(item.id, 'libras', event.target.value)}
+                          value={item.pesoBruto}
+                          onChange={(event) => updateCartItem(item.id, 'pesoBruto', event.target.value)}
                           type="number"
                           step="0.01"
                         />
                       </label>
-                      <label style={{ flex: '1 1 100px' }}>
+                      <label style={{ flex: '1 1 80px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Sacos</span>
+                        <input
+                          value={item.numeroSacos}
+                          onChange={(event) => updateCartItem(item.id, 'numeroSacos', event.target.value)}
+                          type="number"
+                          step="1"
+                          min="0"
+                        />
+                      </label>
+                      <label style={{ flex: '1 1 90px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Tara/saco</span>
+                        <input
+                          value={item.taraPorSaco}
+                          onChange={(event) => updateCartItem(item.id, 'taraPorSaco', event.target.value)}
+                          type="number"
+                          step="0.01"
+                        />
+                      </label>
+                      <label style={{ flex: '1 1 90px' }}>
                         <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Precio / libra</span>
                         <input
                           value={item.precioPorLibra}
@@ -455,8 +528,16 @@ export default function PurchasesPanel() {
                         />
                       </label>
                       <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Peso neto</div>
+                        <strong>{derived.pesoNeto.toFixed(2)} lb</strong>
+                      </div>
+                      <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Qq oro</div>
+                        <strong>{derived.quintalesOro.toFixed(2)}</strong>
+                      </div>
+                      <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Subtotal</div>
-                        <strong>L {subtotal.toFixed(2)}</strong>
+                        <strong>L {derived.subtotal.toFixed(2)}</strong>
                       </div>
                     </div>
                   </div>
@@ -510,7 +591,10 @@ export default function PurchasesPanel() {
                   <thead>
                     <tr>
                       <th>Producto</th>
-                      <th>Libras</th>
+                      <th>Peso bruto</th>
+                      <th>Sacos</th>
+                      <th>Peso neto</th>
+                      <th>Qq oro</th>
                       <th>Precio / libra</th>
                       <th>Subtotal</th>
                     </tr>
@@ -519,7 +603,10 @@ export default function PurchasesPanel() {
                     {transaction.items.map((item) => (
                       <tr key={item.id}>
                         <td>{item.productoNombre}</td>
+                        <td>{item.pesoBruto !== null && item.pesoBruto !== undefined ? item.pesoBruto.toFixed(2) : '—'}</td>
+                        <td>{item.numeroSacos ?? '—'}</td>
                         <td>{item.libras.toFixed(2)}</td>
+                        <td>{item.quintalesOro !== null && item.quintalesOro !== undefined ? item.quintalesOro.toFixed(2) : '—'}</td>
                         <td>L {item.precioPorLibra.toFixed(2)}</td>
                         <td>L {item.total.toFixed(2)}</td>
                       </tr>

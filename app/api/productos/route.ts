@@ -9,6 +9,8 @@ export async function GET() {
       productos.map((producto) => ({
         ...producto,
         precioPorLibra: Number(producto.precioPorLibra),
+        taraPorSaco: producto.taraPorSaco !== null ? Number(producto.taraPorSaco) : null,
+        factorConversionOro: producto.factorConversionOro !== null ? Number(producto.factorConversionOro) : null,
         createdAt: producto.createdAt.toISOString(),
         updatedAt: producto.updatedAt.toISOString(),
       })),
@@ -26,6 +28,8 @@ export async function POST(request: Request) {
       data: {
         nombre: payload.nombre,
         precioPorLibra: payload.precioPorLibra,
+        taraPorSaco: payload.taraPorSaco,
+        factorConversionOro: payload.factorConversionOro,
       },
     });
 
@@ -33,6 +37,8 @@ export async function POST(request: Request) {
       {
         ...producto,
         precioPorLibra: Number(producto.precioPorLibra),
+        taraPorSaco: producto.taraPorSaco !== null ? Number(producto.taraPorSaco) : null,
+        factorConversionOro: producto.factorConversionOro !== null ? Number(producto.factorConversionOro) : null,
         createdAt: producto.createdAt.toISOString(),
         updatedAt: producto.updatedAt.toISOString(),
       },

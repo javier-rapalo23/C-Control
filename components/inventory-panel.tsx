@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ProductoCargaDTO, ProductoDTO, ProductoStockDTO } from '@/types/domain';
+import type { ProductoDTO, ProductoStockDTO } from '@/types/domain';
+import { useModuleGuard } from '@/lib/use-module-guard';
+import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -10,34 +12,35 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-function todayDateString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 type ProductoStock = {
   producto: ProductoDTO;
   stock: ProductoStockDTO | null;
-  ultimaCarga: ProductoCargaDTO | null;
 };
 
 export default function InventoryPanel() {
+  const roleGuardStatus = useModuleGuard('inventory');
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, ProductoStock>>({});
-  const [cargas, setCargas] = useState<ProductoCargaDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [formProductoId, setFormProductoId] = useState('');
-  const [formDate, setFormDate] = useState(todayDateString());
-  const [formLibras, setFormLibras] = useState('');
-  const [formDescripcion, setFormDescripcion] = useState('');
+  // Productos CRUD state
+  const [productosError, setProductosError] = useState<string | null>(null);
+  const [editingProducto, setEditingProducto] = useState<{
+    id: string;
+    nombre: string;
+    precioPorLibra: string;
+    taraPorSaco: string;
+    factorConversionOro: string;
+  } | null>(null);
+  const [newProdNombre, setNewProdNombre] = useState('');
+  const [newProdPrecio, setNewProdPrecio] = useState('');
+  const [newProdTaraPorSaco, setNewProdTaraPorSaco] = useState('');
+  const [newProdFactorOro, setNewProdFactorOro] = useState('');
 
   const fetchAll = useCallback(async () => {
+    if (!sucursalId) return;
     setLoading(true);
     setError(null);
     try {
@@ -45,209 +48,268 @@ export default function InventoryPanel() {
       const prods = await parseApiResponse<ProductoDTO[]>(prodsResponse);
       setProductos(prods);
 
-      if (prods.length > 0 && !formProductoId) {
-        setFormProductoId(prods[0].id);
-      }
-
-      // Fetch stock and cargas for each producto in parallel
-      type StockApiData = { filters: unknown; ultimaCarga: ProductoCargaDTO | null; data: ProductoStockDTO };
+      // Fetch stock for each producto in parallel, scoped a la sucursal seleccionada
+      type StockApiData = { filters: unknown; data: ProductoStockDTO };
 
       const stockResults = await Promise.all(
         prods.map(async (prod) => {
-          const [stockRes, cargasRes] = await Promise.all([
-            fetch(`/api/productos/stock?productoId=${prod.id}`, { cache: 'no-store' }),
-            fetch(`/api/producto-cargas?productoId=${prod.id}`, { cache: 'no-store' }),
-          ]);
-
+          const stockRes = await fetch(`/api/productos/stock?productoId=${prod.id}&sucursalId=${sucursalId}`, {
+            cache: 'no-store',
+          });
           const stockBody = (await stockRes.json()) as { ok: boolean; data?: StockApiData };
-          const cargasBody = (await cargasRes.json()) as { ok: boolean; data?: ProductoCargaDTO[] };
-
           const stock = stockBody.ok && stockBody.data ? stockBody.data.data : null;
-          const ultimaCarga = stockBody.ok && stockBody.data ? stockBody.data.ultimaCarga : null;
-          const prodCargas = cargasBody.ok && cargasBody.data ? cargasBody.data : [];
 
-          return { prod, stock, ultimaCarga, prodCargas };
+          return { prod, stock };
         }),
       );
 
       const newStockMap: Record<string, ProductoStock> = {};
-      const allCargas: ProductoCargaDTO[] = [];
-
-      for (const { prod, stock, ultimaCarga, prodCargas } of stockResults) {
-        newStockMap[prod.id] = { producto: prod, stock, ultimaCarga };
-        allCargas.push(...prodCargas);
+      for (const { prod, stock } of stockResults) {
+        newStockMap[prod.id] = { producto: prod, stock };
       }
 
       setStockMap(newStockMap);
-      allCargas.sort((a, b) => b.businessDate.localeCompare(a.businessDate));
-      setCargas(allCargas);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando inventario');
     } finally {
       setLoading(false);
     }
-  }, [formProductoId]);
+  }, [sucursalId]);
 
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
 
-  async function registrarCarga(event: React.FormEvent) {
+  async function createProducto(event: React.FormEvent) {
     event.preventDefault();
-    if (!formProductoId) return;
     try {
       setLoading(true);
-      setError(null);
-      await fetch('/api/producto-cargas', {
+      setProductosError(null);
+      await fetch('/api/productos', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          businessDate: formDate,
-          productoId: formProductoId,
-          libras: formLibras ? Number(formLibras) : null,
-          descripcion: formDescripcion || null,
+          nombre: newProdNombre,
+          precioPorLibra: Number(newProdPrecio),
+          taraPorSaco: newProdTaraPorSaco ? Number(newProdTaraPorSaco) : undefined,
+          factorConversionOro: newProdFactorOro ? Number(newProdFactorOro) : undefined,
         }),
       }).then(parseApiResponse);
-
-      setFormLibras('');
-      setFormDescripcion('');
+      setNewProdNombre('');
+      setNewProdPrecio('');
+      setNewProdTaraPorSaco('');
+      setNewProdFactorOro('');
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error registrando envío a venta');
+      setProductosError(err instanceof Error ? err.message : 'Error creando producto');
       setLoading(false);
     }
   }
 
-  async function eliminarCarga(id: string) {
+  async function updateProducto(id: string) {
+    if (!editingProducto) return;
     try {
       setLoading(true);
-      await fetch(`/api/producto-cargas/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      setProductosError(null);
+      await fetch(`/api/productos/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          nombre: editingProducto.nombre,
+          precioPorLibra: Number(editingProducto.precioPorLibra),
+          taraPorSaco: editingProducto.taraPorSaco ? Number(editingProducto.taraPorSaco) : undefined,
+          factorConversionOro: editingProducto.factorConversionOro ? Number(editingProducto.factorConversionOro) : undefined,
+        }),
+      }).then(parseApiResponse);
+      setEditingProducto(null);
       await fetchAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error eliminando carga');
+      setProductosError(err instanceof Error ? err.message : 'Error actualizando producto');
       setLoading(false);
     }
   }
+
+  async function deleteProducto(id: string) {
+    try {
+      setLoading(true);
+      setProductosError(null);
+      await fetch(`/api/productos/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchAll();
+    } catch (err) {
+      setProductosError(err instanceof Error ? err.message : 'Error eliminando producto');
+      setLoading(false);
+    }
+  }
+
+  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">
       <section className="hero">
         <h1>Inventario</h1>
-        <p>Stock actual por producto desde el último envío a venta. Registra cuándo mandas a vender un lote.</p>
+        <p>Productos y stock actual por producto.</p>
       </section>
 
       <section className="card-grid">
-        {error ? (
-          <article className="card wide">
-            <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>
-          </article>
-        ) : null}
+        <article className="card wide">
+          <label style={{ maxWidth: 320 }}>
+            Sucursal
+            <select value={sucursalId} onChange={(event) => setSucursalId(event.target.value)}>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error ? <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p> : null}
+        </article>
 
-        {/* Stock cards por producto */}
-        {productos.map((prod) => {
-          const entry = stockMap[prod.id];
-          const totalLibras = entry?.stock?.totalLibras ?? 0;
-          const ultimaCarga = entry?.ultimaCarga ?? null;
+        {/* Productos */}
+        <article className="card wide">
+          <h3>Productos</h3>
+          {productosError ? <p style={{ color: 'var(--danger)' }}>{productosError}</p> : null}
 
-          return (
-            <article key={prod.id} className="card third kpi">
-              <div className="label">{prod.nombre}</div>
-              <div className="value">{totalLibras.toFixed(2)} lb</div>
-              {ultimaCarga ? (
-                <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 4 }}>
-                  Último envío: {ultimaCarga.businessDate}
-                  {ultimaCarga.libras !== null ? ` · ${ultimaCarga.libras.toFixed(2)} lb` : ''}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 4 }}>Sin envíos registrados</div>
+          <table className="table-like">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Precio / libra</th>
+                <th>Tara / saco</th>
+                <th>Factor oro</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productos.map((m) =>
+                editingProducto?.id === m.id ? (
+                  <tr key={m.id}>
+                    <td>
+                      <input
+                        value={editingProducto.nombre}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, nombre: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={editingProducto.precioPorLibra}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
+                        type="number"
+                        step="0.01"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={editingProducto.taraPorSaco}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, taraPorSaco: e.target.value })}
+                        type="number"
+                        step="0.01"
+                        placeholder="lb/saco"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={editingProducto.factorConversionOro}
+                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, factorConversionOro: e.target.value })}
+                        type="number"
+                        step="0.0001"
+                        placeholder="ej. 0.8"
+                      />
+                    </td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn-primary" type="button" onClick={() => void updateProducto(m.id)}>
+                        Guardar
+                      </button>
+                      <button className="btn-danger" type="button" onClick={() => setEditingProducto(null)}>
+                        Cancelar
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={m.id}>
+                    <td>{m.nombre}</td>
+                    <td>L {Number(m.precioPorLibra).toFixed(2)}</td>
+                    <td>{m.taraPorSaco !== null && m.taraPorSaco !== undefined ? `${m.taraPorSaco.toFixed(2)} lb` : '—'}</td>
+                    <td>{m.factorConversionOro !== null && m.factorConversionOro !== undefined ? m.factorConversionOro.toFixed(4) : '—'}</td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        onClick={() =>
+                          setEditingProducto({
+                            id: m.id,
+                            nombre: m.nombre,
+                            precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)),
+                            taraPorSaco: m.taraPorSaco !== null && m.taraPorSaco !== undefined ? String(m.taraPorSaco) : '',
+                            factorConversionOro:
+                              m.factorConversionOro !== null && m.factorConversionOro !== undefined ? String(m.factorConversionOro) : '',
+                          })
+                        }
+                      >
+                        Editar
+                      </button>
+                      <button className="btn-danger" type="button" onClick={() => void deleteProducto(m.id)}>
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ),
               )}
-            </article>
-          );
-        })}
+              {productos.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={5}>No hay productos registrados.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
 
-        {/* Formulario registrar envío a venta */}
-        <article className="card half">
-          <h3>Registrar envío a venta</h3>
-          <form onSubmit={(event) => void registrarCarga(event)} className="row" style={{ marginTop: 10 }}>
-            <label style={{ gridColumn: 'span 12' }}>
-              Producto
-              <select value={formProductoId} onChange={(event) => setFormProductoId(event.target.value)} required>
-                {productos.map((prod) => (
-                  <option key={prod.id} value={prod.id}>
-                    {prod.nombre}
-                  </option>
-                ))}
-              </select>
+          <h4 style={{ marginTop: 16 }}>Nuevo producto</h4>
+          <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: -4 }}>
+            Tara / saco y factor oro son opcionales: se usan para calcular peso neto y quintales oro en Compras.
+          </p>
+          <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
+            <label style={{ gridColumn: 'span 4' }}>
+              Nombre
+              <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
             </label>
-            <label style={{ gridColumn: 'span 6' }}>
-              Fecha de envío
-              <input type="date" value={formDate} onChange={(event) => setFormDate(event.target.value)} required />
+            <label style={{ gridColumn: 'span 3' }}>
+              Precio por libra
+              <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
             </label>
-            <label style={{ gridColumn: 'span 6' }}>
-              Libras enviadas
+            <label style={{ gridColumn: 'span 2' }}>
+              Tara / saco (lb)
+              <input value={newProdTaraPorSaco} onChange={(e) => setNewProdTaraPorSaco(e.target.value)} type="number" step="0.01" />
+            </label>
+            <label style={{ gridColumn: 'span 2' }}>
+              Factor oro
               <input
+                value={newProdFactorOro}
+                onChange={(e) => setNewProdFactorOro(e.target.value)}
                 type="number"
-                step="0.01"
-                placeholder="Opcional"
-                value={formLibras}
-                onChange={(event) => setFormLibras(event.target.value)}
+                step="0.0001"
+                placeholder="ej. 0.8"
               />
             </label>
-            <label style={{ gridColumn: 'span 12' }}>
-              Descripción
-              <input
-                placeholder="Opcional (ej: enviado a Fundidora XYZ)"
-                value={formDescripcion}
-                onChange={(event) => setFormDescripcion(event.target.value)}
-              />
-            </label>
-            <div style={{ gridColumn: 'span 12' }}>
-              <button className="btn-primary" type="submit" disabled={loading || !formProductoId}>
-                Registrar envío
+            <div style={{ gridColumn: 'span 1', alignSelf: 'end' }}>
+              <button className="btn-primary" type="submit" disabled={loading}>
+                Agregar
               </button>
             </div>
           </form>
         </article>
 
-        {/* Historial de cargas */}
-        <article className="card wide">
-          <h3>Historial de envíos a venta</h3>
-          {cargas.length === 0 ? (
-            <p style={{ color: 'var(--text-soft)', marginTop: 8 }}>No hay envíos registrados aún.</p>
-          ) : (
-            <table className="table-like" style={{ marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Producto</th>
-                  <th>Libras</th>
-                  <th>Descripción</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cargas.map((carga) => (
-                  <tr key={carga.id}>
-                    <td>{carga.businessDate}</td>
-                    <td>{carga.productoNombre}</td>
-                    <td>{carga.libras !== null ? `${carga.libras.toFixed(2)} lb` : '—'}</td>
-                    <td>{carga.descripcion ?? '—'}</td>
-                    <td>
-                      <button
-                        className="btn-danger"
-                        type="button"
-                        onClick={() => void eliminarCarga(carga.id)}
-                        disabled={loading}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </article>
+        {/* Stock cards por producto */}
+        {productos.map((prod) => {
+          const entry = stockMap[prod.id];
+          const totalLibras = entry?.stock?.totalLibras ?? 0;
+
+          return (
+            <article key={prod.id} className="card third kpi">
+              <div className="label">{prod.nombre}</div>
+              <div className="value">{totalLibras.toFixed(2)} lb</div>
+            </article>
+          );
+        })}
       </section>
 
       {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}

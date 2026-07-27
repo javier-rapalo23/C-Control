@@ -1,7 +1,19 @@
+export type SucursalDTO = {
+  id: string;
+  nombre: string;
+  direccion?: string | null;
+  esPrincipal: boolean;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ProductoDTO = {
   id: string;
   nombre: string;
   precioPorLibra: number;
+  taraPorSaco?: number | null;
+  factorConversionOro?: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -9,6 +21,9 @@ export type ProductoDTO = {
 export type ClientDTO = {
   id: string;
   nombre: string;
+  nombres?: string | null;
+  apellidos?: string | null;
+  claveIhcafe?: string | null;
   telefono?: string | null;
   direccion?: string | null;
   rtn?: string | null;
@@ -19,12 +34,27 @@ export type ClientDTO = {
   updatedAt: string;
 };
 
+export type ClienteOriginalDTO = {
+  id: string;
+  clientId: string;
+  nombres: string;
+  apellidos: string;
+  claveIhcafe: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PurchaseDTO = {
   id: string;
   businessDate: string;
+  sucursalId: string;
   productoId: string;
   productoNombre: string;
   precioPorLibra: number;
+  pesoBruto?: number | null;
+  numeroSacos?: number | null;
+  taraPorSaco?: number | null;
+  quintalesOro?: number | null;
   libras: number;
   total: number;
   purchaseTransactionId?: string | null;
@@ -36,6 +66,7 @@ export type PurchaseTransactionItemDTO = PurchaseDTO;
 export type PurchaseTransactionDTO = {
   id: string;
   businessDate: string;
+  sucursalId: string;
   clientId: string;
   total: number;
   createdAt: string;
@@ -47,14 +78,35 @@ export type PurchaseTransactionDTO = {
 export type SaleDTO = {
   id: string;
   businessDate: string;
-  descripcion: string;
+  sucursalId: string;
+  productoId?: string | null;
+  productoNombre?: string | null;
+  precioPorLibra?: number | null;
+  libras?: number | null;
+  descripcion?: string | null;
   monto: number;
+  saleTransactionId?: string | null;
   createdAt: string;
+};
+
+export type SaleTransactionItemDTO = SaleDTO;
+
+export type SaleTransactionDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  clientId: string;
+  total: number;
+  createdAt: string;
+  updatedAt: string;
+  client: ClientDTO;
+  items: SaleTransactionItemDTO[];
 };
 
 export type ExpenseDTO = {
   id: string;
   businessDate: string;
+  sucursalId: string;
   categoria: string;
   descripcion: string;
   monto: number;
@@ -64,6 +116,7 @@ export type ExpenseDTO = {
 export type DailyBalanceDTO = {
   id: string;
   businessDate: string;
+  sucursalId: string;
   saldoInicial: number;
   saldoActual: number;
   createdAt: string;
@@ -82,6 +135,13 @@ export type CompanySettingsDTO = {
   updatedAt: string;
 };
 
+export type ModuleAccessDTO = {
+  moduleKey: string;
+  label: string;
+  roles: string[];
+  locked: boolean;
+};
+
 export type UserDTO = {
   id: string;
   userId: string;
@@ -95,6 +155,7 @@ export type UserDTO = {
 export type ProductoCargaDTO = {
   id: string;
   businessDate: string;
+  sucursalId: string;
   productoId: string;
   productoNombre: string;
   libras: number | null;
@@ -107,10 +168,56 @@ export type ProductoStockDTO = {
   totalLibras: number;
   daily: { businessDate: string; libras: number }[];
   purchases: PurchaseDTO[];
+  sales: SaleDTO[];
+};
+
+export type EmployeeDTO = {
+  id: string;
+  nombre: string;
+  puesto: string | null;
+  telefono: string | null;
+  salario: number | null;
+  fechaIngreso: string | null;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeePaymentDTO = {
+  id: string;
+  businessDate: string;
+  employeeId: string;
+  employeeNombre: string;
+  concepto: string;
+  monto: number;
+  createdAt: string;
+};
+
+export type AttendanceDTO = {
+  id: string;
+  businessDate: string;
+  employeeId: string;
+  employeeNombre: string;
+  horaEntrada: string | null;
+  horaSalida: string | null;
+  notas: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeeAdvanceDTO = {
+  id: string;
+  businessDate: string;
+  employeeId: string;
+  employeeNombre: string;
+  monto: number;
+  motivo: string | null;
+  createdAt: string;
 };
 
 export type LedgerDTO = {
   businessDate: string;
+  sucursalId: string;
   balance: DailyBalanceDTO;
   totals: {
     totalCompras: number;

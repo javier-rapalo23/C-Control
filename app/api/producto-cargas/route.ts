@@ -2,14 +2,17 @@ import { Prisma } from '@prisma/client';
 import { handleApiError, success } from '@/lib/api-response';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { prisma } from '@/lib/prisma';
+import { resolveSucursalId } from '@/lib/ledger';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const productoId = searchParams.get('productoId');
+    const sucursalId = searchParams.get('sucursalId');
 
     const where: Prisma.ProductoCargaWhereInput = {};
     if (productoId) where.productoId = productoId;
+    if (sucursalId) where.sucursalId = sucursalId;
 
     const cargas = await prisma.productoCarga.findMany({
       where,
@@ -32,7 +35,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { businessDate, productoId, libras, descripcion } = body;
+    const { businessDate, sucursalId: sucursalIdInput, productoId, libras, descripcion } = body;
 
     if (!businessDate || !productoId) {
       return handleApiError(new Error('businessDate y productoId son requeridos'));
@@ -43,9 +46,12 @@ export async function POST(request: Request) {
       return handleApiError(new Error('Producto no encontrado'));
     }
 
+    const sucursalId = await resolveSucursalId(prisma, sucursalIdInput);
+
     const carga = await prisma.productoCarga.create({
       data: {
         businessDate: parseBusinessDate(businessDate),
+        sucursalId,
         productoId,
         productoNombre: producto.nombre,
         libras: libras !== undefined && libras !== null ? libras : null,

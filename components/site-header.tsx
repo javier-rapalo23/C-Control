@@ -4,21 +4,44 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Receipt,
+  Users,
+  Wallet,
+  Boxes,
+  Building2,
+  UserRound,
+  Wrench,
+  Menu,
+  X,
+  ChevronLeft,
+  LogOut,
+  Sun,
+  Moon,
+  type LucideIcon,
+} from 'lucide-react';
 import rControlLogo from '../app/icon.png';
+import { MODULE_DEFS, isRoleAllowed } from '@/lib/modules';
+import type { ModuleAccessDTO } from '@/types/domain';
 
 type AuthMe = {
   userId: string | null;
   role: string | null;
 };
 
-const navigationItems = [
-  { href: '/', label: 'Dashboard', roles: ['admin', 'editor', 'viewer'] },
-  { href: '/purchases', label: 'Compras', roles: null },
-  { href: '/sales', label: 'Ventas', roles: null },
-  { href: '/expenses', label: 'Reportar gastos', roles: null },
-  { href: '/inventory', label: 'Inventario', roles: null },
-  { href: '/maintenance', label: 'Mantenimiento', roles: ['admin'] },
-];
+const MODULE_ICONS: Record<string, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  purchases: ShoppingCart,
+  sales: Receipt,
+  clients: Users,
+  expenses: Wallet,
+  inventory: Boxes,
+  sucursales: Building2,
+  personnel: UserRound,
+  maintenance: Wrench,
+};
 
 export default function SiteHeader() {
   const pathname = usePathname();
@@ -29,6 +52,9 @@ export default function SiteHeader() {
   const [theme, setTheme] = useState('light');
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(MODULE_DEFS.map((def) => [def.key, def.defaultRoles])),
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -102,6 +128,20 @@ export default function SiteHeader() {
     return () => window.removeEventListener('rcontrol-auth-changed', syncAuth);
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch('/api/settings/module-access', { cache: 'no-store' });
+        const body = (await response.json()) as { ok: boolean; data?: ModuleAccessDTO[] };
+        if (body.ok && body.data) {
+          setModuleRoles(Object.fromEntries(body.data.map((m) => [m.moduleKey, m.roles])));
+        }
+      } catch {
+        // keep the default roles seeded from MODULE_DEFS
+      }
+    })();
+  }, []);
+
   async function logout() {
     setLoadingAuth(true);
     try {
@@ -130,11 +170,7 @@ export default function SiteHeader() {
           aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
           onClick={() => setIsOpen((current) => !current)}
         >
-          <span className="menu-toggle__icon" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
+          {isOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
         </button>
       </div>
 
@@ -150,11 +186,7 @@ export default function SiteHeader() {
         aria-label="Mostrar menú lateral"
         onClick={() => setCollapsed(false)}
       >
-        <span className="menu-toggle__icon" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
+        <Menu size={20} aria-hidden="true" />
       </button>
 
       <aside className={`sidenav ${isOpen ? 'sidenav--open' : ''}`}>
@@ -169,21 +201,21 @@ export default function SiteHeader() {
             aria-label="Ocultar menú lateral"
             onClick={() => setCollapsed(true)}
           >
-            «
+            <ChevronLeft size={16} aria-hidden="true" />
           </button>
         </div>
 
         <nav id="main-navigation" className="sidenav-links">
-          {navigationItems
-            .filter((item) => !item.roles || item.roles.includes(authUser.role ?? ''))
-            .map((item) => {
-              const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-              return (
-                <Link key={item.href} href={item.href} className={isActive ? 'active' : ''}>
-                  {item.label}
-                </Link>
-              );
-            })}
+          {MODULE_DEFS.filter((def) => isRoleAllowed(moduleRoles[def.key] ?? def.defaultRoles, authUser.role)).map((def) => {
+            const isActive = def.href === '/' ? pathname === '/' : pathname.startsWith(def.href);
+            const Icon = MODULE_ICONS[def.key];
+            return (
+              <Link key={def.href} href={def.href} className={`sidenav-link ${isActive ? 'active' : ''}`}>
+                {Icon ? <Icon size={18} aria-hidden="true" /> : null}
+                {def.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="sidenav-footer">
@@ -195,6 +227,7 @@ export default function SiteHeader() {
                   <span>{authUser.role}</span>
                 </div>
                 <button type="button" className="btn-secondary" onClick={() => void logout()} disabled={loadingAuth}>
+                  <LogOut size={16} aria-hidden="true" />
                   Salir
                 </button>
               </>
@@ -206,7 +239,7 @@ export default function SiteHeader() {
           </div>
 
           <button type="button" className="theme-toggle-btn" aria-label="Cambiar tema" onClick={toggleTheme}>
-            <span aria-hidden="true">{theme === 'dark' ? '🌞' : '🌜'}</span>
+            {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             <span>{theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}</span>
           </button>
         </div>

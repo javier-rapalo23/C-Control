@@ -60,7 +60,14 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
   - Elimina transacción completa (recalcula balances).
 
 - `POST /api/sales`  
-  - Registra venta. Body validado por `createSaleSchema`.
+  - Registra venta simple (sin producto). Body validado por `createSaleSchema`.
+
+- `GET /api/sale-transactions?businessDate=YYYY-MM-DD`  
+  - Lista transacciones de venta del día (con `client` e `items` de producto/libras/precio).
+- `POST /api/sale-transactions`  
+  - Crea transacción de venta compuesta (múltiples items de producto). Payload validado por `createSaleTransactionSchema`.
+- `DELETE /api/sale-transactions/:id`  
+  - Elimina transacción de venta completa (recalcula balances y stock).
 
 - `POST /api/expenses`  
   - Registra gasto. Body validado por `createExpenseSchema`.
@@ -79,7 +86,7 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - `GET /api/productos/stock?from=YYYY-MM-DD&to=YYYY-MM-DD`  
   - Si no se envía `productoId`, devuelve totales por producto en el rango.
 - `GET /api/productos/stock?productoId=ID&from=...&to=...`  
-  - Devuelve `totalLibras`, `daily` (libras por día) y `purchases` listadas.
+  - Devuelve `totalLibras` (stock neto: compras − ventas del producto), `daily` (libras netas por día) y las listas `purchases`/`sales`.
 
 - `GET /api/health`  
   - Health check minimal.

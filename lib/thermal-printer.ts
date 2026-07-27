@@ -46,22 +46,33 @@ function twoColumns(left: string, right: string) {
 export type TicketData = {
   company: { nombre: string; rtn: string; telefono: string; direccion: string };
   businessDate: string;
+  sucursalNombre?: string;
   clientNombre: string;
-  items: Array<{ productoNombre: string; libras: number; precioPorLibra: number; total: number }>;
+  items: Array<{
+    productoNombre: string;
+    libras: number;
+    precioPorLibra: number;
+    total: number;
+    pesoBruto?: number | null;
+    numeroSacos?: number | null;
+    quintalesOro?: number | null;
+  }>;
   total: number;
+  title?: string;
 };
 
 export function buildTicketBuffer(data: TicketData): Buffer {
   const dash = '-'.repeat(LINE_WIDTH);
   const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'C-CONTROL'), bold(false)];
 
-  chunks.push(text('Comprobante de Compra'));
+  chunks.push(text(data.title ?? 'Comprobante de Compra'));
   if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));
   if (data.company.telefono) chunks.push(text(`Tel: ${data.company.telefono}`));
   if (data.company.direccion) chunks.push(text(data.company.direccion));
 
   chunks.push(align('left'));
   chunks.push(text(dash));
+  if (data.sucursalNombre) chunks.push(text(`Sucursal: ${data.sucursalNombre}`));
   chunks.push(text(`Fecha: ${data.businessDate}`));
   chunks.push(text(`Cliente: ${data.clientNombre}`));
   chunks.push(text(dash));
@@ -70,6 +81,12 @@ export function buildTicketBuffer(data: TicketData): Buffer {
     chunks.push(text(item.productoNombre));
     const detail = `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`;
     chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
+    if (item.pesoBruto || item.numeroSacos || item.quintalesOro) {
+      const bruto = item.pesoBruto ? `Bruto ${item.pesoBruto.toFixed(2)}lb` : '';
+      const sacos = item.numeroSacos ? `${item.numeroSacos} sacos` : '';
+      const oro = item.quintalesOro ? `Qq oro ${item.quintalesOro.toFixed(2)}` : '';
+      chunks.push(text([bruto, sacos, oro].filter(Boolean).join('  ')));
+    }
   }
 
   chunks.push(text(dash));
@@ -88,6 +105,7 @@ export function buildTicketBuffer(data: TicketData): Buffer {
 export type SummaryData = {
   company: { nombre: string; rtn: string; telefono: string; direccion: string };
   businessDate: string;
+  sucursalNombre?: string;
   productos: Array<{ productoNombre: string; libras: number; total: number }>;
   totalCompras: number;
   totalVentas: number;
@@ -107,6 +125,7 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
 
   chunks.push(align('left'));
   chunks.push(text(dash));
+  if (data.sucursalNombre) chunks.push(text(`Sucursal: ${data.sucursalNombre}`));
   chunks.push(text(`Fecha: ${data.businessDate}`));
   chunks.push(text(dash));
 

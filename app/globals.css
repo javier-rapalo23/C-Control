@@ -142,12 +142,19 @@
 }
 
 .sidenav-links a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--text-soft);
   text-decoration: none;
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 0.95rem;
   transition: all 150ms ease;
+}
+
+.sidenav-links a svg {
+  flex-shrink: 0;
 }
 
 .sidenav-links a:hover {
@@ -236,6 +243,10 @@
   font-size: 0.85rem;
 }
 .btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   background: var(--surface-alt);
   color: var(--text-main);
 }
@@ -279,18 +290,6 @@
 .menu-toggle:hover {
   transform: none;
   box-shadow: var(--shadow-md);
-}
-.menu-toggle__icon {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.menu-toggle__icon span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--text-main);
 }
 
 .sidenav-overlay {
@@ -338,6 +337,33 @@ h3 {
 .hero {
   color: var(--text-main);
   margin-bottom: 24px;
+}
+
+.personnel-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.personnel-tabs a {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 150ms ease;
+}
+
+.personnel-tabs a:hover {
+  color: var(--text-main);
+}
+
+.personnel-tabs a.active {
+  background: var(--ring);
+  color: white;
 }
 
 .hero--brand {

@@ -37,7 +37,7 @@ export async function DELETE(_: Request, { params }: Params) {
         }
       }
 
-      await recalculateDailyBalance(tx, existing.businessDate.toISOString().slice(0, 10));
+      await recalculateDailyBalance(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
       return existing;
     });
 

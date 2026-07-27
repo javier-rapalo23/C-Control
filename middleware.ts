@@ -35,6 +35,14 @@ function requiredRole(pathname: string, method: string): UserRole {
     return 'admin';
   }
 
+  if (pathname.startsWith('/api/employees')) {
+    return 'admin';
+  }
+
+  if (pathname === '/api/settings/module-access' && method !== 'GET') {
+    return 'admin';
+  }
+
   if (method === 'DELETE') {
     return 'admin';
   }

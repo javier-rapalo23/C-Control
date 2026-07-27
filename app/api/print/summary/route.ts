@@ -6,11 +6,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const businessDate = typeof body?.businessDate === 'string' ? body.businessDate : null;
+    const sucursalId = typeof body?.sucursalId === 'string' ? body.sucursalId : null;
     if (!businessDate) {
       return failure('VALIDATION_ERROR', 'businessDate es requerido', 400);
     }
 
-    const { buffer, company } = await buildSummaryForDate(businessDate);
+    const { buffer, company } = await buildSummaryForDate(businessDate, sucursalId);
 
     if (!company.printerIp) {
       return failure(

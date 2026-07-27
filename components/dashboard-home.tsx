@@ -4,7 +4,8 @@ import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { CompanySettingsDTO, LedgerDTO, ProductoDTO } from '@/types/domain';
-import { useRoleGuard } from '@/lib/use-role-guard';
+import { useModuleGuard } from '@/lib/use-module-guard';
+import { useSucursal } from '@/lib/use-sucursal';
 import rControlLogo from '../app/icon.png';
 
 type DailyStockEntry = { businessDate: string; libras: number };
@@ -35,7 +36,8 @@ function todayDateString() {
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
 export default function DashboardHome() {
-  const roleGuardStatus = useRoleGuard((role) => role !== 'comprador', '/purchases');
+  const roleGuardStatus = useModuleGuard('dashboard', '/purchases');
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,9 +55,10 @@ export default function DashboardHome() {
   const [printingSummary, setPrintingSummary] = useState(false);
 
   const fetchLedger = useCallback(async () => {
+    if (!sucursalId) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/ledger?businessDate=${businessDate}`, { cache: 'no-store' });
+      const res = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });
       const data = await parseApiResponse<LedgerDTO>(res);
       setLedger(data);
       setError(null);
@@ -64,7 +67,7 @@ export default function DashboardHome() {
     } finally {
       setLoading(false);
     }
-  }, [businessDate]);
+  }, [businessDate, sucursalId]);
 
   useEffect(() => {
     void fetchLedger();
@@ -85,7 +88,7 @@ export default function DashboardHome() {
       setPrintingSummary(true);
 
       if (rawbtEnabled) {
-        const { payloadB64 } = await fetch(`/api/print/summary/data?businessDate=${businessDate}`, {
+        const { payloadB64 } = await fetch(`/api/print/summary/data?businessDate=${businessDate}&sucursalId=${sucursalId}`, {
           cache: 'no-store',
         }).then(parseApiResponse<{ payloadB64: string }>);
         window.location.href = `rawbt:base64,${payloadB64}`;
@@ -95,7 +98,7 @@ export default function DashboardHome() {
       const { jobId } = await fetch('/api/print/summary', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ businessDate }),
+        body: JSON.stringify({ businessDate, sucursalId }),
       }).then(parseApiResponse<{ jobId: string; status: string }>);
 
       const deadline = Date.now() + 20000;
@@ -219,15 +222,20 @@ export default function DashboardHome() {
       <section className="card-grid">
         <article className="card wide">
           <div className="row">
-            <label style={{ gridColumn: 'span 4' }}>
+            <label style={{ gridColumn: 'span 6' }}>
+              Sucursal
+              <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+                {sucursales.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>
+                    {sucursal.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ gridColumn: 'span 6' }}>
               Fecha de negocio
               <input type="date" value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} />
             </label>
-            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
-              <button className="btn-primary" onClick={() => void fetchLedger()}>
-                Recargar
-              </button>
-            </div>
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
@@ -318,6 +326,7 @@ export default function DashboardHome() {
                     setStockResult(null);
                     const qs = new URLSearchParams();
                     if (productoQuery.trim()) qs.set('productoId', productoQuery.trim());
+                    if (sucursalId) qs.set('sucursalId', sucursalId);
                     if (fromDate) qs.set('from', fromDate);
                     if (toDate) qs.set('to', toDate);
                     const res = await fetch(`/api/productos/stock?${qs.toString()}`, { cache: 'no-store' });

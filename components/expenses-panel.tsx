@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { LedgerDTO } from '@/types/domain';
+import { useModuleGuard } from '@/lib/use-module-guard';
+import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -19,6 +21,8 @@ function todayDateString() {
 }
 
 export default function ExpensesPanel() {
+  const roleGuardStatus = useModuleGuard('expenses');
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,9 +33,10 @@ export default function ExpensesPanel() {
   const [expenseAmount, setExpenseAmount] = useState('');
 
   const fetchLedger = useCallback(async () => {
+    if (!sucursalId) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/ledger?businessDate=${businessDate}`, { cache: 'no-store' });
+      const res = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });
       const data = await parseApiResponse<LedgerDTO>(res);
       setLedger(data);
       setError(null);
@@ -40,7 +45,7 @@ export default function ExpensesPanel() {
     } finally {
       setLoading(false);
     }
-  }, [businessDate]);
+  }, [businessDate, sucursalId]);
 
   useEffect(() => {
     void fetchLedger();
@@ -53,7 +58,13 @@ export default function ExpensesPanel() {
       await fetch('/api/expenses', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ businessDate, categoria: expenseCategory, descripcion: expenseDescription, monto: Number(expenseAmount) }),
+        body: JSON.stringify({
+          businessDate,
+          sucursalId,
+          categoria: expenseCategory,
+          descripcion: expenseDescription,
+          monto: Number(expenseAmount),
+        }),
       }).then(parseApiResponse);
       setExpenseDescription('');
       setExpenseAmount('');
@@ -77,6 +88,8 @@ export default function ExpensesPanel() {
     }
   }
 
+  if (roleGuardStatus !== 'allowed') return null;
+
   return (
     <main className="page-shell">
       <h1>Reportar gastos</h1>
@@ -84,15 +97,20 @@ export default function ExpensesPanel() {
 
       <section className="card" style={{ marginTop: 12 }}>
         <div className="row">
-          <label style={{ gridColumn: 'span 4' }}>
+          <label style={{ gridColumn: 'span 6' }}>
+            Sucursal
+            <select value={sucursalId} onChange={(event) => setSucursalId(event.target.value)}>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ gridColumn: 'span 6' }}>
             Fecha de negocio
             <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
           </label>
-          <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
-            <button className="btn-primary" type="button" onClick={() => void fetchLedger()}>
-              Recargar
-            </button>
-          </div>
         </div>
       </section>
 

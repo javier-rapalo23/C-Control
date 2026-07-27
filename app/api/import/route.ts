@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { handleApiError, success } from '@/lib/api-response';
 import { parseBusinessDate } from '@/lib/business-date';
 import { prisma } from '@/lib/prisma';
-import { recalculateDailyBalance } from '@/lib/ledger';
+import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 
 type ImportMaterial = {
   id?: string;
@@ -150,6 +150,8 @@ export async function POST(request: Request) {
       throw new Error('materials cannot be empty');
     }
 
+    const sucursalId = await resolveSucursalId(prisma);
+
     const mobileIdToName = new Map<string, string>();
 
     for (const item of payload.materials) {
@@ -193,6 +195,7 @@ export async function POST(request: Request) {
       const businessDate = parseBusinessDate(ledger.businessDate);
       const purchaseRows: Array<{
         businessDate: Date;
+        sucursalId: string;
         productoId: string;
         productoNombre: string;
         precioPorLibra: Prisma.Decimal;
@@ -201,21 +204,23 @@ export async function POST(request: Request) {
       }> = [];
       const saleRows: Array<{
         businessDate: Date;
+        sucursalId: string;
         descripcion: string;
         monto: Prisma.Decimal;
       }> = [];
       const expenseRows: Array<{
         businessDate: Date;
+        sucursalId: string;
         categoria: string;
         descripcion: string;
         monto: Prisma.Decimal;
       }> = [];
 
       await prisma.$transaction(async (tx) => {
-        await tx.purchase.deleteMany({ where: { businessDate } });
-        await tx.purchaseTransaction.deleteMany({ where: { businessDate } });
-        await tx.sale.deleteMany({ where: { businessDate } });
-        await tx.expense.deleteMany({ where: { businessDate } });
+        await tx.purchase.deleteMany({ where: { businessDate, sucursalId } });
+        await tx.purchaseTransaction.deleteMany({ where: { businessDate, sucursalId } });
+        await tx.sale.deleteMany({ where: { businessDate, sucursalId } });
+        await tx.expense.deleteMany({ where: { businessDate, sucursalId } });
 
         for (const purchase of ledger.purchases ?? []) {
           const materialNameFromId = purchase.materialId ? mobileIdToName.get(purchase.materialId) : undefined;
@@ -255,6 +260,7 @@ export async function POST(request: Request) {
 
           purchaseRows.push({
             businessDate,
+            sucursalId,
             productoId: producto.id,
             productoNombre: producto.nombre,
             precioPorLibra: new Prisma.Decimal(precioPorLibra),
@@ -274,6 +280,7 @@ export async function POST(request: Request) {
 
           saleRows.push({
             businessDate,
+            sucursalId,
             descripcion,
             monto: new Prisma.Decimal(monto),
           });
@@ -291,6 +298,7 @@ export async function POST(request: Request) {
 
           expenseRows.push({
             businessDate,
+            sucursalId,
             categoria,
             descripcion,
             monto: new Prisma.Decimal(monto),
@@ -312,7 +320,7 @@ export async function POST(request: Request) {
         }
       });
 
-      await recalculateDailyBalance(prisma, ledger.businessDate);
+      await recalculateDailyBalance(prisma, ledger.businessDate, sucursalId);
 
       importedDays += 1;
     }

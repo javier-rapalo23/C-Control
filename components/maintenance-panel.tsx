@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ClientDTO, CompanySettingsDTO, ProductoDTO, UserDTO } from '@/types/domain';
-import { useRoleGuard } from '@/lib/use-role-guard';
+import type { ClientDTO, CompanySettingsDTO, ModuleAccessDTO, UserDTO } from '@/types/domain';
+import { useModuleGuard } from '@/lib/use-module-guard';
+import { ROLE_KEYS } from '@/lib/modules';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -11,7 +12,13 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-type Section = 'empresa' | 'usuarios' | 'roles' | 'productos' | 'clientes';
+type Section = 'empresa' | 'usuarios' | 'roles' | 'permisos' | 'clientes';
+
+const ROLE_LABELS: Record<string, string> = {
+  editor: 'Editor',
+  viewer: 'Visualizador',
+  comprador: 'Comprador',
+};
 
 type UserForm = { userId: string; nombre: string; password: string; role: string };
 const emptyUserForm: UserForm = { userId: '', nombre: '', password: '', role: 'viewer' };
@@ -46,7 +53,7 @@ const ROLES = [
 ];
 
 export default function MaintenancePanel() {
-  const roleGuardStatus = useRoleGuard((role) => role === 'admin');
+  const roleGuardStatus = useModuleGuard('maintenance');
   const [section, setSection] = useState<Section>('empresa');
 
   // --- Company ---
@@ -72,13 +79,11 @@ export default function MaintenancePanel() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // --- Productos ---
-  const [productos, setProductos] = useState<ProductoDTO[]>([]);
-  const [productosLoading, setProductosLoading] = useState(false);
-  const [productosError, setProductosError] = useState<string | null>(null);
-  const [editingProducto, setEditingProducto] = useState<{ id: string; nombre: string; precioPorLibra: string } | null>(null);
-  const [newProdNombre, setNewProdNombre] = useState('');
-  const [newProdPrecio, setNewProdPrecio] = useState('');
+  // --- Module access ---
+  const [modules, setModules] = useState<ModuleAccessDTO[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
+  const [modulesSuccess, setModulesSuccess] = useState(false);
 
   // --- Clients ---
   const [clients, setClients] = useState<ClientDTO[]>([]);
@@ -124,17 +129,17 @@ export default function MaintenancePanel() {
     }
   }, []);
 
-  const fetchProductos = useCallback(async () => {
+  const fetchModules = useCallback(async () => {
     try {
-      setProductosLoading(true);
-      const res = await fetch('/api/productos', { cache: 'no-store' });
-      const data = await parseApiResponse<ProductoDTO[]>(res);
-      setProductos(data);
-      setProductosError(null);
+      setModulesLoading(true);
+      const res = await fetch('/api/settings/module-access', { cache: 'no-store' });
+      const data = await parseApiResponse<ModuleAccessDTO[]>(res);
+      setModules(data);
+      setModulesError(null);
     } catch (err) {
-      setProductosError(err instanceof Error ? err.message : 'Error cargando productos');
+      setModulesError(err instanceof Error ? err.message : 'Error cargando permisos');
     } finally {
-      setProductosLoading(false);
+      setModulesLoading(false);
     }
   }, []);
 
@@ -161,8 +166,8 @@ export default function MaintenancePanel() {
   }, [section, fetchUsers]);
 
   useEffect(() => {
-    if (section === 'productos') void fetchProductos();
-  }, [section, fetchProductos]);
+    if (section === 'permisos') void fetchModules();
+  }, [section, fetchModules]);
 
   useEffect(() => {
     if (section === 'clientes') void fetchClients();
@@ -261,54 +266,39 @@ export default function MaintenancePanel() {
     }
   }
 
-  // --- Productos CRUD ---
+  // --- Module access ---
 
-  async function createProducto(event: React.FormEvent) {
-    event.preventDefault();
-    try {
-      setProductosLoading(true);
-      await fetch('/api/productos', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nombre: newProdNombre, precioPorLibra: Number(newProdPrecio) }),
-      }).then(parseApiResponse);
-      setNewProdNombre('');
-      setNewProdPrecio('');
-      await fetchProductos();
-    } catch (err) {
-      setProductosError(err instanceof Error ? err.message : 'Error creando producto');
-    } finally {
-      setProductosLoading(false);
-    }
+  function toggleModuleRole(moduleKey: string, role: string) {
+    setModules((current) =>
+      current.map((m) =>
+        m.moduleKey === moduleKey
+          ? { ...m, roles: m.roles.includes(role) ? m.roles.filter((r) => r !== role) : [...m.roles, role] }
+          : m,
+      ),
+    );
   }
 
-  async function updateProducto(id: string) {
-    if (!editingProducto) return;
+  async function saveModules() {
     try {
-      setProductosLoading(true);
-      await fetch(`/api/productos/${id}`, {
+      setModulesLoading(true);
+      setModulesError(null);
+      setModulesSuccess(false);
+      const payload = {
+        modules: modules.filter((m) => !m.locked).map((m) => ({ moduleKey: m.moduleKey, roles: m.roles })),
+      };
+      const res = await fetch('/api/settings/module-access', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ nombre: editingProducto.nombre, precioPorLibra: Number(editingProducto.precioPorLibra) }),
-      }).then(parseApiResponse);
-      setEditingProducto(null);
-      await fetchProductos();
+        body: JSON.stringify(payload),
+      });
+      const data = await parseApiResponse<ModuleAccessDTO[]>(res);
+      setModules(data);
+      setModulesSuccess(true);
+      setTimeout(() => setModulesSuccess(false), 3000);
     } catch (err) {
-      setProductosError(err instanceof Error ? err.message : 'Error actualizando producto');
+      setModulesError(err instanceof Error ? err.message : 'Error guardando permisos');
     } finally {
-      setProductosLoading(false);
-    }
-  }
-
-  async function deleteProducto(id: string) {
-    try {
-      setProductosLoading(true);
-      await fetch(`/api/productos/${id}`, { method: 'DELETE' }).then(parseApiResponse);
-      await fetchProductos();
-    } catch (err) {
-      setProductosError(err instanceof Error ? err.message : 'Error eliminando producto');
-    } finally {
-      setProductosLoading(false);
+      setModulesLoading(false);
     }
   }
 
@@ -387,7 +377,7 @@ export default function MaintenancePanel() {
       </section>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['empresa', 'usuarios', 'roles', 'productos', 'clientes'] as Section[]).map((s) => (
+        {(['empresa', 'usuarios', 'roles', 'permisos', 'clientes'] as Section[]).map((s) => (
           <button
             key={s}
             type="button"
@@ -400,8 +390,8 @@ export default function MaintenancePanel() {
                 ? 'Usuarios'
                 : s === 'roles'
                   ? 'Roles'
-                  : s === 'productos'
-                    ? 'Productos'
+                  : s === 'permisos'
+                    ? 'Permisos'
                     : 'Clientes'}
           </button>
         ))}
@@ -618,92 +608,62 @@ export default function MaintenancePanel() {
         </section>
       ) : null}
 
-      {/* ── PRODUCTOS ── */}
-      {section === 'productos' ? (
+      {/* ── PERMISOS ── */}
+      {section === 'permisos' ? (
         <section className="card">
-          <h3>Productos</h3>
-          {productosError ? <p style={{ color: 'var(--danger)' }}>{productosError}</p> : null}
+          <h3>Permisos por módulo</h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: 13, marginBottom: 12 }}>
+            Elige qué roles pueden acceder a cada módulo. El rol <strong>admin</strong> siempre tiene acceso total y
+            Mantenimiento siempre es exclusivo de admin, para evitar quedar bloqueado del sistema.
+          </p>
+          {modulesError ? <p style={{ color: 'var(--danger)' }}>{modulesError}</p> : null}
+          {modulesSuccess ? <p style={{ color: 'var(--ok, green)' }}>Guardado correctamente.</p> : null}
 
           <table className="table-like">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Precio / libra</th>
-                <th>Acciones</th>
+                <th>Módulo</th>
+                <th>Admin</th>
+                {ROLE_KEYS.map((role) => (
+                  <th key={role}>{ROLE_LABELS[role]}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {productos.map((m) =>
-                editingProducto?.id === m.id ? (
-                  <tr key={m.id}>
-                    <td>
+              {modules.map((m) => (
+                <tr key={m.moduleKey}>
+                  <td>
+                    <strong>{m.label}</strong>
+                    {m.locked ? <span style={{ color: 'var(--text-soft)', fontSize: 12 }}> (fijo)</span> : null}
+                  </td>
+                  <td>
+                    <input type="checkbox" checked disabled />
+                  </td>
+                  {ROLE_KEYS.map((role) => (
+                    <td key={role}>
                       <input
-                        value={editingProducto.nombre}
-                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, nombre: e.target.value })}
+                        type="checkbox"
+                        checked={m.roles.includes(role)}
+                        disabled={m.locked}
+                        onChange={() => toggleModuleRole(m.moduleKey, role)}
                       />
                     </td>
-                    <td>
-                      <input
-                        value={editingProducto.precioPorLibra}
-                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
-                        type="number"
-                        step="0.01"
-                      />
-                    </td>
-                    <td style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn-primary" type="button" onClick={() => void updateProducto(m.id)}>
-                        Guardar
-                      </button>
-                      <button className="btn-danger" type="button" onClick={() => setEditingProducto(null)}>
-                        Cancelar
-                      </button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={m.id}>
-                    <td>{m.nombre}</td>
-                    <td>L {Number(m.precioPorLibra).toFixed(2)}</td>
-                    <td style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className="btn-primary"
-                        type="button"
-                        onClick={() =>
-                          setEditingProducto({ id: m.id, nombre: m.nombre, precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)) })
-                        }
-                      >
-                        Editar
-                      </button>
-                      <button className="btn-danger" type="button" onClick={() => void deleteProducto(m.id)}>
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ),
-              )}
-              {productos.length === 0 && !productosLoading ? (
+                  ))}
+                </tr>
+              ))}
+              {modules.length === 0 && !modulesLoading ? (
                 <tr>
-                  <td colSpan={3}>No hay productos registrados.</td>
+                  <td colSpan={2 + ROLE_KEYS.length}>Cargando módulos...</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
 
-          <h4 style={{ marginTop: 16 }}>Nuevo producto</h4>
-          <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 6' }}>
-              Nombre
-              <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
-            </label>
-            <label style={{ gridColumn: 'span 4' }}>
-              Precio por libra
-              <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
-            </label>
-            <div style={{ gridColumn: 'span 2', alignSelf: 'end' }}>
-              <button className="btn-primary" type="submit" disabled={productosLoading}>
-                Agregar
-              </button>
-            </div>
-          </form>
+          <div style={{ marginTop: 16 }}>
+            <button className="btn-primary" type="button" onClick={() => void saveModules()} disabled={modulesLoading}>
+              {modulesLoading ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
         </section>
       ) : null}
 

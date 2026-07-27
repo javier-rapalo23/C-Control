@@ -3,11 +3,12 @@ import { createPurchaseTransactionSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { recalculateDailyBalance } from '@/lib/ledger';
+import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 
 function mapTransaction(transaction: {
   id: string;
   businessDate: Date;
+  sucursalId: string;
   clientId: string;
   total: Prisma.Decimal;
   createdAt: Date;
@@ -27,9 +28,14 @@ function mapTransaction(transaction: {
   items: Array<{
     id: string;
     businessDate: Date;
+    sucursalId: string;
     productoId: string;
     productoNombre: string;
     precioPorLibra: Prisma.Decimal;
+    pesoBruto: Prisma.Decimal | null;
+    numeroSacos: number | null;
+    taraPorSaco: Prisma.Decimal | null;
+    quintalesOro: Prisma.Decimal | null;
     libras: Prisma.Decimal;
     total: Prisma.Decimal;
     purchaseTransactionId: string | null;
@@ -39,6 +45,7 @@ function mapTransaction(transaction: {
   return {
     id: transaction.id,
     businessDate: toBusinessDateString(transaction.businessDate),
+    sucursalId: transaction.sucursalId,
     clientId: transaction.clientId,
     total: Number(transaction.total),
     createdAt: transaction.createdAt.toISOString(),
@@ -56,9 +63,14 @@ function mapTransaction(transaction: {
     items: transaction.items.map((item) => ({
       id: item.id,
       businessDate: toBusinessDateString(item.businessDate),
+      sucursalId: item.sucursalId,
       productoId: item.productoId,
       productoNombre: item.productoNombre,
       precioPorLibra: Number(item.precioPorLibra),
+      pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
+      numeroSacos: item.numeroSacos,
+      taraPorSaco: item.taraPorSaco !== null ? Number(item.taraPorSaco) : null,
+      quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
       libras: Number(item.libras),
       total: Number(item.total),
       purchaseTransactionId: item.purchaseTransactionId,
@@ -71,11 +83,10 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const businessDateParam = searchParams.get('businessDate');
-    const where = businessDateParam
-      ? {
-          businessDate: parseBusinessDate(businessDateParam),
-        }
-      : undefined;
+    const sucursalIdParam = searchParams.get('sucursalId');
+    const where: { businessDate?: Date; sucursalId?: string } = {};
+    if (businessDateParam) where.businessDate = parseBusinessDate(businessDateParam);
+    if (sucursalIdParam) where.sucursalId = sucursalIdParam;
 
     const transactions = await prisma.purchaseTransaction.findMany({
       where,
@@ -105,6 +116,8 @@ export async function POST(request: Request) {
         throw new Error('Client not found');
       }
 
+      const sucursalId = await resolveSucursalId(tx, payload.sucursalId);
+
       const items = await Promise.all(
         payload.items.map(async (item) => {
           const producto = await tx.producto.findUnique({ where: { id: item.productoId } });
@@ -113,14 +126,37 @@ export async function POST(request: Request) {
           }
 
           const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
-          const libras = new Prisma.Decimal(item.libras);
+
+          let pesoBruto: Prisma.Decimal | null = null;
+          let numeroSacos: number | null = null;
+          let taraPorSaco: Prisma.Decimal | null = null;
+          let libras: Prisma.Decimal;
+
+          if (item.pesoBruto !== undefined) {
+            pesoBruto = new Prisma.Decimal(item.pesoBruto);
+            numeroSacos = item.numeroSacos ?? 0;
+            taraPorSaco = new Prisma.Decimal(item.taraPorSaco ?? Number(producto.taraPorSaco ?? 0));
+            const taraTotal = taraPorSaco.mul(numeroSacos);
+            libras = pesoBruto.sub(taraTotal);
+          } else {
+            libras = new Prisma.Decimal(item.libras ?? 0);
+          }
+
+          const factorConversionOro = new Prisma.Decimal(producto.factorConversionOro ?? 1);
+          const quintalesOro = libras.div(100).mul(factorConversionOro);
+
           const total = precioPorLibra.mul(libras);
 
           return {
             businessDate: parseBusinessDate(payload.businessDate),
+            sucursalId,
             productoId: producto.id,
             productoNombre: producto.nombre,
             precioPorLibra,
+            pesoBruto,
+            numeroSacos,
+            taraPorSaco,
+            quintalesOro,
             libras,
             total,
           };
@@ -132,6 +168,7 @@ export async function POST(request: Request) {
       const createdTransaction = await tx.purchaseTransaction.create({
         data: {
           businessDate: parseBusinessDate(payload.businessDate),
+          sucursalId,
           clientId: client.id,
           total,
           items: {
@@ -144,7 +181,7 @@ export async function POST(request: Request) {
         },
       });
 
-      await recalculateDailyBalance(tx, payload.businessDate);
+      await recalculateDailyBalance(tx, payload.businessDate, sucursalId);
       return createdTransaction;
     });
 
