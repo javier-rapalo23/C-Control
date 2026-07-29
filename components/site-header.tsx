@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  ChevronDown,
   LogOut,
   Sun,
   Moon,
@@ -43,6 +44,24 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   maintenance: Wrench,
 };
 
+const MAINTENANCE_SUBLINKS = [
+  { href: '/maintenance/users', label: 'Usuarios' },
+  { href: '/maintenance/roles', label: 'Roles y permisos' },
+  { href: '/clients', label: 'Clientes' },
+  { href: '/sucursales', label: 'Sucursales' },
+];
+
+function isMaintenanceGroupPath(pathname: string) {
+  return (
+    pathname === '/maintenance' ||
+    pathname.startsWith('/maintenance/') ||
+    pathname === '/clients' ||
+    pathname.startsWith('/clients/') ||
+    pathname === '/sucursales' ||
+    pathname.startsWith('/sucursales/')
+  );
+}
+
 export default function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,6 +71,7 @@ export default function SiteHeader() {
   const [theme, setTheme] = useState('light');
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(() => isMaintenanceGroupPath(pathname));
   const [moduleRoles, setModuleRoles] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(MODULE_DEFS.map((def) => [def.key, def.defaultRoles])),
   );
@@ -206,9 +226,51 @@ export default function SiteHeader() {
         </div>
 
         <nav id="main-navigation" className="sidenav-links">
-          {MODULE_DEFS.filter((def) => isRoleAllowed(moduleRoles[def.key] ?? def.defaultRoles, authUser.role)).map((def) => {
-            const isActive = def.href === '/' ? pathname === '/' : pathname.startsWith(def.href);
+          {MODULE_DEFS.filter(
+            (def) =>
+              def.key !== 'clients' &&
+              def.key !== 'sucursales' &&
+              isRoleAllowed(moduleRoles[def.key] ?? def.defaultRoles, authUser.role),
+          ).map((def) => {
             const Icon = MODULE_ICONS[def.key];
+
+            if (def.key === 'maintenance') {
+              const isGroupActive = pathname === def.href;
+              return (
+                <div key={def.href} className="sidenav-group">
+                  <div className={`sidenav-group-header ${isGroupActive ? 'active' : ''}`}>
+                    <Link href={def.href} className="sidenav-group-link">
+                      {Icon ? <Icon size={18} aria-hidden="true" /> : null}
+                      {def.label}
+                    </Link>
+                    <button
+                      type="button"
+                      className="sidenav-group-toggle"
+                      aria-label={maintenanceOpen ? 'Colapsar mantenimiento' : 'Expandir mantenimiento'}
+                      aria-expanded={maintenanceOpen}
+                      onClick={() => setMaintenanceOpen((current) => !current)}
+                    >
+                      <ChevronDown
+                        size={16}
+                        aria-hidden="true"
+                        style={{ transform: maintenanceOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                      />
+                    </button>
+                  </div>
+                  {maintenanceOpen ? (
+                    <div className="sidenav-subgroup">
+                      {MAINTENANCE_SUBLINKS.map((sub) => (
+                        <Link key={sub.href} href={sub.href} className={pathname === sub.href ? 'active' : ''}>
+                          {sub.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
+            const isActive = def.href === '/' ? pathname === '/' : pathname.startsWith(def.href);
             return (
               <Link key={def.href} href={def.href} className={`sidenav-link ${isActive ? 'active' : ''}`}>
                 {Icon ? <Icon size={18} aria-hidden="true" /> : null}

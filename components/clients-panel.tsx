@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, ClienteOriginalDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
+import MaintenanceTabs from '@/components/maintenance-tabs';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -209,6 +210,8 @@ export default function ClientsPanel() {
         <h1>Clientes</h1>
         <p>Datos de clientes y, cuando aplica, sus productores originales ligados a la clave IHCAFE.</p>
       </section>
+
+      <MaintenanceTabs />
 
       <section className="card-grid">
         {error ? (

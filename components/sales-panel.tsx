@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
@@ -327,8 +328,14 @@ export default function SalesPanel() {
                   </option>
                 ))}
               </select>
-              <button className="btn-secondary" type="button" onClick={() => setClientModalOpen(true)} style={{ flexShrink: 0 }}>
-                + Nuevo cliente
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setClientModalOpen(true)}
+                aria-label="Nuevo cliente"
+                style={{ flexShrink: 0, width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Plus size={16} aria-hidden="true" />
               </button>
             </div>
           </label>

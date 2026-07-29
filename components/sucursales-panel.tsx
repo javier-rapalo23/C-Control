@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { SucursalDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
+import MaintenanceTabs from '@/components/maintenance-tabs';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -96,6 +97,8 @@ export default function SucursalesPanel() {
         <h1>Sucursales</h1>
         <p>Administra las sucursales de la empresa. Cada compra, venta, gasto e inventario queda ligado a una sucursal.</p>
       </section>
+
+      <MaintenanceTabs />
 
       <section className="card-grid">
         {error ? (

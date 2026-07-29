@@ -1,5 +1,5 @@
-import MaintenancePanel from '@/components/maintenance-panel';
+import MaintenanceCompanyPanel from '@/components/maintenance-company-panel';
 
 export default function MaintenancePage() {
-  return <MaintenancePanel />;
+  return <MaintenanceCompanyPanel />;
 }

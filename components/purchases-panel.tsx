@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Plus, Save } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
@@ -331,13 +332,21 @@ export default function PurchasesPanel() {
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
         <article className="card half">
-          <label>
-            Saldo Inicial
-            <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
-          </label>
-          <button className="btn-primary" type="button" onClick={() => void saveSaldoInicial()} style={{ marginTop: 16 }}>
-            Guardar
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
+            <label style={{ flex: 1 }}>
+              Saldo Inicial
+              <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
+            </label>
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={() => void saveSaldoInicial()}
+              aria-label="Guardar saldo inicial"
+              style={{ flexShrink: 0, width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Save size={16} aria-hidden="true" />
+            </button>
+          </div>
         </article>
         <article className="card third kpi">
           <div className="label">Saldo actual</div>
@@ -368,8 +377,14 @@ export default function PurchasesPanel() {
                   </option>
                 ))}
               </select>
-              <button className="btn-secondary" type="button" onClick={() => setClientModalOpen(true)} style={{ flexShrink: 0 }}>
-                + Nuevo cliente
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setClientModalOpen(true)}
+                aria-label="Nuevo cliente"
+                style={{ flexShrink: 0, width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Plus size={16} aria-hidden="true" />
               </button>
             </div>
           </label>
@@ -418,19 +433,19 @@ export default function PurchasesPanel() {
           </div>
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Peso bruto (lb)
               <input value={itemPesoBruto} onChange={(event) => setItemPesoBruto(event.target.value)} type="number" step="0.01" required />
             </label>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Número de sacos
               <input value={itemNumeroSacos} onChange={(event) => setItemNumeroSacos(event.target.value)} type="number" step="1" min="0" />
             </label>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Tara / saco (lb)
               <input value={itemTaraPorSaco} onChange={(event) => setItemTaraPorSaco(event.target.value)} type="number" step="0.01" />
             </label>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>

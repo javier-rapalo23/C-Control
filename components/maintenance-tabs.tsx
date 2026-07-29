@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const tabs = [
-  { href: '/personnel', label: 'Empleados' },
-  { href: '/personnel/attendance', label: 'Entrada y salida' },
-  { href: '/personnel/advances', label: 'Anticipos' },
-  { href: '/personnel/payments', label: 'Pagos' },
+  { href: '/maintenance', label: 'Empresa' },
+  { href: '/maintenance/users', label: 'Usuarios' },
+  { href: '/maintenance/roles', label: 'Roles y permisos' },
+  { href: '/clients', label: 'Clientes' },
+  { href: '/sucursales', label: 'Sucursales' },
 ];
 
-export default function PersonnelTabs() {
+export default function MaintenanceTabs() {
   const pathname = usePathname();
 
   return (

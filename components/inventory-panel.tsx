@@ -268,19 +268,19 @@ export default function InventoryPanel() {
             Tara / saco y factor oro son opcionales: se usan para calcular peso neto y quintales oro en Compras.
           </p>
           <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 4' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Nombre
               <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
             </label>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Precio por libra
               <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
             </label>
-            <label style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Tara / saco (lb)
               <input value={newProdTaraPorSaco} onChange={(e) => setNewProdTaraPorSaco(e.target.value)} type="number" step="0.01" />
             </label>
-            <label style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
               Factor oro
               <input
                 value={newProdFactorOro}
@@ -290,7 +290,7 @@ export default function InventoryPanel() {
                 placeholder="ej. 0.8"
               />
             </label>
-            <div style={{ gridColumn: 'span 1', alignSelf: 'end' }}>
+            <div style={{ gridColumn: 'span 12', marginTop: 4 }}>
               <button className="btn-primary" type="submit" disabled={loading}>
                 Agregar
               </button>

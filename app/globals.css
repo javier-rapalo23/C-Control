@@ -167,6 +167,86 @@
   color: white;
 }
 
+.sidenav-group-header {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sidenav-group-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  color: var(--text-soft);
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 150ms ease;
+}
+
+.sidenav-group-link:hover {
+  background: var(--surface-alt);
+  color: var(--text-main);
+}
+
+.sidenav-group-header.active .sidenav-group-link {
+  background: var(--ring);
+  color: white;
+}
+
+.sidenav-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  border-radius: 8px;
+}
+
+.sidenav-group-toggle:hover {
+  background: var(--surface-alt);
+  color: var(--text-main);
+  transform: none;
+  box-shadow: none;
+}
+
+.sidenav-group-toggle svg {
+  transition: transform 150ms ease;
+}
+
+.sidenav-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 20px;
+  margin-top: 2px;
+}
+
+.sidenav-subgroup a {
+  color: var(--text-soft);
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  transition: all 150ms ease;
+}
+
+.sidenav-subgroup a:hover {
+  background: var(--surface-alt);
+  color: var(--text-main);
+}
+
+.sidenav-subgroup a.active {
+  background: var(--ring);
+  color: white;
+}
+
 .sidenav-footer {
   display: flex;
   flex-direction: column;
@@ -339,14 +419,14 @@ h3 {
   margin-bottom: 24px;
 }
 
-.personnel-tabs {
+.page-tabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
 
-.personnel-tabs a {
+.page-tabs a {
   padding: 8px 14px;
   border-radius: 8px;
   background: var(--surface-alt);
@@ -357,11 +437,11 @@ h3 {
   transition: all 150ms ease;
 }
 
-.personnel-tabs a:hover {
+.page-tabs a:hover {
   color: var(--text-main);
 }
 
-.personnel-tabs a.active {
+.page-tabs a.active {
   background: var(--ring);
   color: white;
 }
@@ -607,6 +687,10 @@ button:hover {
   .card.half,
   .card.third {
     grid-column: span 12;
+  }
+
+  .stack-on-tablet {
+    grid-column: span 12 !important;
   }
 }
 

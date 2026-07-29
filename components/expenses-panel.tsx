@@ -153,7 +153,7 @@ export default function ExpensesPanel() {
                 <td>
                   {item.categoria} - {item.descripcion}
                 </td>
-                <td>$ {item.monto.toFixed(2)}</td>
+                <td>L {item.monto.toFixed(2)}</td>
                 <td>
                   <button className="btn-danger" onClick={() => void removeEntry(item.id)}>
                     Eliminar

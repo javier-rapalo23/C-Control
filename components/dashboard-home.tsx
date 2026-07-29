@@ -215,7 +215,7 @@ export default function DashboardHome() {
         <div>
           <h1>Control Diario — Resumen</h1>
           {companyName ? <h2 style={{ fontWeight: 600, marginBottom: 2 }}>{companyName}</h2> : null}
-          <p>Resumen rápido del día y accesos a los módulos de Compras, Ventas y Gastos.</p>
+          <p>Resumen rápido del día.</p>
         </div>
       </section>
 
@@ -256,7 +256,7 @@ export default function DashboardHome() {
         <article className="card wide">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h3>Resumen de compras del día</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {/* <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-soft)' }}>
                 <input type="checkbox" checked={rawbtEnabled} onChange={(e) => toggleRawbt(e.target.checked)} />
                 Imprimir con RawBT en este dispositivo
@@ -264,7 +264,7 @@ export default function DashboardHome() {
               <button className="btn-primary" type="button" disabled={printingSummary} onClick={() => void printSummary()}>
                 {printingSummary ? 'Imprimiendo...' : 'Imprimir resumen del día'}
               </button>
-            </div>
+            </div> */}
           </div>
           <table className="table-like" style={{ marginTop: 8 }}>
             <thead>
