@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ProductoDTO, ProductoStockDTO } from '@/types/domain';
+import type { ProductoCategoria, ProductoDTO, ProductoStockDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 
@@ -30,11 +30,13 @@ export default function InventoryPanel() {
   const [editingProducto, setEditingProducto] = useState<{
     id: string;
     nombre: string;
+    categoria: ProductoCategoria | '';
     precioPorLibra: string;
     taraPorSaco: string;
     factorConversionOro: string;
   } | null>(null);
   const [newProdNombre, setNewProdNombre] = useState('');
+  const [newProdCategoria, setNewProdCategoria] = useState<ProductoCategoria | ''>('');
   const [newProdPrecio, setNewProdPrecio] = useState('');
   const [newProdTaraPorSaco, setNewProdTaraPorSaco] = useState('');
   const [newProdFactorOro, setNewProdFactorOro] = useState('');
@@ -90,12 +92,14 @@ export default function InventoryPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           nombre: newProdNombre,
+          categoria: newProdCategoria || undefined,
           precioPorLibra: Number(newProdPrecio),
           taraPorSaco: newProdTaraPorSaco ? Number(newProdTaraPorSaco) : undefined,
           factorConversionOro: newProdFactorOro ? Number(newProdFactorOro) : undefined,
         }),
       }).then(parseApiResponse);
       setNewProdNombre('');
+      setNewProdCategoria('');
       setNewProdPrecio('');
       setNewProdTaraPorSaco('');
       setNewProdFactorOro('');
@@ -116,6 +120,7 @@ export default function InventoryPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           nombre: editingProducto.nombre,
+          categoria: editingProducto.categoria || null,
           precioPorLibra: Number(editingProducto.precioPorLibra),
           taraPorSaco: editingProducto.taraPorSaco ? Number(editingProducto.taraPorSaco) : undefined,
           factorConversionOro: editingProducto.factorConversionOro ? Number(editingProducto.factorConversionOro) : undefined,
@@ -174,6 +179,7 @@ export default function InventoryPanel() {
             <thead>
               <tr>
                 <th>Nombre</th>
+                <th>Categoría</th>
                 <th>Precio / libra</th>
                 <th>Tara / saco</th>
                 <th>Factor oro</th>
@@ -189,6 +195,18 @@ export default function InventoryPanel() {
                         value={editingProducto.nombre}
                         onChange={(e) => setEditingProducto((prev) => prev && { ...prev, nombre: e.target.value })}
                       />
+                    </td>
+                    <td>
+                      <select
+                        value={editingProducto.categoria}
+                        onChange={(e) =>
+                          setEditingProducto((prev) => prev && { ...prev, categoria: e.target.value as ProductoCategoria | '' })
+                        }
+                      >
+                        <option value="">Sin categoría</option>
+                        <option value="uva">En Uva</option>
+                        <option value="pergamino">En Pergamino</option>
+                      </select>
                     </td>
                     <td>
                       <input
@@ -228,6 +246,7 @@ export default function InventoryPanel() {
                 ) : (
                   <tr key={m.id}>
                     <td>{m.nombre}</td>
+                    <td>{m.categoria === 'uva' ? 'En Uva' : m.categoria === 'pergamino' ? 'En Pergamino' : '—'}</td>
                     <td>L {Number(m.precioPorLibra).toFixed(2)}</td>
                     <td>{m.taraPorSaco !== null && m.taraPorSaco !== undefined ? `${m.taraPorSaco.toFixed(2)} lb` : '—'}</td>
                     <td>{m.factorConversionOro !== null && m.factorConversionOro !== undefined ? m.factorConversionOro.toFixed(4) : '—'}</td>
@@ -239,6 +258,7 @@ export default function InventoryPanel() {
                           setEditingProducto({
                             id: m.id,
                             nombre: m.nombre,
+                            categoria: m.categoria ?? '',
                             precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)),
                             taraPorSaco: m.taraPorSaco !== null && m.taraPorSaco !== undefined ? String(m.taraPorSaco) : '',
                             factorConversionOro:
@@ -257,7 +277,7 @@ export default function InventoryPanel() {
               )}
               {productos.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={5}>No hay productos registrados.</td>
+                  <td colSpan={6}>No hay productos registrados.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -268,11 +288,19 @@ export default function InventoryPanel() {
             Tara / saco y factor oro son opcionales: se usan para calcular peso neto y quintales oro en Compras.
           </p>
           <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Nombre
               <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+              Categoría
+              <select value={newProdCategoria} onChange={(e) => setNewProdCategoria(e.target.value as ProductoCategoria | '')}>
+                <option value="">Sin categoría</option>
+                <option value="uva">En Uva</option>
+                <option value="pergamino">En Pergamino</option>
+              </select>
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
               Precio por libra
               <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
             </label>

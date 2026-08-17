@@ -32,6 +32,7 @@ model Sucursal {
 model Producto {
   id                  String          @id @default(cuid())
   nombre              String          @unique
+  categoria           String?
   precioPorLibra      Decimal         @db.Decimal(10, 2)
   taraPorSaco         Decimal?        @db.Decimal(6, 2)
   factorConversionOro Decimal?        @db.Decimal(6, 4)

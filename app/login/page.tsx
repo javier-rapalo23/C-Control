@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import rControlLogo from '../icon.png';
 
 type LoginResponse =
@@ -17,8 +18,9 @@ type LoginResponse =
 
 export default function LoginPage() {
   const router = useRouter();
-  const [userId, setUserId] = useState('admin');
+  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -66,7 +68,7 @@ export default function LoginPage() {
             <input
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
-              placeholder="admin"
+              placeholder=""
               autoComplete="username"
               required
             />
@@ -74,14 +76,39 @@ export default function LoginPage() {
 
           <label>
             Contraseña
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder=""
+                autoComplete="current-password"
+                required
+                style={{ width: '100%', paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                style={{
+                  position: 'absolute',
+                  right: 4,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  padding: 0,
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-soft)',
+                }}
+              >
+                {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+              </button>
+            </div>
           </label>
 
           {error ? <p className="login-error">{error}</p> : null}

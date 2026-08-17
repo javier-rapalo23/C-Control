@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     const producto = await prisma.producto.create({
       data: {
         nombre: payload.nombre,
+        categoria: payload.categoria,
         precioPorLibra: payload.precioPorLibra,
         taraPorSaco: payload.taraPorSaco,
         factorConversionOro: payload.factorConversionOro,

@@ -8,9 +8,12 @@ export type SucursalDTO = {
   updatedAt: string;
 };
 
+export type ProductoCategoria = 'uva' | 'pergamino';
+
 export type ProductoDTO = {
   id: string;
   nombre: string;
+  categoria?: ProductoCategoria | null;
   precioPorLibra: number;
   taraPorSaco?: number | null;
   factorConversionOro?: number | null;

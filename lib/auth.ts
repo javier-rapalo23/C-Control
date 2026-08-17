@@ -5,8 +5,10 @@ export type AuthUserConfig = {
   password?: string;
 };
 
+// No default admin fallback: admin access must come from a DB-managed User
+// record (Mantenimiento > Usuarios). A hardcoded admin/admin123 credential
+// here would be a permanent, non-revocable backdoor into the system.
 const defaultAuthUsers: Record<string, AuthUserConfig> = {
-  admin: { role: 'admin', password: 'admin123' },
   operador1: { role: 'editor', password: 'operador123' },
   consulta1: { role: 'viewer', password: 'consulta123' },
   comprador1: { role: 'comprador', password: 'comprador123' },

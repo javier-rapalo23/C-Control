@@ -48,6 +48,24 @@ function todayDateString() {
 
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
+const CAFE_UVA_KEYWORDS = ['uva', 'verde', 'requema', 'guacuco', 'repaso'];
+const CAFE_PERGAMINO_KEYWORDS = ['mojado', 'oriado', 'seco', 'segundo', 'corriente'];
+
+const DIACRITICS_PATTERN = new RegExp('[\\u0300-\\u036f]', 'g');
+
+function normalizeNombre(nombre: string) {
+  return nombre.toLowerCase().normalize('NFD').replace(DIACRITICS_PATTERN, '');
+}
+
+function classifyProducto(producto: ProductoDTO): 'uva' | 'pergamino' | 'otros' {
+  if (producto.categoria === 'uva' || producto.categoria === 'pergamino') return producto.categoria;
+
+  const normalized = normalizeNombre(producto.nombre);
+  if (CAFE_UVA_KEYWORDS.some((keyword) => normalized.includes(keyword))) return 'uva';
+  if (CAFE_PERGAMINO_KEYWORDS.some((keyword) => normalized.includes(keyword))) return 'pergamino';
+  return 'otros';
+}
+
 export default function PurchasesPanel() {
   const roleGuardStatus = useModuleGuard('purchases');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
@@ -140,6 +158,23 @@ export default function PurchasesPanel() {
     () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
     [cart],
   );
+
+  const productoGroups = useMemo(() => {
+    const uva: ProductoDTO[] = [];
+    const pergamino: ProductoDTO[] = [];
+    const otros: ProductoDTO[] = [];
+    for (const producto of productos) {
+      const group = classifyProducto(producto);
+      if (group === 'uva') uva.push(producto);
+      else if (group === 'pergamino') pergamino.push(producto);
+      else otros.push(producto);
+    }
+    return [
+      { label: 'En Uva', items: uva },
+      { label: 'En Pergamino', items: pergamino },
+      { label: 'Otros', items: otros },
+    ].filter((group) => group.items.length > 0);
+  }, [productos]);
 
   function handleClientCreated(client: ClientDTO) {
     setClients((current) => [client, ...current]);
@@ -399,53 +434,64 @@ export default function PurchasesPanel() {
         <article className="card wide">
           <h3>Agregar item al carrito</h3>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
-            {productos.map((producto) => {
-              const selected = itemProductoId === producto.id;
-              return (
-                <button
-                  key={producto.id}
-                  type="button"
-                  onClick={() => {
-                    setItemProductoId(producto.id);
-                    setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
-                    setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
-                  }}
-                  style={{
-                    padding: '12px 10px',
-                    border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
-                    borderRadius: 'var(--radius)',
-                    background: selected ? 'var(--ring-soft)' : 'var(--surface)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'border-color 0.15s, background 0.15s',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
-                    {producto.nombre}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                    L {Number(producto.precioPorLibra).toFixed(2)} / lb
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {productoGroups.map((group) => (
+            <div key={group.label} style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                {group.label}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+                {group.items.map((producto) => {
+                  const selected = itemProductoId === producto.id;
+                  return (
+                    <button
+                      key={producto.id}
+                      type="button"
+                      onClick={() => {
+                        setItemProductoId(producto.id);
+                        setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
+                        setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
+                      }}
+                      style={{
+                        padding: '12px 10px',
+                        border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
+                        borderRadius: 'var(--radius)',
+                        background: selected ? 'var(--ring-soft)' : 'var(--surface)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'border-color 0.15s, background 0.15s',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
+                        {producto.nombre}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
+                        L {Number(producto.precioPorLibra).toFixed(2)} / lb
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Peso bruto (lb)
               <input value={itemPesoBruto} onChange={(event) => setItemPesoBruto(event.target.value)} type="number" step="0.01" required />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Número de sacos
               <input value={itemNumeroSacos} onChange={(event) => setItemNumeroSacos(event.target.value)} type="number" step="1" min="0" />
             </label>
+            {/* Tara / saco: por ahora se toma del valor configurado en el producto (itemTaraPorSaco se sigue
+                sincronizando en el estado). Descomentar este campo si se vuelve a necesitar editable por línea
+                en el grid de compras.
             <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Tara / saco (lb)
               <input value={itemTaraPorSaco} onChange={(event) => setItemTaraPorSaco(event.target.value)} type="number" step="0.01" />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
@@ -524,6 +570,8 @@ export default function PurchasesPanel() {
                           min="0"
                         />
                       </label>
+                      {/* Tara/saco: se toma del producto al agregar el item. Descomentar si se vuelve a
+                          necesitar editable por línea en el grid de compras.
                       <label style={{ flex: '1 1 90px' }}>
                         <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Tara/saco</span>
                         <input
@@ -533,6 +581,7 @@ export default function PurchasesPanel() {
                           step="0.01"
                         />
                       </label>
+                      */}
                       <label style={{ flex: '1 1 90px' }}>
                         <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Precio / libra</span>
                         <input

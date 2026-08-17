@@ -14,7 +14,7 @@ Archivo `.env`:
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME?schema=public"
 RBAC_ENABLED="false"
-RBAC_USERS_JSON='{"admin":{"role":"admin","password":"admin123"},"operador1":{"role":"editor","password":"operador123"},"consulta1":{"role":"viewer","password":"consulta123"}}'
+RBAC_USERS_JSON='{"operador1":{"role":"editor","password":"operador123"},"consulta1":{"role":"viewer","password":"consulta123"}}'
 ```
 
 Puedes usar `.env.example` como base.
@@ -26,7 +26,7 @@ La API ahora soporta control de acceso por usuario y rol.
 - Login web en `/login` con usuario y contraseña
 - La sesion se guarda en una cookie HttpOnly llamada `rcontrol_user`
 - Header requerido cuando RBAC esta activo para llamadas directas: `x-user-id`
-- Usuarios permitidos, rol y contrasena se definen en `RBAC_USERS_JSON`
+- Los usuarios `admin` deben crearse en Mantenimiento > Usuarios (tabla `User` en la base de datos). No existe ningun usuario admin por defecto ni hardcodeado: `RBAC_USERS_JSON`/`lib/auth.ts` solo deben usarse para cuentas de prueba de rango `editor`/`viewer`/`comprador`.
 - Jerarquia de roles: `viewer < editor < admin`
 
 Reglas por endpoint/metodo:

@@ -12,8 +12,11 @@ export const createSucursalSchema = z.object({
 
 export const updateSucursalSchema = createSucursalSchema.partial();
 
+export const productoCategoriaSchema = z.enum(['uva', 'pergamino']);
+
 export const createProductoSchema = z.object({
   nombre: z.string().trim().min(2).max(120),
+  categoria: productoCategoriaSchema.nullable().optional(),
   precioPorLibra: z.number().positive(),
   taraPorSaco: z.number().min(0).optional(),
   factorConversionOro: z.number().positive().optional(),
