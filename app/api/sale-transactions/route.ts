@@ -33,6 +33,9 @@ function mapTransaction(transaction: {
     productoNombre: string | null;
     precioPorLibra: Prisma.Decimal | null;
     libras: Prisma.Decimal | null;
+    porcentajeOro: Prisma.Decimal | null;
+    quintalesOro: Prisma.Decimal | null;
+    precioPorQuintalOro: Prisma.Decimal | null;
     descripcion: string | null;
     monto: Prisma.Decimal;
     saleTransactionId: string | null;
@@ -65,6 +68,9 @@ function mapTransaction(transaction: {
       productoNombre: item.productoNombre,
       precioPorLibra: item.precioPorLibra !== null ? Number(item.precioPorLibra) : null,
       libras: item.libras !== null ? Number(item.libras) : null,
+      porcentajeOro: item.porcentajeOro !== null ? Number(item.porcentajeOro) : null,
+      quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
+      precioPorQuintalOro: item.precioPorQuintalOro !== null ? Number(item.precioPorQuintalOro) : null,
       descripcion: item.descripcion,
       monto: Number(item.monto),
       saleTransactionId: item.saleTransactionId,
@@ -119,8 +125,31 @@ export async function POST(request: Request) {
             throw new Error(`Producto not found: ${item.productoId}`);
           }
 
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
           const libras = new Prisma.Decimal(item.libras);
+
+          if (item.precioPorQuintalOro !== undefined) {
+            // Modo Oro: quintalesOro = (libras/100) * (porcentajeOro/100) / 1.25; monto = quintalesOro * precioPorQuintalOro.
+            const porcentajeOro = new Prisma.Decimal(item.porcentajeOro!);
+            const precioPorQuintalOro = new Prisma.Decimal(item.precioPorQuintalOro);
+            const quintalesVendidas = libras.div(100);
+            const quintalesOro = quintalesVendidas.mul(porcentajeOro.div(100)).div(1.25);
+            const monto = quintalesOro.mul(precioPorQuintalOro);
+
+            return {
+              businessDate: parseBusinessDate(payload.businessDate),
+              sucursalId,
+              productoId: producto.id,
+              productoNombre: producto.nombre,
+              precioPorLibra: null,
+              libras,
+              porcentajeOro,
+              quintalesOro,
+              precioPorQuintalOro,
+              monto,
+            };
+          }
+
+          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
           const monto = precioPorLibra.mul(libras);
 
           return {
@@ -130,6 +159,9 @@ export async function POST(request: Request) {
             productoNombre: producto.nombre,
             precioPorLibra,
             libras,
+            porcentajeOro: null,
+            quintalesOro: null,
+            precioPorQuintalOro: null,
             monto,
           };
         }),

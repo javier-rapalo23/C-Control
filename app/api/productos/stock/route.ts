@@ -70,6 +70,9 @@ export async function GET(request: Request) {
       businessDate: toBusinessDateString(s.businessDate),
       precioPorLibra: s.precioPorLibra !== null ? Number(s.precioPorLibra) : null,
       libras: s.libras !== null ? Number(s.libras) : null,
+      porcentajeOro: s.porcentajeOro !== null ? Number(s.porcentajeOro) : null,
+      quintalesOro: s.quintalesOro !== null ? Number(s.quintalesOro) : null,
+      precioPorQuintalOro: s.precioPorQuintalOro !== null ? Number(s.precioPorQuintalOro) : null,
       monto: Number(s.monto),
       createdAt: s.createdAt.toISOString(),
     }));

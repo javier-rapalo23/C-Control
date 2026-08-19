@@ -82,11 +82,17 @@ export const createSaleSchema = z.object({
   monto: z.number().positive(),
 });
 
-export const createSaleLineSchema = z.object({
-  productoId: z.string().min(1),
-  libras: z.number().positive(),
-  precioPorLibra: z.number().positive().optional(),
-});
+export const createSaleLineSchema = z
+  .object({
+    productoId: z.string().min(1),
+    libras: z.number().positive(),
+    precioPorLibra: z.number().positive().optional(),
+    porcentajeOro: z.number().positive().max(99.9999).optional(),
+    precioPorQuintalOro: z.number().positive().optional(),
+  })
+  .refine((data) => data.precioPorQuintalOro === undefined || data.porcentajeOro !== undefined, {
+    message: 'porcentajeOro es requerido cuando se especifica precioPorQuintalOro',
+  });
 
 export const createSaleTransactionSchema = z.object({
   businessDate: businessDateField,

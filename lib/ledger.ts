@@ -105,6 +105,9 @@ function mapSale(sale: {
   productoNombre: string | null;
   precioPorLibra: Prisma.Decimal | null;
   libras: Prisma.Decimal | null;
+  porcentajeOro: Prisma.Decimal | null;
+  quintalesOro: Prisma.Decimal | null;
+  precioPorQuintalOro: Prisma.Decimal | null;
   descripcion: string | null;
   monto: Prisma.Decimal;
   saleTransactionId: string | null;
@@ -118,6 +121,9 @@ function mapSale(sale: {
     productoNombre: sale.productoNombre,
     precioPorLibra: sale.precioPorLibra !== null ? decimalToNumber(sale.precioPorLibra) : null,
     libras: sale.libras !== null ? decimalToNumber(sale.libras) : null,
+    porcentajeOro: sale.porcentajeOro !== null ? decimalToNumber(sale.porcentajeOro) : null,
+    quintalesOro: sale.quintalesOro !== null ? decimalToNumber(sale.quintalesOro) : null,
+    precioPorQuintalOro: sale.precioPorQuintalOro !== null ? decimalToNumber(sale.precioPorQuintalOro) : null,
     descripcion: sale.descripcion,
     monto: decimalToNumber(sale.monto),
     saleTransactionId: sale.saleTransactionId,

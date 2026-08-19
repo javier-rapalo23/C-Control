@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
+import { groupProductos } from '@/lib/producto-groups';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
 type CartItem = {
@@ -47,24 +48,6 @@ function todayDateString() {
 
 
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
-
-const CAFE_UVA_KEYWORDS = ['uva', 'verde', 'requema', 'guacuco', 'repaso'];
-const CAFE_PERGAMINO_KEYWORDS = ['mojado', 'oriado', 'seco', 'segundo', 'corriente'];
-
-const DIACRITICS_PATTERN = new RegExp('[\\u0300-\\u036f]', 'g');
-
-function normalizeNombre(nombre: string) {
-  return nombre.toLowerCase().normalize('NFD').replace(DIACRITICS_PATTERN, '');
-}
-
-function classifyProducto(producto: ProductoDTO): 'uva' | 'pergamino' | 'otros' {
-  if (producto.categoria === 'uva' || producto.categoria === 'pergamino') return producto.categoria;
-
-  const normalized = normalizeNombre(producto.nombre);
-  if (CAFE_UVA_KEYWORDS.some((keyword) => normalized.includes(keyword))) return 'uva';
-  if (CAFE_PERGAMINO_KEYWORDS.some((keyword) => normalized.includes(keyword))) return 'pergamino';
-  return 'otros';
-}
 
 export default function PurchasesPanel() {
   const roleGuardStatus = useModuleGuard('purchases');
@@ -159,22 +142,7 @@ export default function PurchasesPanel() {
     [cart],
   );
 
-  const productoGroups = useMemo(() => {
-    const uva: ProductoDTO[] = [];
-    const pergamino: ProductoDTO[] = [];
-    const otros: ProductoDTO[] = [];
-    for (const producto of productos) {
-      const group = classifyProducto(producto);
-      if (group === 'uva') uva.push(producto);
-      else if (group === 'pergamino') pergamino.push(producto);
-      else otros.push(producto);
-    }
-    return [
-      { label: 'En Uva', items: uva },
-      { label: 'En Pergamino', items: pergamino },
-      { label: 'Otros', items: otros },
-    ].filter((group) => group.items.length > 0);
-  }, [productos]);
+  const productoGroups = useMemo(() => groupProductos(productos), [productos]);
 
   function handleClientCreated(client: ClientDTO) {
     setClients((current) => [client, ...current]);

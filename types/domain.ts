@@ -86,6 +86,9 @@ export type SaleDTO = {
   productoNombre?: string | null;
   precioPorLibra?: number | null;
   libras?: number | null;
+  porcentajeOro?: number | null;
+  quintalesOro?: number | null;
+  precioPorQuintalOro?: number | null;
   descripcion?: string | null;
   monto: number;
   saleTransactionId?: string | null;

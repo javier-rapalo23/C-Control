@@ -56,6 +56,8 @@ export type TicketData = {
     pesoBruto?: number | null;
     numeroSacos?: number | null;
     quintalesOro?: number | null;
+    porcentajeOro?: number | null;
+    precioPorQuintalOro?: number | null;
   }>;
   total: number;
   title?: string;
@@ -79,6 +81,16 @@ export function buildTicketBuffer(data: TicketData): Buffer {
 
   for (const item of data.items) {
     chunks.push(text(item.productoNombre));
+
+    if (item.quintalesOro != null && item.precioPorQuintalOro != null) {
+      const detail = `${item.libras.toFixed(2)} lb (${item.quintalesOro.toFixed(2)} qq oro)`;
+      chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
+      const pct = item.porcentajeOro != null ? `${item.porcentajeOro.toFixed(2)}% oro` : '';
+      const precio = `L${item.precioPorQuintalOro.toFixed(2)}/qq oro`;
+      chunks.push(text([pct, precio].filter(Boolean).join('  ')));
+      continue;
+    }
+
     const detail = `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`;
     chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
     if (item.pesoBruto || item.numeroSacos || item.quintalesOro) {
