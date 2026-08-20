@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Plus, Save } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 import { groupProductos } from '@/lib/producto-groups';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
@@ -46,11 +45,9 @@ function todayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
 export default function PurchasesPanel() {
-  const roleGuardStatus = useModuleGuard('purchases');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
@@ -304,8 +301,6 @@ export default function PurchasesPanel() {
       setLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

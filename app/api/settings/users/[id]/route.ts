@@ -1,5 +1,6 @@
 import { updateUserSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
+import { hashPassword } from '@/lib/password';
 import { prisma } from '@/lib/prisma';
 
 type Params = { params: Promise<{ id: string }> };
@@ -11,8 +12,9 @@ function formatUser(u: { id: string; userId: string; nombre: string; role: strin
 export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id } = await params;
-    const payload = updateUserSchema.parse(await request.json());
-    const user = await prisma.user.update({ where: { id }, data: payload });
+    const { password, ...rest } = updateUserSchema.parse(await request.json());
+    const data = password === undefined ? rest : { ...rest, password: await hashPassword(password) };
+    const user = await prisma.user.update({ where: { id }, data });
     return success(formatUser(user));
   } catch (error) {
     return handleApiError(error);

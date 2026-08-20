@@ -1,12 +1,8 @@
-'use client';
-
-import { useModuleGuard } from '@/lib/use-module-guard';
 import PersonnelTabs from '@/components/personnel-tabs';
+import { requireModuleAccess } from '@/lib/require-module-access';
 
-export default function PersonnelLayout({ children }: { children: React.ReactNode }) {
-  const roleGuardStatus = useModuleGuard('personnel');
-
-  if (roleGuardStatus !== 'allowed') return null;
+export default async function PersonnelLayout({ children }: { children: React.ReactNode }) {
+  await requireModuleAccess('personnel');
 
   return (
     <main className="page-shell">

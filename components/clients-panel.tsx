@@ -3,7 +3,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, ClienteOriginalDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import MaintenanceTabs from '@/components/maintenance-tabs';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -31,7 +30,6 @@ type NewOriginalForm = {
 };
 
 export default function ClientsPanel() {
-  const roleGuardStatus = useModuleGuard('clients');
   const [clients, setClients] = useState<ClientDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,8 +199,6 @@ export default function ClientsPanel() {
       setOriginalesLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

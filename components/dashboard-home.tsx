@@ -4,7 +4,6 @@ import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { CompanySettingsDTO, LedgerDTO, ProductoDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 import rControlLogo from '../app/icon.png';
 
@@ -36,7 +35,6 @@ function todayDateString() {
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
 export default function DashboardHome() {
-  const roleGuardStatus = useModuleGuard('dashboard', '/purchases');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
@@ -205,8 +203,6 @@ export default function DashboardHome() {
     }
     return Object.values(byProducto).sort((a, b) => b.total - a.total);
   })();
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

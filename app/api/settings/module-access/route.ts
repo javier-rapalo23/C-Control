@@ -1,22 +1,12 @@
 import { updateModuleAccessSchema } from '@/lib/validations';
 import { handleApiError, success, failure } from '@/lib/api-response';
+import { getModuleAccess } from '@/lib/module-access';
 import { prisma } from '@/lib/prisma';
 import { MODULE_DEFS } from '@/lib/modules';
-import type { ModuleAccessDTO } from '@/types/domain';
 
 export async function GET() {
   try {
-    const overrides = await prisma.moduleAccess.findMany();
-    const overrideByKey = new Map(overrides.map((o) => [o.moduleKey, o.roles]));
-
-    const modules: ModuleAccessDTO[] = MODULE_DEFS.map((def) => ({
-      moduleKey: def.key,
-      label: def.label,
-      locked: Boolean(def.locked),
-      roles: def.locked ? def.defaultRoles : overrideByKey.get(def.key) ?? def.defaultRoles,
-    }));
-
-    return success(modules);
+    return success(await getModuleAccess(prisma));
   } catch (error) {
     return handleApiError(error);
   }
@@ -47,17 +37,7 @@ export async function PATCH(request: Request) {
       ),
     );
 
-    const overrides = await prisma.moduleAccess.findMany();
-    const overrideByKey = new Map(overrides.map((o) => [o.moduleKey, o.roles]));
-
-    const modules: ModuleAccessDTO[] = MODULE_DEFS.map((def) => ({
-      moduleKey: def.key,
-      label: def.label,
-      locked: Boolean(def.locked),
-      roles: def.locked ? def.defaultRoles : overrideByKey.get(def.key) ?? def.defaultRoles,
-    }));
-
-    return success(modules);
+    return success(await getModuleAccess(prisma));
   } catch (error) {
     return handleApiError(error);
   }

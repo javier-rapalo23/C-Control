@@ -1,5 +1,6 @@
 import { createUserSchema } from '@/lib/validations';
 import { handleApiError, success } from '@/lib/api-response';
+import { hashPassword } from '@/lib/password';
 import { prisma } from '@/lib/prisma';
 
 function formatUser(u: { id: string; userId: string; nombre: string; role: string; activo: boolean; createdAt: Date; updatedAt: Date }) {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
       data: {
         userId: payload.userId,
         nombre: payload.nombre ?? '',
-        password: payload.password,
+        password: await hashPassword(payload.password),
         role: payload.role,
       },
     });

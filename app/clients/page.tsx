@@ -1,5 +1,8 @@
 import ClientsPanel from '@/components/clients-panel';
+import { requireModuleAccess } from '@/lib/require-module-access';
 
-export default function ClientsPage() {
+export default async function ClientsPage() {
+  await requireModuleAccess('clients');
+
   return <ClientsPanel />;
 }

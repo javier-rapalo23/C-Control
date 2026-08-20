@@ -1,12 +1,8 @@
-'use client';
-
-import { useModuleGuard } from '@/lib/use-module-guard';
 import MaintenanceTabs from '@/components/maintenance-tabs';
+import { requireModuleAccess } from '@/lib/require-module-access';
 
-export default function MaintenanceLayout({ children }: { children: React.ReactNode }) {
-  const roleGuardStatus = useModuleGuard('maintenance');
-
-  if (roleGuardStatus !== 'allowed') return null;
+export default async function MaintenanceLayout({ children }: { children: React.ReactNode }) {
+  await requireModuleAccess('maintenance');
 
   return (
     <main className="page-shell">

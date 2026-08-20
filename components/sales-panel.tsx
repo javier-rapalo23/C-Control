@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 import { groupProductos, isCafeCategoria } from '@/lib/producto-groups';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
@@ -62,7 +61,6 @@ function decimalOrZero(input: string) {
 const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
 
 export default function SalesPanel() {
-  const roleGuardStatus = useModuleGuard('sales');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
@@ -333,8 +331,6 @@ export default function SalesPanel() {
       setLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

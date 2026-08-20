@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { parseAuthUsers, type UserRole } from '@/lib/auth';
+import type { UserRole } from '@/lib/auth';
+import { SESSION_COOKIE, readSessionToken, verifySessionToken } from '@/lib/session';
 
 const roleRank: Record<UserRole, number> = {
   viewer: 1,
@@ -54,17 +55,27 @@ function requiredRole(pathname: string, method: string): UserRole {
   return 'viewer';
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (!pathname.startsWith('/api')) {
-    const hasAuthCookie = Boolean(request.cookies.get('rcontrol_user')?.value?.trim());
+  // El rol viaja firmado dentro del token, así que autorizar no requiere consultar
+  // la base — imposible desde el runtime Edge en el que corre este middleware.
+  const session = await verifySessionToken(readSessionToken(request));
 
+  if (!pathname.startsWith('/api')) {
     if (pathname === '/login') {
-      return hasAuthCookie ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next();
+      return session ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next();
     }
 
-    return hasAuthCookie ? NextResponse.next() : NextResponse.redirect(new URL('/login', request.url));
+    if (session) {
+      return NextResponse.next();
+    }
+
+    // Se limpia la cookie inválida o expirada para no dejar al usuario en un
+    // estado en el que el navegador la reenvía en cada intento.
+    const redirect = NextResponse.redirect(new URL('/login', request.url));
+    redirect.cookies.set(SESSION_COOKIE, '', { httpOnly: true, path: '/', maxAge: 0 });
+    return redirect;
   }
 
   if (pathname.startsWith('/api/auth')) {
@@ -75,41 +86,25 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // El agente de impresión se autentica con su propio token compartido.
   if (pathname.startsWith('/api/print/agent/')) {
     return NextResponse.next();
   }
 
-  const isRbacEnabled = (process.env.RBAC_ENABLED ?? 'false').toLowerCase() === 'true';
+  // Por defecto activo: dejar la API sin control de acceso solo debe ser una
+  // decisión explícita, no lo que ocurre si nadie configura la variable.
+  const isRbacEnabled = (process.env.RBAC_ENABLED ?? 'true').toLowerCase() !== 'false';
   if (!isRbacEnabled) {
     return NextResponse.next();
   }
 
-  const usersByRole = Object.fromEntries(
-    Object.entries(parseAuthUsers(process.env.RBAC_USERS_JSON)).map(([userId, config]) => [userId, config.role]),
-  ) as Record<string, UserRole>;
-  if (Object.keys(usersByRole).length === 0) {
-    return jsonError(500, 'RBAC_CONFIG_ERROR', 'RBAC_USERS_JSON is empty or invalid');
+  if (!session) {
+    return jsonError(401, 'UNAUTHORIZED', 'Sesión ausente, inválida o expirada');
   }
 
-  // allow x-user-id header or fallback to cookie `rcontrol_user`
-  const userId = request.headers.get('x-user-id')?.trim();
-  let effectiveUserId = userId;
-  if (!effectiveUserId) {
-    try {
-      const cookie = request.cookies.get('rcontrol_user');
-      if (cookie) effectiveUserId = cookie.value?.trim();
-    } catch {
-      // ignore cookie parse errors
-    }
-  }
-
-  if (!effectiveUserId) {
-    return jsonError(401, 'UNAUTHORIZED', 'Missing x-user-id header or rcontrol_user cookie');
-  }
-
-  const userRole = usersByRole[effectiveUserId];
-  if (!userRole) {
-    return jsonError(403, 'FORBIDDEN', 'User is not authorized');
+  const userRole = session.role;
+  if (!(userRole in roleRank)) {
+    return jsonError(403, 'FORBIDDEN', 'Rol de usuario no reconocido');
   }
 
   const neededRole = requiredRole(pathname, request.method);
@@ -118,7 +113,7 @@ export function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
-  response.headers.set('x-auth-user-id', effectiveUserId);
+  response.headers.set('x-auth-user-id', session.userId);
   response.headers.set('x-auth-role', userRole);
   return response;
 }

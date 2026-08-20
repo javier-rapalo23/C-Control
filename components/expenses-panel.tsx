@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { LedgerDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -21,7 +20,6 @@ function todayDateString() {
 }
 
 export default function ExpensesPanel() {
-  const roleGuardStatus = useModuleGuard('expenses');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
@@ -87,8 +85,6 @@ export default function ExpensesPanel() {
       setLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

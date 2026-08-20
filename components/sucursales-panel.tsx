@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { SucursalDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import MaintenanceTabs from '@/components/maintenance-tabs';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -13,7 +12,6 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 }
 
 export default function SucursalesPanel() {
-  const roleGuardStatus = useModuleGuard('sucursales');
   const [sucursales, setSucursales] = useState<SucursalDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,8 +86,6 @@ export default function SucursalesPanel() {
       setLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">

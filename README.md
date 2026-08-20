@@ -13,7 +13,11 @@ Archivo `.env`:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME?schema=public"
-RBAC_ENABLED="false"
+# Obligatorio en produccion: firma las cookies de sesion.
+# Generar con: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+SESSION_SECRET="..."
+# El control de acceso viene activo por defecto; solo hace falta para desactivarlo.
+RBAC_ENABLED="true"
 RBAC_USERS_JSON='{"operador1":{"role":"editor","password":"operador123"},"consulta1":{"role":"viewer","password":"consulta123"}}'
 ```
 
@@ -24,9 +28,10 @@ Puedes usar `.env.example` como base.
 La API ahora soporta control de acceso por usuario y rol.
 
 - Login web en `/login` con usuario y contraseña
-- La sesion se guarda en una cookie HttpOnly llamada `rcontrol_user`
-- Header requerido cuando RBAC esta activo para llamadas directas: `x-user-id`
+- La sesion se guarda en una cookie HttpOnly llamada `rcontrol_user`, cuyo valor es un token firmado con HMAC-SHA256 que incluye usuario, rol y expiracion (`lib/session.ts`). Requiere `SESSION_SECRET`.
+- Clientes no web: usar el `token` que devuelve `POST /api/auth/login` y enviarlo como `Authorization: Bearer <token>`. La cabecera `x-user-id` ya no autentica.
 - Los usuarios `admin` deben crearse en Mantenimiento > Usuarios (tabla `User` en la base de datos). No existe ningun usuario admin por defecto ni hardcodeado: `RBAC_USERS_JSON`/`lib/auth.ts` solo deben usarse para cuentas de prueba de rango `editor`/`viewer`/`comprador`.
+- Las contrasenas de la tabla `User` se guardan hasheadas con scrypt (`lib/password.ts`). Las contrasenas legacy en texto plano se siguen aceptando y se convierten a hash en el primer login; `pnpm hash-passwords` hace el backfill completo de una pasada.
 - Jerarquia de roles: `viewer < editor < admin`
 
 Reglas por endpoint/metodo:
@@ -41,12 +46,19 @@ Reglas por endpoint/metodo:
 Ejemplo de llamada desde app movil:
 
 ```http
+POST /api/auth/login
+Content-Type: application/json
+
+{ "userId": "operador1", "password": "operador123" }
+```
+
+```http
 POST /api/purchases
-x-user-id: operador1
+Authorization: Bearer <token devuelto por el login>
 Content-Type: application/json
 ```
 
-Si el usuario no existe en `RBAC_USERS_JSON`, la API responde `403 FORBIDDEN`.
+Sin token valido la API responde `401 UNAUTHORIZED`; con un rol insuficiente, `403 FORBIDDEN`.
 
 Para la autenticacion web, el endpoint `POST /api/auth/login` valida usuario y contrasena, y `POST /api/auth/logout` cierra la sesion.
 

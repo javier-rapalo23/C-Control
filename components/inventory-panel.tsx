@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ProductoCategoria, ProductoDTO, ProductoStockDTO } from '@/types/domain';
-import { useModuleGuard } from '@/lib/use-module-guard';
 import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -18,7 +17,6 @@ type ProductoStock = {
 };
 
 export default function InventoryPanel() {
-  const roleGuardStatus = useModuleGuard('inventory');
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, ProductoStock>>({});
@@ -145,8 +143,6 @@ export default function InventoryPanel() {
       setLoading(false);
     }
   }
-
-  if (roleGuardStatus !== 'allowed') return null;
 
   return (
     <main className="page-shell">
