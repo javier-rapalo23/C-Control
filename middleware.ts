@@ -24,19 +24,16 @@ function jsonError(status: number, code: string, message: string) {
 }
 
 function requiredRole(pathname: string, method: string): UserRole {
-  if (pathname === '/api/export') {
-    return 'admin';
-  }
-
-  if (pathname === '/api/import') {
-    return 'admin';
-  }
-
   if (pathname === '/api/ledger/initial-balance') {
     return 'admin';
   }
 
   if (pathname.startsWith('/api/employees')) {
+    return 'admin';
+  }
+
+  // Reabrir una caja cerrada anula un arqueo firmado: es privilegio de admin.
+  if (pathname === '/api/cash-sessions/reopen') {
     return 'admin';
   }
 

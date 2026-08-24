@@ -14,7 +14,7 @@ type EmployeeForm = {
   nombre: string;
   puesto: string;
   telefono: string;
-  salario: string;
+  salarioDiario: string;
   fechaIngreso: string;
 };
 
@@ -22,7 +22,7 @@ const emptyEmployeeForm: EmployeeForm = {
   nombre: '',
   puesto: '',
   telefono: '',
-  salario: '',
+  salarioDiario: '',
   fechaIngreso: '',
 };
 
@@ -57,7 +57,7 @@ export default function PersonnelEmployeesPanel() {
       nombre: employee.nombre,
       puesto: employee.puesto ?? '',
       telefono: employee.telefono ?? '',
-      salario: employee.salario !== null ? String(employee.salario) : '',
+      salarioDiario: employee.salarioDiario !== null ? String(employee.salarioDiario) : '',
       fechaIngreso: employee.fechaIngreso ?? '',
     });
   }
@@ -73,7 +73,7 @@ export default function PersonnelEmployeesPanel() {
       nombre: employeeForm.nombre,
       ...(employeeForm.puesto ? { puesto: employeeForm.puesto } : {}),
       ...(employeeForm.telefono ? { telefono: employeeForm.telefono } : {}),
-      ...(employeeForm.salario ? { salario: Number(employeeForm.salario) } : {}),
+      ...(employeeForm.salarioDiario ? { salarioDiario: Number(employeeForm.salarioDiario) } : {}),
       ...(employeeForm.fechaIngreso ? { fechaIngreso: employeeForm.fechaIngreso } : {}),
     };
     try {
@@ -170,8 +170,8 @@ export default function PersonnelEmployeesPanel() {
                   </td>
                   <td>
                     <input
-                      value={employeeForm.salario}
-                      onChange={(e) => setEmployeeForm((f) => ({ ...f, salario: e.target.value }))}
+                      value={employeeForm.salarioDiario}
+                      onChange={(e) => setEmployeeForm((f) => ({ ...f, salarioDiario: e.target.value }))}
                       type="number"
                       step="0.01"
                     />
@@ -200,7 +200,7 @@ export default function PersonnelEmployeesPanel() {
                   </td>
                   <td>{employee.puesto ?? '—'}</td>
                   <td>{employee.telefono ?? '—'}</td>
-                  <td>{employee.salario !== null ? `L ${employee.salario.toFixed(2)}` : '—'}</td>
+                  <td>{employee.salarioDiario !== null ? `L ${employee.salarioDiario.toFixed(2)}` : '—'}</td>
                   <td>{employee.fechaIngreso ?? '—'}</td>
                   <td>{employee.activo ? 'Activo' : 'Inactivo'}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
@@ -247,8 +247,8 @@ export default function PersonnelEmployeesPanel() {
           <label style={{ gridColumn: 'span 4' }}>
             Salario
             <input
-              value={employeeForm.salario}
-              onChange={(e) => setEmployeeForm((f) => ({ ...f, salario: e.target.value }))}
+              value={employeeForm.salarioDiario}
+              onChange={(e) => setEmployeeForm((f) => ({ ...f, salarioDiario: e.target.value }))}
               type="number"
               step="0.01"
             />

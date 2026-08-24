@@ -34,6 +34,7 @@
 15. [Despliegue](#15-despliegue)
 16. [Convenciones de código](#16-convenciones-de-código)
 17. [Observaciones y deuda técnica](#17-observaciones-y-deuda-técnica)
+18. [Decisiones de caja, reportes y planilla](#18-decisiones-de-caja-reportes-y-planilla)
 
 ---
 
@@ -54,17 +55,21 @@ Bloques funcionales:
 | Inventario | `/inventory` | Stock neto por producto (compras − ventas) y cargas/descargas de producto. |
 | Clientes | `/clients` | Catálogo de clientes, datos IHCAFE y "clientes originales" asociados. |
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
-| Personal | `/personnel` | Empleados, asistencia, adelantos y pagos. |
+| Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
+| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado. |
+| Reportes | `/reports` | Compras por rango, agrupadas por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
 
 **Ecuación central del negocio:**
 
 ```
-saldoActual = saldoInicial + totalVentas − totalCompras − totalGastos
+saldoActual = saldoInicial + totalVentas − totalCompras − totalGastos + ajusteCaja
 ```
 
-evaluada por `(businessDate, sucursalId)`.
+evaluada por `(businessDate, sucursalId)`. `ajusteCaja` vale 0 salvo que la caja del día se haya
+cerrado con un conteo distinto al esperado (§6.9). Los pagos y anticipos de personal entran en
+`totalGastos` mediante un gasto de categoría `Planilla` que se genera automáticamente (§18.0).
 
 ---
 
@@ -129,6 +134,7 @@ flowchart TB
 | Dominio | Recálculo de balances, resolución de sucursal, conversión de decimales, agrupación de productos | `lib/ledger.ts`, `lib/producto-groups.ts`, `lib/business-date.ts` |
 | Validación | Esquemas Zod compartidos por todas las rutas | `lib/validations.ts` |
 | Sesión | Firma/verificación HMAC del token (Edge + Node) y hashing scrypt de contraseñas (solo Node) | `lib/session.ts`, `lib/password.ts` |
+| Caja y planilla | Arqueo, bloqueo de fechas cerradas, reportes por rango y cálculo de planilla | `lib/cash-session.ts`, `lib/reports.ts`, `lib/payroll.ts` |
 | Persistencia | Cliente Prisma singleton (evita fugas de conexiones en dev con HMR) | `lib/prisma.ts` |
 | Autorización por módulo | Guard de servidor que resuelve `ModuleAccess` y redirige | `lib/require-module-access.ts`, `lib/module-access.ts` |
 | Presentación | Paneles client-side + layout con sidenav y tema claro/oscuro | `app/`, `components/` |
@@ -146,7 +152,7 @@ Los helpers viven en `lib/api-response.ts`:
 
 - `success(data, status = 200)`
 - `failure(code, message, status = 400, details?)`
-- `handleApiError(error)` → `VALIDATION_ERROR` (400) para `ZodError`, `BAD_REQUEST` (400) para `Error`, `INTERNAL_ERROR` (500) en el resto.
+- `handleApiError(error)` → `VALIDATION_ERROR` (400) para `ZodError`, `CASH_CLOSED` (409) para `CashClosedError`, `BAD_REQUEST` (400) para `Error`, `INTERNAL_ERROR` (500) en el resto.
 
 ---
 
@@ -155,18 +161,19 @@ Los helpers viven en `lib/api-response.ts`:
 ```
 c-control/
 ├── app/
-│   ├── api/                  # 48 route handlers REST
+│   ├── api/                  # 49 route handlers REST
 │   │   ├── auth/             # login · logout · me
 │   │   ├── clients/          # clientes y clientes originales (IHCAFE)
 │   │   ├── employees/        # empleados · asistencia · adelantos · pagos
 │   │   ├── expenses/         # gastos
-│   │   ├── export/ import/   # exportación y carga histórica
 │   │   ├── ledger/           # libro diario y saldo inicial
 │   │   ├── print/            # tickets, resumen, cola de trabajos y agente
 │   │   ├── producto-cargas/  # cargas/descargas de inventario
 │   │   ├── productos/        # catálogo y stock
 │   │   ├── purchases/ purchase-transactions/
 │   │   ├── sales/ sale-transactions/
+│   │   ├── cash-sessions/    # apertura, cierre y reapertura de caja
+│   │   ├── reports/          # reportes de compras por rango
 │   │   ├── settings/         # empresa · usuarios · module-access
 │   │   └── sucursales/
 │   ├── <módulo>/page.tsx     # server components: guard de módulo + panel de components/
@@ -176,7 +183,7 @@ c-control/
 ├── lib/                      # dominio, validaciones, hooks y utilidades
 ├── prisma/
 │   ├── schema.prisma
-│   └── migrations/           # 16 migraciones SQL versionadas
+│   └── migrations/           # 21 migraciones SQL versionadas
 ├── tests/api/                # pruebas Jest de route handlers
 ├── types/                    # DTOs de dominio y envolturas de API
 ├── docs/api-contract.md      # contrato para la app móvil
@@ -252,7 +259,8 @@ apellidos, clave IHCAFE) que respaldan a un cliente.
 
 Cabecera + líneas de una compra por cliente. Cada `Purchase` guarda, además del resultado
 (`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`, `quintalesOro`.
-`Purchase.purchaseTransactionId` es opcional: existen compras legacy sin cabecera.
+`Purchase.purchaseTransactionId` y `Sale.saleTransactionId` son **obligatorios**: toda compra y
+toda venta pertenece a una transacción, y por tanto tiene cliente.
 
 #### `SaleTransaction` / `Sale`
 
@@ -267,18 +275,41 @@ Cabecera + líneas de venta. `Sale` soporta dos formas:
 
 #### `DailyBalance`
 
-`@@unique([businessDate, sucursalId])`. Contiene `saldoInicial` (editable, requiere admin) y
-`saldoActual` (derivado, nunca se escribe a mano).
+`@@unique([businessDate, sucursalId])`. Contiene `saldoInicial` (editable, requiere admin),
+`ajusteCaja` (diferencia del arqueo, la escribe el cierre de caja) y `saldoActual` (derivado,
+nunca se escribe a mano).
 
 #### `Expense`
 
 `categoria`, `descripcion`, `monto` por fecha y sucursal.
 
+#### `CashSession`
+
+Arqueo de caja, `@@unique([businessDate, sucursalId])`. Guarda la apertura (`montoApertura`,
+`abiertaPor`), el cierre (`montoContado`, `saldoEsperado`, `diferencia`, `cerradaPor`) y el
+`estado` (`abierta` | `cerrada`). Una sesión **cerrada bloquea la escritura** de esa fecha (§6.9).
+
 #### Personal
 
-`Employee` (nombre, puesto, teléfono, salario, fechaIngreso, activo), `Attendance`
+`Employee` (nombre, puesto, teléfono, **`salarioDiario`**, fechaIngreso, activo), `Attendance`
 (`@@unique([businessDate, employeeId])`, `horaEntrada`/`horaSalida` como `HH:MM`),
 `EmployeeAdvance` (adelantos) y `EmployeePayment` (pagos).
+
+> ⚠️ `Employee.salarioDiario` es el **pago por día trabajado**. El nombre lleva la unidad porque de
+> ella depende todo el cálculo de planilla; el campo se llamaba `salario` y no tenía unidad definida.
+
+`EmployeePayment` distingue `tipo`: `manual` (capturado a mano) o `planilla` (generado por el
+cálculo semanal, con `periodoInicio`, `periodoFin`, `diasTrabajados`, `subtotal` y
+`adelantosAplicados`). `expenseId` enlaza el gasto que descontó el efectivo.
+
+`EmployeeAdvance.montoAplicado` acumula cuánto del adelanto ya se descontó en planillas, de modo
+que uno grande pueda repartirse en varias semanas sin descontarse dos veces.
+
+#### `PayrollAdvanceApplication`
+
+Cuánto de un adelanto descontó **una planilla concreta** (`paymentId`, `advanceId`, `monto`).
+Sin este detalle no se podría revertir un pago: un mismo adelanto puede haber sido descontado
+parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánto aportó cada una.
 
 #### Configuración y sistema
 
@@ -286,7 +317,6 @@ Cabecera + líneas de venta. `Sale` soporta dos formas:
 - `User` — usuarios persistidos (`userId` único, `password` hasheado con scrypt, `role`, `activo`).
 - `ModuleAccess` — override de roles permitidos por módulo (`roles String[]`).
 - `PrintJob` — cola de impresión (`pending` → `claimed` → `done` | `error`).
-- `SyncEvent` — bitácora de eventos de sincronización (se exporta; hoy sin escritores activos).
 
 ---
 
@@ -307,13 +337,15 @@ Cabecera + líneas de venta. `Sale` soporta dos formas:
 | Función | Comportamiento |
 |---|---|
 | `ensureDailyBalance(db, fecha, sucursalId)` | `upsert` del `DailyBalance`; si no existe lo crea con saldos en 0. |
-| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)`, `SUM(Sale.monto)`, `SUM(Expense.monto)` del día/sucursal y reescribe `saldoActual = saldoInicial + ventas − compras − gastos`. |
+| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)`, `SUM(Sale.monto)`, `SUM(Expense.monto)` del día/sucursal y reescribe `saldoActual = saldoInicial + ventas − compras − gastos + ajusteCaja`. |
 | `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas y gastos ordenadas por `createdAt desc`. |
 
 **Invariante:** toda ruta que cree o elimine compras, ventas o gastos llama a `recalculateDailyBalance`
 **dentro de la misma transacción Prisma**. El saldo nunca se ajusta por deltas, siempre se recalcula desde cero.
 
-> Los movimientos de personal (pagos y adelantos) **no** afectan el balance diario.
+> Los pagos y adelantos de personal **sí** afectan el balance: entran como `Expense` de categoría
+> `Planilla` (§18.0). El `ajusteCaja` no lo escribe ninguna ruta de movimientos, solo el cierre de
+> caja (§6.9); mientras vale 0, la ecuación se comporta como antes de existir.
 
 ### 6.3 Resolución de sucursal
 
@@ -380,19 +412,97 @@ normalizado sin diacríticos (`uva/verde/requema/guacuco/repaso` → uva;
   consideran únicamente los movimientos **posteriores** a esa fecha; la carga se devuelve en `ultimaCarga`.
 - Sin `productoId`: agrega totales por producto, ordenados de mayor a menor.
 
-### 6.8 Importación histórica
+### 6.8 Importación y exportación general — **retiradas**
 
-`POST /api/import` (rol admin) acepta el formato legacy con claves `materials` / `materialId` / `material`.
+`POST /api/import` y `GET /api/export` fueron eliminadas del sistema.
 
-> ⚠️ **Destructivo:** la ruta hace `deleteMany` de compras, transacciones, ventas y gastos de las
-> `businessDate` del payload antes de reinsertar. El payload debe contener exactamente los datos
-> que se desean reemplazar.
+El import borraba (`deleteMany`) todas las compras, transacciones, ventas y gastos de las fechas
+del payload antes de reinsertar. Un payload parcial destruía datos en silencio, y con el cierre de
+caja (§6.9) podía además deshacer un arqueo ya firmado. No tenía interfaz: solo era alcanzable
+llamando a la API directamente.
 
-### 6.9 Exportación
+El export devolvía un volcado JSON de todas las tablas, pensado para alimentar a ese import. Sin
+el import, y siendo un formato que nadie consume, dejó de tener uso.
 
-`GET /api/export` (rol admin) devuelve un snapshot completo: `sucursales`, `dailyBalances`,
-`purchases`, `sales`, `expenses`, `productos`, `clients`, `purchaseTransactions`,
-`saleTransactions` y `syncEvents`, con filtros opcionales `businessDate` y `sucursalId`.
+La sustitución prevista es una **exportación a CSV/Excel** de datos concretos, orientada a que una
+persona los abra en una hoja de cálculo, no a reimportarlos. Aún no está implementada (§18.4).
+
+### 6.9 Apertura y cierre de caja
+
+`lib/cash-session.ts`. Una sesión por `(businessDate, sucursalId)`.
+
+- **Abrir** fija el `saldoInicial` del día: es el efectivo con el que se arranca.
+- **Cerrar** recalcula el saldo en ese mismo momento (para que el esperado refleje el último
+  movimiento, no una cifra que la UI trajera desactualizada), guarda el **efectivo contado** y la
+  **diferencia** = `contado − esperado`. Negativa significa que falta efectivo.
+- **Reabrir** es privilegio de `admin` y conserva el arqueo anterior en `notas`, para no borrar el
+  rastro de que hubo un cierre con cierta diferencia antes de la corrección.
+
+**El descuadre llega al balance.** Al cerrar, la diferencia se escribe en
+`DailyBalance.ajusteCaja` y entra en la ecuación del saldo (§6.2), de modo que **`saldoActual` pasa
+a ser el efectivo realmente contado**. Sin esto el arqueo quedaba documentado pero el saldo seguía
+siendo el teórico, y el día siguiente arrancaba de una cifra que nadie tenía en mano.
+
+Se eligió un campo propio en `DailyBalance` en vez de generar un `Expense` de ajuste: un faltante de
+caja no es un gasto operativo, y meterlo en `totalGastos` distorsionaría el reporte de gastos y el
+resumen impreso —además de que un sobrante habría exigido un gasto negativo—.
+
+Detalles que importan:
+
+- El ajuste se pone en **cero antes de medir** el esperado, así que una fecha reabierta y vuelta a
+  cerrar se mide siempre sobre el saldo teórico limpio, nunca sobre el ajuste anterior.
+- **Reabrir revierte el ajuste**: el saldo vuelve al teórico mientras la caja siga abierta.
+- Un cierre exacto deja `ajusteCaja = 0` y no altera nada.
+- Con `DEFAULT 0`, todas las fechas ya registradas conservan exactamente su saldo.
+
+**Solo una caja explícitamente cerrada bloquea.** La ausencia de sesión no impide nada: abrir caja
+es opcional, así que esta funcionalidad no detiene a quien nunca la use.
+
+`assertCashOpen(db, businessDate, sucursalId)` es el punto único de control y lo invocan los **11
+puntos de escritura** que mueven dinero: alta y baja de compras, ventas, gastos, sus transacciones
+por cliente, y el cambio de saldo inicial. Al bloquear lanza `CashClosedError`, que la API traduce
+a **409 `CASH_CLOSED`** —y no a un 400— porque el payload es válido: lo que impide la operación es
+el estado de la caja, y el cliente necesita distinguirlo.
+
+Las cargas y descargas de inventario (`ProductoCarga`) **no** se bloquean: son movimientos de
+producto, no de efectivo.
+
+### 6.10 Reportes de compras
+
+`lib/reports.ts`. Agrega compras por rango con `groupBy=day|week`, y desglosa por producto y por
+cliente. Tres decisiones que conviene tener presentes:
+
+- Los períodos se generan **desde el calendario, no desde los datos**: un día o una semana sin
+  compras aparece en cero en vez de desaparecer del reporte.
+- Se incluyen las compras legacy sin cabecera de transacción, agrupadas bajo "Sin cliente":
+  omitirlas descuadraría el total contra el ledger.
+- `promedioPorLibra` es el total pagado dividido entre las libras compradas, **no** el promedio de
+  los precios unitarios; solo el primero es el precio real del período.
+
+### 6.11 Planilla semanal calculada
+
+`lib/payroll.ts`. Se calcula en dos pasos: `GET` previsualiza sin escribir nada y `POST` confirma.
+
+```
+subtotal = salarioDiario × días con asistencia registrada en el período
+neto     = max(0, subtotal − adelantos pendientes)
+```
+
+- Un día cuenta por **tener registro de asistencia**, no por las horas trabajadas.
+- Se descuentan los adelantos del período **y los pendientes de períodos anteriores**, por
+  antigüedad; si no, un adelanto no descontado quedaría olvidado para siempre.
+- Un adelanto puede aplicarse **parcialmente** y arrastrar el resto a la semana siguiente, para que
+  uno grande no bloquee el pago. El neto nunca es negativo.
+- Es **idempotente por período**: un empleado ya pagado en ese rango se rechaza en vez de pagarse
+  dos veces.
+
+Confirmar genera un **único `Expense`** de categoría `Planilla` por el total del lote —es un solo
+desembolso de caja— y recalcula el balance. Borrar el pago revierte todo: devuelve a cada adelanto
+exactamente lo que *ese* pago le descontó (vía `PayrollAdvanceApplication`), elimina el gasto y
+rehace el saldo.
+
+La confirmación usa `timeout: 30 s` en la transacción: son muchas escrituras secuenciales y con los
+5 s por defecto de Prisma una planilla de varios empleados sobre una base remota aborta a medias.
 
 ---
 
@@ -432,16 +542,31 @@ Los clientes no web envían `Authorization: Bearer <token>` con el token devuelt
 |---|---|---|
 | GET | `/api/ledger` | Query `businessDate?` (por defecto hoy en Tegucigalpa), `sucursalId?`. Devuelve `LedgerDTO`. |
 | POST | `/api/ledger/initial-balance` | **admin.** `{ businessDate, sucursalId?, saldoInicial }`. |
-| POST | `/api/purchases` | Compra simple legacy `{ businessDate, productoId, libras, precioPorLibra?, sucursalId? }`. |
-| DELETE | `/api/purchases/:id` | Recalcula el balance. |
+| DELETE | `/api/purchases/:id` | Borra una línea; recalcula el total de su transacción y el balance. |
 | GET / POST | `/api/purchase-transactions` | Compra por cliente con `items[]`. GET filtra por `businessDate` y `sucursalId`. |
 | DELETE | `/api/purchase-transactions/:id` | Borra cabecera + items (cascade) y recalcula. |
-| POST | `/api/sales` | Venta simple `{ businessDate, descripcion, monto, sucursalId? }`. |
-| DELETE | `/api/sales/:id` | |
+| DELETE | `/api/sales/:id` | Borra una línea; recalcula el total de su transacción y el balance. |
 | GET / POST | `/api/sale-transactions` | Venta por cliente con `items[]` (modo libra u oro). |
 | DELETE | `/api/sale-transactions/:id` | |
 | POST | `/api/expenses` | `{ businessDate, categoria, descripcion, monto, sucursalId? }`. |
-| DELETE | `/api/expenses/:id` | |
+| DELETE | `/api/expenses/:id` | **409 `CONFLICT`** si el gasto lo generó un pago o anticipo de personal. |
+
+Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada (§6.9).
+
+### Caja
+
+| Método | Ruta | Notas |
+|---|---|---|
+| GET | `/api/cash-sessions` | Con `businessDate` devuelve esa sesión (o `null`); con `from`/`to`, el historial. |
+| POST | `/api/cash-sessions` | `{ businessDate, montoApertura, sucursalId?, notas? }`. Abre y fija el saldo inicial. |
+| POST | `/api/cash-sessions/close` | `{ businessDate, montoContado, sucursalId?, notas? }`. Devuelve el arqueo con la diferencia. |
+| POST | `/api/cash-sessions/reopen` | **admin.** `{ businessDate, sucursalId? }`. |
+
+### Reportes
+
+| Método | Ruta | Notas |
+|---|---|---|
+| GET | `/api/reports/purchases` | `?from&to&groupBy=day\|week&sucursalId`. Sin rango, la semana en curso. |
 
 ### Personal — **todas requieren rol `admin`**
 
@@ -452,6 +577,10 @@ Los clientes no web envían `Authorization: Bearer <token>` con el token devuelt
 | GET / POST · PATCH / DELETE | `/api/employees/attendance` · `/api/employees/attendance/:id` |
 | GET / POST · DELETE | `/api/employees/advances` · `/api/employees/advances/:id` |
 | GET / POST · DELETE | `/api/employees/payments` · `/api/employees/payments/:id` |
+| GET / POST | `/api/employees/payroll` — `GET` previsualiza la planilla del período (no escribe); `POST` la confirma |
+
+Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan el efectivo
+(§18, decisión A). Borrar un anticipo ya descontado en una planilla devuelve **409 `CONFLICT`**.
 
 ### Configuración
 
@@ -480,8 +609,6 @@ Los clientes no web envían `Authorization: Bearer <token>` con el token devuelt
 | Método | Ruta | Notas |
 |---|---|---|
 | GET | `/api/health` | Público (exento de RBAC). |
-| GET | `/api/export` | **admin.** Snapshot completo. |
-| POST | `/api/import` | **admin.** Destructivo por fecha. |
 
 ### Códigos de error usados
 
@@ -589,7 +716,7 @@ Reglas por método y ruta (`requiredRole`):
 
 | Condición | Rol mínimo |
 |---|---|
-| `/api/export`, `/api/import`, `/api/ledger/initial-balance`, `/api/employees/*` | `admin` |
+| `/api/ledger/initial-balance`, `/api/employees/*`, `/api/cash-sessions/reopen` | `admin` |
 | `PATCH /api/settings/module-access` | `admin` |
 | Cualquier `DELETE` | `admin` |
 | `POST` / `PUT` / `PATCH` | `editor` |
@@ -721,7 +848,15 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
 
 - `buildTicketBuffer(data)` — comprobante de compra/venta. Si la línea trae `quintalesOro` +
   `precioPorQuintalOro`, imprime el detalle en formato oro; en caso contrario, `lb × precio`.
-- `buildSummaryBuffer(data)` — resumen del día con totales y cierre estimado de caja.
+- `buildSummaryBuffer(data)` — resumen del día con totales y cierre de caja. El campo opcional
+  `arqueo` decide qué se imprime:
+  - **Caja cerrada** → bloque `ARQUEO DE CAJA` con apertura, saldo esperado, efectivo contado,
+    la diferencia y quién abrió y cerró; el total se rotula `CIERRE DE CAJA` porque ya es un
+    conteo real. La diferencia se imprime **nombrada** (`FALTA` / `SOBRA` / `cuadra`): en papel el
+    signo por sí solo se malinterpreta.
+  - **Caja abierta** → informa el monto de apertura y quién abrió, pero el total sigue rotulado
+    `CIERRE EST. CAJA`, porque nadie ha contado todavía.
+  - **Sin sesión de caja** → `CIERRE EST. CAJA`, igual que antes.
 - `sendToPrinter(ip, port, buffer, timeoutMs = 5000)` — socket TCP crudo con timeout.
 
 `lib/build-ticket.ts` reúne los datos (transacción + `CompanySettings`, que se autocrea vía upsert)
@@ -819,7 +954,7 @@ pnpm dev                    # http://localhost:3000
 
 ## 13. Migraciones de base de datos
 
-16 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
+21 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
 
 | Migración | Cambio |
 |---|---|
@@ -839,12 +974,21 @@ pnpm dev                    # http://localhost:3000
 | `20260723000000_add_sucursales` | Multi-sucursal. |
 | `20260816000000_add_producto_categoria` | `Producto.categoria`. |
 | `20260818000000_add_sale_oro_fields` | `porcentajeOro`, `quintalesOro`, `precioPorQuintalOro` en `Sale`. |
+| `20260823000000_add_cash_sessions_and_payroll` | `CashSession`; `Employee.salario` → `salarioDiario`; campos de planilla en `EmployeePayment` y `EmployeeAdvance`. |
+| `20260823010000_payroll_advance_applications` | `PayrollAdvanceApplication`, para poder revertir una planilla. |
+| `20260824000000_drop_sync_event` | Elimina `SyncEvent` junto con la lógica de importación/exportación. |
+| `20260824010000_require_transaction_header` | `Purchase.purchaseTransactionId` y `Sale.saleTransactionId` pasan a `NOT NULL`. |
+| `20260824020000_add_cash_adjustment` | `DailyBalance.ajusteCaja`, para que el descuadre del arqueo llegue al saldo. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
-> El renombrado Material → Producto ya está aplicado en el modelo, pero `POST /api/import`
-> conserva el contrato JSON legacy (`materials` / `materialId` / `material`) por compatibilidad
-> con los archivos históricos.
+> ⚠️ La migración `20260823000000` se escribió **a mano** con `ALTER TABLE ... RENAME COLUMN`.
+> `prisma migrate diff` genera por defecto un `DROP COLUMN "salario"` seguido de un `ADD COLUMN
+> "salarioDiario"`, que habría borrado los salarios existentes. Conviene revisar cualquier
+> migración futura que renombre columnas antes de aplicarla.
+
+> El renombrado Material → Producto está aplicado en todo el modelo. El contrato JSON legacy
+> (`materials` / `materialId` / `material`) desapareció junto con `POST /api/import`.
 
 ---
 
@@ -856,7 +1000,7 @@ Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/
 pnpm test
 ```
 
-Cobertura actual (4 suites, 18 pruebas):
+Cobertura actual (8 suites, 49 pruebas):
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
 - `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` devuelve 201.
@@ -865,6 +1009,19 @@ Cobertura actual (4 suites, 18 pruebas):
 - `tests/lib/session.test.ts` — firma y recuperación del rol, `userId` no ASCII, rechazo de payload
   manipulado para escalar privilegios, de firmas inventadas, del formato legacy de cookie y de
   tokens expirados; precedencia de `Bearer` sobre cookie e indiferencia ante `x-user-id`.
+- `tests/lib/business-week.test.ts` — semana domingo–sábado, cruces de mes y año, y el cambio de
+  horario, donde una implementación con hora local se correría un día.
+- `tests/lib/payroll.test.ts` — salario × días, descuento de anticipos, aplicación parcial con
+  arrastre, neto nunca negativo, advertencias y exclusión de quien ya cobró el período.
+- `tests/lib/reports.test.ts` — totales, días sin compras en cero, corte semanal domingo–sábado,
+  compras legacy bajo "Sin cliente" y división por cero.
+
+- `tests/lib/summary-ticket.test.ts` — qué imprime el resumen según el estado de la caja: arqueo
+  real cuando está cerrada, estimado cuando está abierta o no existe, y el nombre del signo de la
+  diferencia.
+
+`payroll` y `reports` usan un doble de Prisma para fijar las reglas de dinero sin base de datos;
+`summary-ticket` inspecciona el buffer ESC/POS como texto.
 
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
 `Request` estándar. La cobertura sigue siendo baja: no hay pruebas de los cálculos de balance,
@@ -927,15 +1084,88 @@ Puntos a tener presentes al trabajar sobre el código:
 5. **`scripts/print-agent.js` no existe** en el repositorio aunque `package.json` expone
    `pnpm print-agent` y `.env` documenta su token. El agente debe recuperarse o reescribirse para
    que la cola `PrintJob` se drene.
-6. **Convivencia de modelos legacy y por cliente.** Persisten `POST /api/purchases` y `POST /api/sales`
-   (registros sin transacción cabecera) junto al flujo por cliente. Ambos alimentan el mismo balance.
-7. **`POST /api/import` es destructivo por fecha** (`deleteMany` previo). Nunca ejecutarlo con payloads parciales.
-8. **`SyncEvent` se exporta pero no se escribe** desde ninguna ruta actual.
+6. ~~**Convivencia de modelos legacy y por cliente.**~~ **Resuelto**: se eliminaron `POST /api/purchases`
+   y `POST /api/sales`, que creaban registros sin cabecera de transacción y por tanto sin cliente.
+   La UI nunca los usó y la base no tenía ninguna fila de ese tipo. Todo alta pasa ahora por
+   `/api/purchase-transactions` y `/api/sale-transactions`, y la migración
+   `20260824010000_require_transaction_header` volvió la cabecera **obligatoria en el esquema**, de
+   modo que el invariante ya no depende de que ninguna ruta futura lo respete. Los `DELETE` por id
+   se conservan: borran una línea y recalculan el total de su transacción.
+7. ~~**`POST /api/import` es destructivo por fecha.**~~ **Resuelto**: la ruta fue eliminada (§6.8).
+8. ~~**`SyncEvent` se exporta pero no se escribe.**~~ **Resuelto**: la tabla se eliminó con la
+   migración `20260824000000_drop_sync_event`; estaba vacía y su único lector era el export.
 9. **`LOGICA_NEGOCIO.md` fue eliminado del repositorio.** Describía persistencia en SQLite local y un
    modelo previo a las sucursales, ya sin correspondencia con el código. Este documento lo reemplaza
    como referencia de la lógica de negocio (§6).
 10. **Cobertura de pruebas baja**: los cálculos críticos (recálculo de balance, tara, conversión a oro,
     stock neto) no tienen pruebas.
+
+---
+
+## 18. Decisiones de caja, reportes y planilla
+
+Las tres capacidades que esta sección planteaba **ya están implementadas** (§6.9, §6.10 y §6.11).
+Aquí quedan registradas las decisiones de negocio que las gobiernan, porque no se deducen del
+código y condicionan cualquier cambio futuro.
+
+### 18.0 Cómo la planilla afecta al efectivo — **decisión A**
+
+El balance diario solo sumaba compras, ventas y gastos, así que los pagos y adelantos a empleados
+no descontaban efectivo y un arqueo nunca habría cuadrado.
+
+Se optó por **generar un `Expense` automático** de categoría `Planilla` en cada pago, anticipo y
+confirmación de planilla, en lugar de ampliar la ecuación del balance. La razón: ampliar la
+ecuación habría cambiado el `saldoActual` de todas las fechas ya registradas, incluidos cierres
+pasados. Con un gasto, el histórico queda intacto y el desembolso aparece donde un contador lo
+espera —en la lista de gastos y en el resumen impreso—.
+
+El costo de esa elección es que hay dos registros que mantener en sincronía. Se resuelve así:
+
+- El gasto es **propiedad** del pago o anticipo que lo generó (`expenseId`) y se borra con él.
+- Borrarlo desde el panel de Gastos devuelve **409 `CONFLICT`**: dejaría al pago sin contrapartida.
+- Un anticipo ya descontado en una planilla tampoco se puede borrar sin eliminar antes ese pago.
+
+Un anticipo genera su gasto el día que sale el efectivo; al descontarse después en la planilla, esa
+planilla paga solo el neto. El dinero se registra una sola vez.
+
+### 18.1 Caja — el cierre bloquea la fecha
+
+Se decidió que cerrar la caja **impida nuevas compras, ventas y gastos** en esa fecha, y que solo
+un `admin` pueda reabrirla. Sin bloqueo, un arqueo firmado podría quedar desmentido minutos después
+y no significaría nada.
+
+Deliberadamente **no** se exige abrir caja: la ausencia de sesión no bloquea nada, de modo que
+activar la funcionalidad no detuvo la operación de quien todavía no la usa. Ver §6.9.
+
+### 18.2 Reportes — la semana va de domingo a sábado
+
+No existía ninguna noción de semana en el código. Se fijó **domingo a sábado**, y la usan por igual
+los reportes semanales y el corte de planilla, para que ambos hablen del mismo período. El cálculo
+vive en `lib/business-date.ts` y se hace en UTC sobre columnas `@db.Date`, así que el cambio de
+horario no puede correrlo un día. Ver §6.10.
+
+### 18.3 Planilla — salario diario × días asistidos
+
+Se fijó que `Employee.salarioDiario` es el **pago por día trabajado** y que un día cuenta por tener
+registro de asistencia, no por las horas. Se descartó calcular por horas efectivas: `Attendance`
+guarda `horaEntrada`/`horaSalida` como texto y los registros sin salida no podrían calcularse.
+
+> ⚠️ El campo se llamaba `salario` y no tenía unidad. La migración lo renombró conservando los
+> valores, que por tanto **deben revisarse**: un número pensado como salario mensual quedaría
+> interpretado como pago diario.
+
+Ver §6.11 para el tratamiento de los adelantos parciales y la reversión.
+
+### 18.4 Lo que queda abierto
+
+- **Personal no es por sucursal.** `Employee`, `Attendance` y `EmployeeAdvance` no tienen
+  `sucursalId`: la planilla se calcula sobre todos los empleados activos y el gasto se carga a la
+  sucursal indicada al confirmar. Con varias sucursales operando personal distinto, habría que
+  asignar cada empleado a la suya.
+- **Sin turnos.** Una sola sesión de caja por fecha y sucursal; no hay cortes por turno.
+- **Los reportes son solo de compras.** Ventas y gastos no tienen su equivalente por rango.
+- **Falta la exportación a CSV/Excel** que sustituye al export general retirado (§6.8). Debe
+  producir archivos que una persona abra en una hoja de cálculo, no un volcado reimportable.
 
 ---
 

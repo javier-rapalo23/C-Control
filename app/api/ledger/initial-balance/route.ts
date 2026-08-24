@@ -1,6 +1,7 @@
 import { setInitialBalanceSchema } from '@/lib/validations';
 import { handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { assertCashOpen } from '@/lib/cash-session';
 import { ensureDailyBalance, getLedgerByDate, resolveSucursalId } from '@/lib/ledger';
 import { parseBusinessDate } from '@/lib/business-date';
 
@@ -10,6 +11,8 @@ export async function POST(request: Request) {
     const sucursalId = await resolveSucursalId(prisma, payload.sucursalId);
 
     await prisma.$transaction(async (tx) => {
+      await assertCashOpen(tx, payload.businessDate, sucursalId);
+
       const balance = await ensureDailyBalance(tx, payload.businessDate, sucursalId);
 
       await tx.dailyBalance.update({

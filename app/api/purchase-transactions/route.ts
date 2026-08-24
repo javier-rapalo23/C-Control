@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { createPurchaseTransactionSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 
@@ -38,7 +39,7 @@ function mapTransaction(transaction: {
     quintalesOro: Prisma.Decimal | null;
     libras: Prisma.Decimal;
     total: Prisma.Decimal;
-    purchaseTransactionId: string | null;
+    purchaseTransactionId: string;
     createdAt: Date;
   }>;
 }) {
@@ -117,6 +118,7 @@ export async function POST(request: Request) {
       }
 
       const sucursalId = await resolveSucursalId(tx, payload.sucursalId);
+      await assertCashOpen(tx, payload.businessDate, sucursalId);
 
       const items = await Promise.all(
         payload.items.map(async (item) => {

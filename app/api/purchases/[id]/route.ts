@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
 
 type Params = {
@@ -17,24 +18,26 @@ export async function DELETE(_: Request, { params }: Params) {
         return null;
       }
 
+      await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
+
+      // Toda compra pertenece a una transacción, así que siempre hay cabecera que
+      // ajustar: se recalcula su total, o se elimina si esta era su última línea.
       const transactionId = existing.purchaseTransactionId;
       await tx.purchase.delete({ where: { id } });
 
-      if (transactionId) {
-        const remainingItems = await tx.purchase.findMany({
-          where: { purchaseTransactionId: transactionId },
-          orderBy: { createdAt: 'asc' },
-        });
+      const remainingItems = await tx.purchase.findMany({
+        where: { purchaseTransactionId: transactionId },
+        orderBy: { createdAt: 'asc' },
+      });
 
-        if (remainingItems.length === 0) {
-          await tx.purchaseTransaction.delete({ where: { id: transactionId } });
-        } else {
-          const total = remainingItems.reduce((accumulator, item) => accumulator.add(item.total), new Prisma.Decimal(0));
-          await tx.purchaseTransaction.update({
-            where: { id: transactionId },
-            data: { total },
-          });
-        }
+      if (remainingItems.length === 0) {
+        await tx.purchaseTransaction.delete({ where: { id: transactionId } });
+      } else {
+        const total = remainingItems.reduce((accumulator, item) => accumulator.add(item.total), new Prisma.Decimal(0));
+        await tx.purchaseTransaction.update({
+          where: { id: transactionId },
+          data: { total },
+        });
       }
 
       await recalculateDailyBalance(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);

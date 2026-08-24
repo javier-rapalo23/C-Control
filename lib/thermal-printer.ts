@@ -124,6 +124,19 @@ export type SummaryData = {
   totalGastos: number;
   saldoInicial: number;
   saldoActual: number;
+  /**
+   * Arqueo de la fecha, si hay sesión de caja. Cuando está cerrada, el ticket
+   * imprime el conteo real y su diferencia en vez del cierre estimado.
+   */
+  arqueo?: {
+    estado: 'abierta' | 'cerrada';
+    montoApertura: number;
+    abiertaPor: string;
+    saldoEsperado: number | null;
+    montoContado: number | null;
+    diferencia: number | null;
+    cerradaPor: string | null;
+  } | null;
 };
 
 export function buildSummaryBuffer(data: SummaryData): Buffer {
@@ -158,9 +171,44 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
   chunks.push(text(twoColumns('Total Gastos:', `L ${data.totalGastos.toFixed(2)}`)));
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Saldo inicial:', `L ${data.saldoInicial.toFixed(2)}`)));
-  chunks.push(bold(true));
-  chunks.push(text(twoColumns('CIERRE EST. CAJA:', `L ${data.saldoActual.toFixed(2)}`)));
-  chunks.push(bold(false));
+
+  const arqueo = data.arqueo;
+
+  if (arqueo?.estado === 'cerrada') {
+    chunks.push(text(dash));
+    chunks.push(bold(true));
+    chunks.push(text('ARQUEO DE CAJA'));
+    chunks.push(bold(false));
+    chunks.push(text(twoColumns('Apertura:', `L ${arqueo.montoApertura.toFixed(2)}`)));
+    chunks.push(text(twoColumns('Saldo esperado:', `L ${(arqueo.saldoEsperado ?? 0).toFixed(2)}`)));
+    chunks.push(text(twoColumns('Efectivo contado:', `L ${(arqueo.montoContado ?? 0).toFixed(2)}`)));
+
+    const diferencia = arqueo.diferencia ?? 0;
+    // El signo por sí solo se malinterpreta en papel, así que se nombra.
+    const etiqueta =
+      Math.abs(diferencia) < 0.005 ? 'Diferencia (cuadra):' : diferencia < 0 ? 'Diferencia (FALTA):' : 'Diferencia (SOBRA):';
+    chunks.push(bold(true));
+    chunks.push(text(twoColumns(etiqueta, `L ${diferencia.toFixed(2)}`)));
+    chunks.push(bold(false));
+
+    chunks.push(text(`Abrio: ${arqueo.abiertaPor}`));
+    if (arqueo.cerradaPor) chunks.push(text(`Cerro: ${arqueo.cerradaPor}`));
+
+    chunks.push(text(dash));
+    chunks.push(bold(true));
+    chunks.push(text(twoColumns('CIERRE DE CAJA:', `L ${data.saldoActual.toFixed(2)}`)));
+    chunks.push(bold(false));
+  } else {
+    if (arqueo?.estado === 'abierta') {
+      chunks.push(text(twoColumns('Caja abierta con:', `L ${arqueo.montoApertura.toFixed(2)}`)));
+      chunks.push(text(`Abrio: ${arqueo.abiertaPor}`));
+    }
+    // Sin cierre no hay conteo real: se mantiene explícito que la cifra es estimada.
+    chunks.push(bold(true));
+    chunks.push(text(twoColumns('CIERRE EST. CAJA:', `L ${data.saldoActual.toFixed(2)}`)));
+    chunks.push(bold(false));
+  }
+
   chunks.push(align('center'));
   chunks.push(raw('\n\n\n'));
   chunks.push(cut());

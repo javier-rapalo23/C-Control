@@ -47,14 +47,6 @@ export const setInitialBalanceSchema = z.object({
   saldoInicial: z.number(),
 });
 
-export const createPurchaseSchema = z.object({
-  businessDate: businessDateField,
-  sucursalId: z.string().min(1).optional(),
-  productoId: z.string().min(1),
-  libras: z.number().positive(),
-  precioPorLibra: z.number().positive().optional(),
-});
-
 export const createPurchaseLineSchema = z
   .object({
     productoId: z.string().min(1),
@@ -73,13 +65,6 @@ export const createPurchaseTransactionSchema = z.object({
   sucursalId: z.string().min(1).optional(),
   clientId: z.string().min(1),
   items: z.array(createPurchaseLineSchema).min(1),
-});
-
-export const createSaleSchema = z.object({
-  businessDate: businessDateField,
-  sucursalId: z.string().min(1).optional(),
-  descripcion: z.string().trim().min(2).max(250),
-  monto: z.number().positive(),
 });
 
 export const createSaleLineSchema = z
@@ -143,7 +128,8 @@ export const createEmployeeSchema = z.object({
   nombre: z.string().trim().min(2).max(120),
   puesto: z.string().trim().max(120).optional(),
   telefono: z.string().trim().max(50).optional(),
-  salario: z.number().positive().optional(),
+  /** Pago por día trabajado; es la base del cálculo de planilla. */
+  salarioDiario: z.number().positive().optional(),
   fechaIngreso: businessDateField.optional(),
   activo: z.boolean().optional(),
 });
@@ -152,6 +138,7 @@ export const updateEmployeeSchema = createEmployeeSchema.partial();
 
 export const createEmployeePaymentSchema = z.object({
   businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
   employeeId: z.string().min(1),
   concepto: z.string().trim().min(2).max(120),
   monto: z.number().positive(),
@@ -175,6 +162,7 @@ export const updateAttendanceSchema = z.object({
 
 export const createEmployeeAdvanceSchema = z.object({
   businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
   employeeId: z.string().min(1),
   monto: z.number().positive(),
   motivo: z.string().trim().max(250).optional(),
@@ -187,4 +175,38 @@ export const updateModuleAccessSchema = z.object({
       roles: z.array(z.enum(['editor', 'viewer', 'comprador'])),
     }),
   ),
+});
+
+export const openCashSessionSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  montoApertura: z.number().min(0),
+  notas: z.string().trim().max(300).optional(),
+});
+
+export const closeCashSessionSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  montoContado: z.number().min(0),
+  notas: z.string().trim().max(300).optional(),
+});
+
+export const reopenCashSessionSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+});
+
+export const payrollPreviewSchema = z.object({
+  from: businessDateField,
+  to: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+});
+
+export const confirmPayrollSchema = z.object({
+  from: businessDateField,
+  to: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  /** Fecha en que se paga; por defecto el fin del período. */
+  businessDate: businessDateField.optional(),
+  employeeIds: z.array(z.string().min(1)).min(1),
 });

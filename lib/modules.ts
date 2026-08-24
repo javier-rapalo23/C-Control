@@ -18,6 +18,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: 'clients', href: '/clients', label: 'Clientes', defaultRoles: [], locked: true },
   { key: 'expenses', href: '/expenses', label: 'Reportar gastos', defaultRoles: ['editor', 'viewer', 'comprador'] },
   { key: 'inventory', href: '/inventory', label: 'Inventario', defaultRoles: ['editor', 'viewer'] },
+  { key: 'reports', href: '/reports', label: 'Reportes', defaultRoles: ['editor', 'viewer'] },
+  { key: 'cash', href: '/cash', label: 'Caja', defaultRoles: ['editor'] },
   { key: 'sucursales', href: '/sucursales', label: 'Sucursales', defaultRoles: [], locked: true },
   { key: 'personnel', href: '/personnel', label: 'Personal', defaultRoles: [] },
   { key: 'maintenance', href: '/maintenance', label: 'Mantenimiento', defaultRoles: [], locked: true },

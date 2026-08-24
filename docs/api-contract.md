@@ -16,7 +16,7 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - Roles: `viewer` < `editor` < `admin`.
   - `GET` normalmente requiere `viewer`.
   - `POST/PUT/PATCH` requieren `editor`.
-  - `DELETE` y rutas sensibles (`/api/import`, `/api/export`, `/api/ledger/initial-balance`) requieren `admin`.
+  - `DELETE` y rutas sensibles (`/api/ledger/initial-balance`, `/api/cash-sessions/reopen`, `/api/employees/*`) requieren `admin`.
 - El middleware añade en la respuesta `x-auth-user-id` y `x-auth-role`.
 
 **Variables de entorno relevantes**
@@ -50,10 +50,11 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - `POST /api/clients`  
   - Crea cliente.
 
-- `POST /api/purchases`  
-  - Crea una compra simple (item). Body validado por `createPurchaseSchema`.
 - `DELETE /api/purchases/:id`  
-  - Elimina compra por id (recalcula balances).
+  - Elimina una línea de compra; recalcula el total de su transacción y los balances.
+
+> `POST /api/purchases` fue **eliminado**. Creaba compras sin cabecera de transacción y por tanto
+> sin cliente, incompatibles con el modelo actual. Use `POST /api/purchase-transactions`.
 
 - `GET /api/purchase-transactions?businessDate=YYYY-MM-DD`  
   - Lista transacciones completas del día (con `client` e `items`).
@@ -62,8 +63,7 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - `DELETE /api/purchase-transactions/:id`  
   - Elimina transacción completa (recalcula balances).
 
-- `POST /api/sales`  
-  - Registra venta simple (sin producto). Body validado por `createSaleSchema`.
+> `POST /api/sales` fue **eliminado** por el mismo motivo. Use `POST /api/sale-transactions`.
 
 - `GET /api/sale-transactions?businessDate=YYYY-MM-DD`  
   - Lista transacciones de venta del día (con `client` e `items` de producto/libras/precio).
@@ -78,13 +78,15 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 - `GET /api/ledger?businessDate=YYYY-MM-DD`  
   - Devuelve el `ledger` (totales, compras, ventas, gastos) para la fecha.
 
-- `GET /api/export?businessDate=YYYY-MM-DD`  
-  - Exporta lote completo (dailyBalances, purchases, sales, expenses, productos, clients, purchaseTransactions, syncEvents).
+- `GET /api/reports/purchases?from&to&groupBy=day|week&sucursalId`  
+  - Totales de compras del período, con desglose por producto y por cliente.
 
-- `POST /api/import`  
-  - Importa payload con `materials` y `ledgers` (ver `app/api/import/route.ts`).
-  - Nota: este endpoint mantiene el contrato JSON legacy (`materials`/`materialId`/`material`) por compatibilidad con archivos históricos existentes, aunque el modelo interno ya se llama `Producto`.
-  - IMPORTANT: la ruta elimina (`deleteMany`) compras, transacciones, ventas y gastos por `businessDate` antes de reinsertar las filas del payload — por tanto el payload debe contener exactamente las fechas/datos que se quieren reemplazar.
+- `GET /api/cash-sessions?businessDate&sucursalId` · `POST /api/cash-sessions` · `POST /api/cash-sessions/close` · `POST /api/cash-sessions/reopen`  
+  - Arqueo de caja. Cerrarla bloquea las escrituras de esa fecha.
+
+> `GET /api/export` y `POST /api/import` fueron **eliminados**. El import borraba por fecha antes
+> de reinsertar, así que un payload parcial destruía datos en silencio. Su reemplazo previsto es
+> una exportación a CSV/Excel, todavía no implementada.
 
 - `GET /api/productos/stock?from=YYYY-MM-DD&to=YYYY-MM-DD`  
   - Si no se envía `productoId`, devuelve totales por producto en el rango.
@@ -116,9 +118,10 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 
 ## Notas de integración móvil (recomendaciones)
 - Autenticación: hacer `POST /api/auth/login` al arrancar, guardar `data.token` de forma segura y enviarlo como `Authorization: Bearer <token>`. Renovar con otro login cuando la API responda `401` o cuando se acerque `expiresAt`.
-- Consumir endpoints concretos en lugar de un único endpoint genérico de sincronización para evitar borrados accidentales (especialmente evitar `POST /api/import` a menos que el payload sea exacto).
+- Consumir endpoints concretos en lugar de un único endpoint genérico de sincronización. El endpoint genérico `POST /api/import` existía y fue eliminado justamente por los borrados accidentales que provocaba.
 - Cargar `productos`, `clients` y `ledger` en el startup de la app móvil; usar `GET /api/productos` y `GET /api/clients`.
-- Para enviar compras/ventas/gastos usar `POST /api/purchases`, `POST /api/purchase-transactions`, `POST /api/sales`, `POST /api/expenses` según corresponda.
+- Para enviar compras, ventas y gastos usar `POST /api/purchase-transactions`, `POST /api/sale-transactions` y `POST /api/expenses`.
+- Si la caja de esa fecha está cerrada, la API responde `409 CASH_CLOSED`: hay que pedir a un administrador que la reabra.
 
 ---
 

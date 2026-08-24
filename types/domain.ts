@@ -60,7 +60,7 @@ export type PurchaseDTO = {
   quintalesOro?: number | null;
   libras: number;
   total: number;
-  purchaseTransactionId?: string | null;
+  purchaseTransactionId: string;
   createdAt: string;
 };
 
@@ -91,7 +91,7 @@ export type SaleDTO = {
   precioPorQuintalOro?: number | null;
   descripcion?: string | null;
   monto: number;
-  saleTransactionId?: string | null;
+  saleTransactionId: string;
   createdAt: string;
 };
 
@@ -125,6 +125,8 @@ export type DailyBalanceDTO = {
   sucursalId: string;
   saldoInicial: number;
   saldoActual: number;
+  /** Diferencia del arqueo (contado − esperado); 0 mientras la caja no se cierre. */
+  ajusteCaja: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -182,7 +184,7 @@ export type EmployeeDTO = {
   nombre: string;
   puesto: string | null;
   telefono: string | null;
-  salario: number | null;
+  salarioDiario: number | null;
   fechaIngreso: string | null;
   activo: boolean;
   createdAt: string;
@@ -229,9 +231,91 @@ export type LedgerDTO = {
     totalCompras: number;
     totalVentas: number;
     totalGastos: number;
+    ajusteCaja: number;
     saldoActual: number;
   };
   purchases: PurchaseDTO[];
   sales: SaleDTO[];
   expenses: ExpenseDTO[];
+};
+
+export type CashSessionDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  estado: 'abierta' | 'cerrada';
+  montoApertura: number;
+  abiertaPor: string;
+  abiertaAt: string;
+  montoContado: number | null;
+  saldoEsperado: number | null;
+  diferencia: number | null;
+  cerradaPor: string | null;
+  cerradaAt: string | null;
+  notas: string | null;
+};
+
+export type PurchaseReportPeriodDTO = {
+  inicio: string;
+  fin: string;
+  label: string;
+  totalLibras: number;
+  totalQuintalesOro: number;
+  totalLempiras: number;
+  numeroCompras: number;
+};
+
+export type PurchaseReportBreakdownDTO = {
+  id: string;
+  nombre: string;
+  totalLibras: number;
+  totalQuintalesOro: number;
+  totalLempiras: number;
+  numeroCompras: number;
+};
+
+export type PurchaseReportDTO = {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week';
+  sucursalId: string | null;
+  totals: {
+    totalLibras: number;
+    totalQuintalesOro: number;
+    totalLempiras: number;
+    numeroCompras: number;
+    promedioPorLibra: number;
+  };
+  periods: PurchaseReportPeriodDTO[];
+  porProducto: PurchaseReportBreakdownDTO[];
+  porCliente: PurchaseReportBreakdownDTO[];
+};
+
+export type PayrollLineDTO = {
+  employeeId: string;
+  employeeNombre: string;
+  salarioDiario: number | null;
+  diasTrabajados: number;
+  subtotal: number;
+  adelantosPendientes: number;
+  adelantosAplicados: number;
+  neto: number;
+  /** Adelanto que no cupo en el pago de esta semana y queda para la siguiente. */
+  adelantoRemanente: number;
+  yaPagado: boolean;
+  advertencia: string | null;
+};
+
+export type PayrollPreviewDTO = {
+  from: string;
+  to: string;
+  label: string;
+  sucursalId: string;
+  lines: PayrollLineDTO[];
+  totals: {
+    subtotal: number;
+    adelantosAplicados: number;
+    neto: number;
+    empleados: number;
+  };
 };

@@ -51,6 +51,7 @@ function mapBalance(balance: {
   sucursalId: string;
   saldoInicial: Prisma.Decimal;
   saldoActual: Prisma.Decimal;
+  ajusteCaja: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
 }): DailyBalanceDTO {
@@ -60,6 +61,7 @@ function mapBalance(balance: {
     sucursalId: balance.sucursalId,
     saldoInicial: decimalToNumber(balance.saldoInicial),
     saldoActual: decimalToNumber(balance.saldoActual),
+    ajusteCaja: decimalToNumber(balance.ajusteCaja),
     createdAt: balance.createdAt.toISOString(),
     updatedAt: balance.updatedAt.toISOString(),
   };
@@ -78,6 +80,7 @@ function mapPurchase(purchase: {
   quintalesOro: Prisma.Decimal | null;
   libras: Prisma.Decimal;
   total: Prisma.Decimal;
+  purchaseTransactionId: string;
   createdAt: Date;
 }): PurchaseDTO {
   return {
@@ -93,6 +96,7 @@ function mapPurchase(purchase: {
     quintalesOro: purchase.quintalesOro !== null ? decimalToNumber(purchase.quintalesOro) : null,
     libras: decimalToNumber(purchase.libras),
     total: decimalToNumber(purchase.total),
+    purchaseTransactionId: purchase.purchaseTransactionId,
     createdAt: purchase.createdAt.toISOString(),
   };
 }
@@ -110,7 +114,7 @@ function mapSale(sale: {
   precioPorQuintalOro: Prisma.Decimal | null;
   descripcion: string | null;
   monto: Prisma.Decimal;
-  saleTransactionId: string | null;
+  saleTransactionId: string;
   createdAt: Date;
 }): SaleDTO {
   return {
@@ -189,7 +193,11 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const totalVentas = decimalToNumber(ventasAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const saldoInicial = decimalToNumber(balance.saldoInicial);
-  const saldoActual = saldoInicial + totalVentas - totalCompras - totalGastos;
+  // El ajuste del arqueo entra en la ecuación para que, una vez cerrada la caja,
+  // el saldo sea el efectivo contado y no el teórico. Vale 0 mientras no se cierre,
+  // así que las fechas sin arqueo se comportan igual que antes.
+  const ajusteCaja = decimalToNumber(balance.ajusteCaja);
+  const saldoActual = saldoInicial + totalVentas - totalCompras - totalGastos + ajusteCaja;
 
   const updated = await db.dailyBalance.update({
     where: { id: balance.id },
@@ -202,6 +210,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalCompras,
       totalVentas,
       totalGastos,
+      ajusteCaja,
       saldoActual,
     },
   };

@@ -8,6 +8,7 @@ const tabs = [
   { href: '/personnel/attendance', label: 'Entrada y salida' },
   { href: '/personnel/advances', label: 'Anticipos' },
   { href: '/personnel/payments', label: 'Pagos' },
+  { href: '/personnel/payroll', label: 'Planilla semanal' },
 ];
 
 export default function PersonnelTabs() {

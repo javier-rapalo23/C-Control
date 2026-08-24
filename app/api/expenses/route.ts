@@ -1,6 +1,7 @@
 import { createExpenseSchema } from '@/lib/validations';
 import { handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 
@@ -10,6 +11,7 @@ export async function POST(request: Request) {
 
     const result = await prisma.$transaction(async (tx) => {
       const sucursalId = await resolveSucursalId(tx, payload.sucursalId);
+      await assertCashOpen(tx, payload.businessDate, sucursalId);
 
       const created = await tx.expense.create({
         data: {

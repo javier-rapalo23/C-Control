@@ -1,5 +1,6 @@
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
 
 type Params = {
@@ -19,6 +20,8 @@ export async function DELETE(_: Request, { params }: Params) {
       if (!existing) {
         return null;
       }
+
+      await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
 
       await tx.purchaseTransaction.delete({ where: { id } });
       await recalculateDailyBalance(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);

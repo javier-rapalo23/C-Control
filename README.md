@@ -39,8 +39,7 @@ Reglas por endpoint/metodo:
 - `GET` requiere rol `viewer` o superior
 - `POST` requiere rol `editor` o superior
 - `DELETE` requiere rol `admin`
-- `GET /api/export` requiere `admin`
-- `POST /api/ledger/initial-balance` requiere `admin`
+- `POST /api/ledger/initial-balance` y `POST /api/cash-sessions/reopen` requieren `admin`
 - `GET /api/health` es publico
 
 Ejemplo de llamada desde app movil:
@@ -53,9 +52,11 @@ Content-Type: application/json
 ```
 
 ```http
-POST /api/purchases
+POST /api/purchase-transactions
 Authorization: Bearer <token devuelto por el login>
 Content-Type: application/json
+
+{ "businessDate": "2026-08-24", "clientId": "...", "items": [ ... ] }
 ```
 
 Sin token valido la API responde `401 UNAUTHORIZED`; con un rol insuficiente, `403 FORBIDDEN`.
@@ -93,53 +94,24 @@ pnpm dev
 - POST `/api/productos`
 - GET `/api/ledger?businessDate=YYYY-MM-DD`
 - POST `/api/ledger/initial-balance`
-- POST `/api/purchases`
-- POST `/api/sales`
+- POST `/api/purchase-transactions`
+- POST `/api/sale-transactions`
 - POST `/api/expenses`
 - DELETE `/api/purchases/:id`
 - DELETE `/api/sales/:id`
 - DELETE `/api/expenses/:id`
-- GET `/api/export`
 
-## Importar data historica
+## Importacion y exportacion general
 
-Endpoint: `POST /api/import` (requiere rol `admin`).
+Los endpoints `POST /api/import` y `GET /api/export` **fueron eliminados**.
 
-> Nota: el contrato JSON de este endpoint mantiene los campos `materials`/`materialId`/`material` por compatibilidad con archivos históricos existentes (ver ejemplo abajo), aunque el resto de la app ya usa la terminología "producto".
+El import borraba todas las compras, transacciones, ventas y gastos de las fechas del payload
+antes de reinsertar, asi que un payload parcial destruia datos en silencio. El export era un
+volcado JSON pensado solo para alimentar a ese import.
 
-Acepta dos formatos:
+En su lugar se implementara una exportacion a CSV/Excel de datos concretos, pensada para abrirse
+en una hoja de calculo. Ver la seccion 18.4 de DOCUMENTACION.md.
 
-- JSON directo con `materials` y `ledgers`
-- Texto completo exportado (como el contenido de `Chatarrerastz.txt`), aunque tenga mas de un bloque JSON
-
-Ejemplo:
-
-```http
-POST /api/import
-x-user-id: admin
-Content-Type: application/json
-
-{
-	"materials": [
-		{ "id": "cobre", "nombre": "Cobre", "precioPorLibra": 70 }
-	],
-	"ledgers": [
-		{
-			"businessDate": "2026-05-21",
-			"saldoInicial": 17000,
-			"purchases": [
-				{ "materialId": "cobre", "material": "Cobre", "precioPorLibra": 70, "libras": 1.5 }
-			],
-			"sales": [
-				{ "descripcion": "Venta muestra", "monto": 100 }
-			],
-			"expenses": [
-				{ "categoria": "Operativo", "descripcion": "Prueba", "monto": 50 }
-			]
-		}
-	]
-}
-```
 ## Deploy Vercel + Railway
 
 1. Crea una base PostgreSQL en Railway.

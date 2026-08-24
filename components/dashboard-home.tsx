@@ -239,6 +239,13 @@ export default function DashboardHome() {
         <article className="card third kpi">
           <div className="label">Saldo actual</div>
           <div className="value">L {ledger?.totals.saldoActual.toFixed(2) ?? '0.00'}</div>
+          {/* El ajuste solo existe tras cerrar la caja; mostrarlo evita que el saldo
+              parezca no cuadrar con compras, ventas y gastos. */}
+          {ledger && ledger.totals.ajusteCaja !== 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+              incluye ajuste de arqueo L {ledger.totals.ajusteCaja.toFixed(2)}
+            </div>
+          ) : null}
         </article>
         <article className="card third kpi">
           <div className="label">Compras del día</div>

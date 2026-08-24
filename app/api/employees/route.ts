@@ -8,7 +8,7 @@ function mapEmployee(employee: {
   nombre: string;
   puesto: string | null;
   telefono: string | null;
-  salario: unknown;
+  salarioDiario: unknown;
   fechaIngreso: Date | null;
   activo: boolean;
   createdAt: Date;
@@ -16,7 +16,7 @@ function mapEmployee(employee: {
 }) {
   return {
     ...employee,
-    salario: employee.salario !== null ? Number(employee.salario) : null,
+    salarioDiario: employee.salarioDiario !== null ? Number(employee.salarioDiario) : null,
     fechaIngreso: employee.fechaIngreso ? toBusinessDateString(employee.fechaIngreso) : null,
     createdAt: employee.createdAt.toISOString(),
     updatedAt: employee.updatedAt.toISOString(),
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         nombre: payload.nombre,
         puesto: payload.puesto ?? null,
         telefono: payload.telefono ?? null,
-        salario: payload.salario ?? null,
+        salarioDiario: payload.salarioDiario ?? null,
         fechaIngreso: payload.fechaIngreso ? parseBusinessDate(payload.fechaIngreso) : null,
         activo: payload.activo ?? true,
       },
