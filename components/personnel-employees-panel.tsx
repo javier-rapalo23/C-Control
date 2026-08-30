@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { EmployeeDTO } from '@/types/domain';
+import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -11,6 +12,7 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 }
 
 type EmployeeForm = {
+  sucursalId: string;
   nombre: string;
   puesto: string;
   telefono: string;
@@ -19,6 +21,7 @@ type EmployeeForm = {
 };
 
 const emptyEmployeeForm: EmployeeForm = {
+  sucursalId: '',
   nombre: '',
   puesto: '',
   telefono: '',
@@ -27,6 +30,7 @@ const emptyEmployeeForm: EmployeeForm = {
 };
 
 export default function PersonnelEmployeesPanel() {
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [employees, setEmployees] = useState<EmployeeDTO[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [employeesError, setEmployeesError] = useState<string | null>(null);
@@ -34,9 +38,10 @@ export default function PersonnelEmployeesPanel() {
   const [employeeForm, setEmployeeForm] = useState<EmployeeForm>(emptyEmployeeForm);
 
   const fetchEmployees = useCallback(async () => {
+    if (!sucursalId) return;
     try {
       setEmployeesLoading(true);
-      const res = await fetch('/api/employees', { cache: 'no-store' });
+      const res = await fetch(`/api/employees?sucursalId=${sucursalId}`, { cache: 'no-store' });
       const data = await parseApiResponse<EmployeeDTO[]>(res);
       setEmployees(data);
       setEmployeesError(null);
@@ -45,7 +50,7 @@ export default function PersonnelEmployeesPanel() {
     } finally {
       setEmployeesLoading(false);
     }
-  }, []);
+  }, [sucursalId]);
 
   useEffect(() => {
     void fetchEmployees();
@@ -54,6 +59,7 @@ export default function PersonnelEmployeesPanel() {
   function startEditEmployee(employee: EmployeeDTO) {
     setEditingEmployeeId(employee.id);
     setEmployeeForm({
+      sucursalId: employee.sucursalId,
       nombre: employee.nombre,
       puesto: employee.puesto ?? '',
       telefono: employee.telefono ?? '',
@@ -70,6 +76,9 @@ export default function PersonnelEmployeesPanel() {
   async function saveEmployee(event: React.FormEvent) {
     event.preventDefault();
     const payload = {
+      // Al crear se usa la sucursal seleccionada; al editar, la que indique el
+      // formulario, que permite reasignar al empleado.
+      sucursalId: employeeForm.sucursalId || sucursalId,
       nombre: employeeForm.nombre,
       ...(employeeForm.puesto ? { puesto: employeeForm.puesto } : {}),
       ...(employeeForm.telefono ? { telefono: employeeForm.telefono } : {}),
@@ -132,6 +141,21 @@ export default function PersonnelEmployeesPanel() {
     <section className="card-grid">
       <article className="card wide">
         <h3>Empleados</h3>
+        <div className="row" style={{ marginBottom: 12 }}>
+          <label style={{ gridColumn: 'span 6' }}>
+            Sucursal
+            <select value={sucursalId} onChange={(event) => setSucursalId(event.target.value)}>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p style={{ color: 'var(--text-soft)', marginTop: -4 }}>
+          Cada empleado pertenece a una sucursal, y la planilla se calcula y se paga por sucursal.
+        </p>
         {employeesError ? <p style={{ color: 'var(--danger)' }}>{employeesError}</p> : null}
 
         <table className="table-like">
@@ -252,6 +276,19 @@ export default function PersonnelEmployeesPanel() {
               type="number"
               step="0.01"
             />
+          </label>
+          <label style={{ gridColumn: 'span 4' }}>
+            Sucursal
+            <select
+              value={employeeForm.sucursalId || sucursalId}
+              onChange={(e) => setEmployeeForm((f) => ({ ...f, sucursalId: e.target.value }))}
+            >
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={{ gridColumn: 'span 4' }}>
             Fecha de ingreso

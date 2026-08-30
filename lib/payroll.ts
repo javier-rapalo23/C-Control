@@ -2,12 +2,14 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { formatBusinessRange, parseBusinessDate } from '@/lib/business-date';
 import { decimalToNumber, recalculateDailyBalance } from '@/lib/ledger';
 import { assertCashOpen } from '@/lib/cash-session';
+import { PAYROLL_EXPENSE_CATEGORY } from '@/lib/expenses';
 import type { PayrollLineDTO, PayrollPreviewDTO } from '@/types/domain';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
-/** Categoría de los gastos que genera la planilla; permite reconocerlos después. */
-export const PAYROLL_EXPENSE_CATEGORY = 'Planilla';
+// La categoría vive en el catálogo de gastos; se reexporta para no romper a quien
+// ya la importaba desde aquí.
+export { PAYROLL_EXPENSE_CATEGORY };
 
 const round = (value: number): number => Number(value.toFixed(2));
 
@@ -35,22 +37,27 @@ export async function getPayrollPreview(
   const fromDate = parseBusinessDate(from);
   const toDate = parseBusinessDate(to);
 
-  const employees = await db.employee.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } });
+  // Solo el personal de esta sucursal: es la que desembolsa y a la que se le carga
+  // el gasto, así que pagar a empleados de otra sería cargarle un costo ajeno.
+  const employees = await db.employee.findMany({
+    where: { activo: true, sucursalId },
+    orderBy: { nombre: 'asc' },
+  });
 
   const [attendance, advances, existingPayments] = await Promise.all([
     db.attendance.groupBy({
       by: ['employeeId'],
-      where: { businessDate: { gte: fromDate, lte: toDate } },
+      where: { businessDate: { gte: fromDate, lte: toDate }, employee: { sucursalId } },
       _count: { _all: true },
     }),
     // Se incluyen los adelantos anteriores al período que sigan sin liquidar: de
     // lo contrario un adelanto no descontado quedaría olvidado para siempre.
     db.employeeAdvance.findMany({
-      where: { businessDate: { lte: toDate } },
+      where: { businessDate: { lte: toDate }, employee: { sucursalId } },
       orderBy: [{ businessDate: 'asc' }, { createdAt: 'asc' }],
     }),
     db.employeePayment.findMany({
-      where: { tipo: 'planilla', periodoInicio: fromDate, periodoFin: toDate },
+      where: { tipo: 'planilla', periodoInicio: fromDate, periodoFin: toDate, employee: { sucursalId } },
       select: { employeeId: true },
     }),
   ]);

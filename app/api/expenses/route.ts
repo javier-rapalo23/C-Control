@@ -18,21 +18,26 @@ export async function POST(request: Request) {
           businessDate: parseBusinessDate(payload.businessDate),
           sucursalId,
           categoria: payload.categoria,
+          bancoId: payload.bancoId ?? null,
           descripcion: payload.descripcion,
           monto: payload.monto,
         },
+        include: { banco: { select: { nombre: true } } },
       });
 
       await recalculateDailyBalance(tx, payload.businessDate, sucursalId);
       return created;
     });
 
+    const { banco, ...expense } = result;
+
     return success(
       {
-        ...result,
-        businessDate: result.businessDate.toISOString().slice(0, 10),
-        monto: Number(result.monto),
-        createdAt: result.createdAt.toISOString(),
+        ...expense,
+        businessDate: expense.businessDate.toISOString().slice(0, 10),
+        bancoNombre: banco?.nombre ?? null,
+        monto: Number(expense.monto),
+        createdAt: expense.createdAt.toISOString(),
       },
       201,
     );

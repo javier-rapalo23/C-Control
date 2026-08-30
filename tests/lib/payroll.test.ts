@@ -131,4 +131,26 @@ describe('getPayrollPreview', () => {
       getPayrollPreview(fakeDb({ employees: [] }), { from: '2026-08-22', to: '2026-08-16', sucursalId: 'suc-1' }),
     ).rejects.toThrow(/invertido/);
   });
+
+  it('acota TODAS sus consultas a la sucursal que paga', async () => {
+    // Es la regla que impide que una sucursal pague al personal de otra y le
+    // cargue el gasto. Se verifica sobre los filtros que recibe Prisma, porque un
+    // olvido en cualquiera de las cuatro consultas reintroduce la fuga.
+    const wheres: Record<string, unknown> = {};
+    const db = {
+      employee: { findMany: async (args: { where: unknown }) => ((wheres.employee = args.where), []) },
+      attendance: { groupBy: async (args: { where: unknown }) => ((wheres.attendance = args.where), []) },
+      employeeAdvance: { findMany: async (args: { where: unknown }) => ((wheres.advance = args.where), []) },
+      employeePayment: { findMany: async (args: { where: unknown }) => ((wheres.payment = args.where), []) },
+    } as never;
+
+    await getPayrollPreview(db, { from: '2026-08-16', to: '2026-08-22', sucursalId: 'suc-9' });
+
+    expect(wheres.employee).toMatchObject({ activo: true, sucursalId: 'suc-9' });
+    // Asistencia, anticipos y pagos previos no tienen sucursal propia: se filtran
+    // por la del empleado, que es la que define a qué planilla pertenece.
+    expect(wheres.attendance).toMatchObject({ employee: { sucursalId: 'suc-9' } });
+    expect(wheres.advance).toMatchObject({ employee: { sucursalId: 'suc-9' } });
+    expect(wheres.payment).toMatchObject({ tipo: 'planilla', employee: { sucursalId: 'suc-9' } });
+  });
 });

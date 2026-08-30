@@ -38,11 +38,15 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get('employeeId');
+    const sucursalId = searchParams.get('sucursalId');
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
     const where: Prisma.EmployeeAdvanceWhereInput = {};
     if (employeeId) where.employeeId = employeeId;
+    // Se filtra por la sucursal a la que pertenece el empleado, que es lo que
+    // pregunta el panel, y no por la sucursal desde la que salió el efectivo.
+    if (sucursalId) where.employee = { sucursalId };
     if (from || to) {
       where.businessDate = {};
       if (from) where.businessDate.gte = parseBusinessDate(from);

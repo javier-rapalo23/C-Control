@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, Save } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
@@ -63,8 +63,6 @@ export default function PurchasesPanel() {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
-  const [saldoInicial, setSaldoInicial] = useState('');
-
   const [itemProductoId, setItemProductoId] = useState('');
   const [itemPesoBruto, setItemPesoBruto] = useState('');
   const [itemNumeroSacos, setItemNumeroSacos] = useState('');
@@ -97,7 +95,6 @@ export default function PurchasesPanel() {
     const response = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });
     const data = await parseApiResponse<LedgerDTO>(response);
     setLedger(data);
-    setSaldoInicial(data.balance.saldoInicial.toFixed(2));
   }, [businessDate, sucursalId]);
 
   const fetchTransactions = useCallback(async () => {
@@ -228,23 +225,6 @@ export default function PurchasesPanel() {
     }
   }
 
-  async function saveSaldoInicial() {
-    try {
-      setLoading(true);
-      setError(null);
-      await fetch('/api/ledger/initial-balance', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ businessDate, sucursalId, saldoInicial: Number(saldoInicial) }),
-      }).then(parseApiResponse);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando saldo inicial');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function printTicket(transaction: PurchaseTransactionDTO) {
     try {
       setError(null);
@@ -329,22 +309,14 @@ export default function PurchasesPanel() {
           </div>
           {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         </article>
-        <article className="card half">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
-            <label style={{ flex: 1 }}>
-              Saldo Inicial
-              <input value={saldoInicial} onChange={(event) => setSaldoInicial(event.target.value)} type="number" step="0.01" />
-            </label>
-            <button
-              className="btn-primary"
-              type="button"
-              onClick={() => void saveSaldoInicial()}
-              aria-label="Guardar saldo inicial"
-              style={{ flexShrink: 0, width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Save size={16} aria-hidden="true" />
-            </button>
-          </div>
+        {/* Solo lectura: el saldo inicial del día lo fija la apertura de caja, y
+            editarlo desde aquí descuadraba el arqueo contra el efectivo contado. */}
+        <article className="card half kpi">
+          <div className="label">Saldo inicial</div>
+          <div className="value">L {ledger?.balance.saldoInicial.toFixed(2) ?? '0.00'}</div>
+          <p style={{ color: 'var(--text-soft)', fontSize: 12, margin: '6px 0 0' }}>
+            Se fija al abrir la caja del día, en el módulo Caja.
+          </p>
         </article>
         <article className="card third kpi">
           <div className="label">Saldo actual</div>

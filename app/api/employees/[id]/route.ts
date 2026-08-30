@@ -9,6 +9,7 @@ type Params = {
 
 function mapEmployee(employee: {
   id: string;
+  sucursalId: string;
   nombre: string;
   puesto: string | null;
   telefono: string | null;
@@ -35,6 +36,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const employee = await prisma.employee.update({
       where: { id },
       data: {
+        ...(payload.sucursalId !== undefined ? { sucursalId: payload.sucursalId } : {}),
         ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
         ...(payload.puesto !== undefined ? { puesto: payload.puesto } : {}),
         ...(payload.telefono !== undefined ? { telefono: payload.telefono } : {}),

@@ -140,15 +140,19 @@ function mapExpense(expense: {
   businessDate: Date;
   sucursalId: string;
   categoria: string;
+  bancoId: string | null;
   descripcion: string;
   monto: Prisma.Decimal;
   createdAt: Date;
+  banco?: { nombre: string } | null;
 }): ExpenseDTO {
   return {
     id: expense.id,
     businessDate: toBusinessDateString(expense.businessDate),
     sucursalId: expense.sucursalId,
     categoria: expense.categoria,
+    bancoId: expense.bancoId,
+    bancoNombre: expense.banco?.nombre ?? null,
     descripcion: expense.descripcion,
     monto: decimalToNumber(expense.monto),
     createdAt: expense.createdAt.toISOString(),
@@ -224,7 +228,11 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
   const [purchases, sales, expenses] = await Promise.all([
     db.purchase.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
     db.sale.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
-    db.expense.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
+    db.expense.findMany({
+      where: { businessDate, sucursalId },
+      orderBy: { createdAt: 'desc' },
+      include: { banco: { select: { nombre: true } } },
+    }),
   ]);
 
   return {

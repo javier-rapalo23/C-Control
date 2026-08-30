@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BANK_EXPENSE_CATEGORY, MANUAL_EXPENSE_CATEGORIA_VALUES } from '@/lib/expenses';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
@@ -86,13 +87,48 @@ export const createSaleTransactionSchema = z.object({
   items: z.array(createSaleLineSchema).min(1),
 });
 
-export const createExpenseSchema = z.object({
-  businessDate: businessDateField,
-  sucursalId: z.string().min(1).optional(),
-  categoria: z.string().trim().min(2).max(80),
-  descripcion: z.string().trim().min(2).max(250),
-  monto: z.number().positive(),
+export const createBancoSchema = z.object({
+  nombre: z.string().trim().min(2).max(120),
+  activo: z.boolean().optional(),
 });
+
+export const updateBancoSchema = createBancoSchema.partial();
+
+/**
+ * La categoría sale del catálogo y excluye "Planilla": ese gasto lo escribe el
+ * módulo Personal junto al pago o anticipo que lo origina, y uno creado a mano
+ * quedaría sin esa contrapartida.
+ *
+ * `bancoId` se exige solo en "Pago banco" y se rechaza en el resto, para que no
+ * queden pagos de banco sin banco ni gasolina colgando de uno.
+ */
+export const createExpenseSchema = z
+  .object({
+    businessDate: businessDateField,
+    sucursalId: z.string().min(1).optional(),
+    categoria: z.enum(MANUAL_EXPENSE_CATEGORIA_VALUES),
+    bancoId: z.string().min(1).nullable().optional(),
+    descripcion: z.string().trim().min(2).max(250),
+    monto: z.number().positive(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.categoria === BANK_EXPENSE_CATEGORY && !value.bancoId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['bancoId'],
+        message: 'Seleccione el banco al que corresponde el pago',
+      });
+      return;
+    }
+
+    if (value.categoria !== BANK_EXPENSE_CATEGORY && value.bancoId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['bancoId'],
+        message: `Solo los gastos de "${BANK_EXPENSE_CATEGORY}" llevan banco`,
+      });
+    }
+  });
 
 export const updateProductoSchema = createProductoSchema.partial();
 
@@ -125,6 +161,7 @@ export const updateUserSchema = z.object({
 });
 
 export const createEmployeeSchema = z.object({
+  sucursalId: z.string().min(1).optional(),
   nombre: z.string().trim().min(2).max(120),
   puesto: z.string().trim().max(120).optional(),
   telefono: z.string().trim().max(50).optional(),

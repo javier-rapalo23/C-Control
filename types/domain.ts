@@ -109,11 +109,23 @@ export type SaleTransactionDTO = {
   items: SaleTransactionItemDTO[];
 };
 
+export type BancoDTO = {
+  id: string;
+  nombre: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ExpenseDTO = {
   id: string;
   businessDate: string;
   sucursalId: string;
   categoria: string;
+  /** Solo en los gastos de "Pago banco"; nulo en el resto. */
+  bancoId: string | null;
+  /** Denormalizado para listar el gasto sin volver a consultar el catálogo. */
+  bancoNombre: string | null;
   descripcion: string;
   monto: number;
   createdAt: string;
@@ -181,6 +193,7 @@ export type ProductoStockDTO = {
 
 export type EmployeeDTO = {
   id: string;
+  sucursalId: string;
   nombre: string;
   puesto: string | null;
   telefono: string | null;
@@ -289,6 +302,76 @@ export type PurchaseReportDTO = {
   periods: PurchaseReportPeriodDTO[];
   porProducto: PurchaseReportBreakdownDTO[];
   porCliente: PurchaseReportBreakdownDTO[];
+};
+
+export type SaleReportPeriodDTO = {
+  inicio: string;
+  fin: string;
+  label: string;
+  totalLibras: number;
+  totalQuintalesOro: number;
+  totalLempiras: number;
+  numeroVentas: number;
+};
+
+export type SaleReportBreakdownDTO = {
+  id: string;
+  nombre: string;
+  totalLibras: number;
+  totalQuintalesOro: number;
+  totalLempiras: number;
+  numeroVentas: number;
+};
+
+export type SaleReportDTO = {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week';
+  sucursalId: string | null;
+  totals: {
+    totalLibras: number;
+    totalQuintalesOro: number;
+    totalLempiras: number;
+    numeroVentas: number;
+    promedioPorLibra: number;
+    /** Precio real por quintal oro del período; 0 si no se vendió en oro. */
+    promedioPorQuintalOro: number;
+  };
+  periods: SaleReportPeriodDTO[];
+  porProducto: SaleReportBreakdownDTO[];
+  porCliente: SaleReportBreakdownDTO[];
+};
+
+export type ExpenseReportGroupDTO = {
+  /** Categoría del catálogo, o nombre del banco en el desglose por banco. */
+  nombre: string;
+  total: number;
+  numeroGastos: number;
+  /** Porcentaje del total del período; ya redondeado. */
+  porcentaje: number;
+};
+
+export type ExpenseReportPeriodDTO = {
+  inicio: string;
+  fin: string;
+  label: string;
+  total: number;
+  numeroGastos: number;
+};
+
+export type ExpenseReportDTO = {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week';
+  sucursalId: string | null;
+  totals: {
+    total: number;
+    numeroGastos: number;
+  };
+  periods: ExpenseReportPeriodDTO[];
+  porCategoria: ExpenseReportGroupDTO[];
+  /** Desglose de la categoría "Pago banco"; vacío si no hubo pagos a bancos. */
+  porBanco: ExpenseReportGroupDTO[];
 };
 
 export type PayrollLineDTO = {

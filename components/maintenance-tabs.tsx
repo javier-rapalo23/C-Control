@@ -9,6 +9,7 @@ const tabs = [
   { href: '/maintenance/roles', label: 'Roles y permisos' },
   { href: '/clients', label: 'Clientes' },
   { href: '/sucursales', label: 'Sucursales' },
+  { href: '/bancos', label: 'Bancos' },
 ];
 
 export default function MaintenanceTabs() {

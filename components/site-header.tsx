@@ -11,6 +11,8 @@ import {
   Users,
   Wallet,
   Boxes,
+  BarChart3,
+  Banknote,
   Building2,
   UserRound,
   Wrench,
@@ -39,6 +41,8 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   clients: Users,
   expenses: Wallet,
   inventory: Boxes,
+  reports: BarChart3,
+  cash: Banknote,
   sucursales: Building2,
   personnel: UserRound,
   maintenance: Wrench,
@@ -49,6 +53,7 @@ const MAINTENANCE_SUBLINKS = [
   { href: '/maintenance/roles', label: 'Roles y permisos' },
   { href: '/clients', label: 'Clientes' },
   { href: '/sucursales', label: 'Sucursales' },
+  { href: '/bancos', label: 'Bancos' },
 ];
 
 function isMaintenanceGroupPath(pathname: string) {
@@ -58,7 +63,9 @@ function isMaintenanceGroupPath(pathname: string) {
     pathname === '/clients' ||
     pathname.startsWith('/clients/') ||
     pathname === '/sucursales' ||
-    pathname.startsWith('/sucursales/')
+    pathname.startsWith('/sucursales/') ||
+    pathname === '/bancos' ||
+    pathname.startsWith('/bancos/')
   );
 }
 
@@ -230,6 +237,7 @@ export default function SiteHeader() {
             (def) =>
               def.key !== 'clients' &&
               def.key !== 'sucursales' &&
+              def.key !== 'bancos' &&
               isRoleAllowed(moduleRoles[def.key] ?? def.defaultRoles, authUser.role),
           ).map((def) => {
             const Icon = MODULE_ICONS[def.key];

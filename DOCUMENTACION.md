@@ -57,7 +57,7 @@ Bloques funcionales:
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
 | Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
 | Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado. |
-| Reportes | `/reports` | Compras por rango, agrupadas por día o por semana. |
+| Reportes | `/reports` | Compras, ventas y gastos por rango, agrupados por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
 
@@ -183,7 +183,7 @@ c-control/
 ├── lib/                      # dominio, validaciones, hooks y utilidades
 ├── prisma/
 │   ├── schema.prisma
-│   └── migrations/           # 21 migraciones SQL versionadas
+│   └── migrations/           # 23 migraciones SQL versionadas
 ├── tests/api/                # pruebas Jest de route handlers
 ├── types/                    # DTOs de dominio y envolturas de API
 ├── docs/api-contract.md      # contrato para la app móvil
@@ -291,9 +291,14 @@ Arqueo de caja, `@@unique([businessDate, sucursalId])`. Guarda la apertura (`mon
 
 #### Personal
 
-`Employee` (nombre, puesto, teléfono, **`salarioDiario`**, fechaIngreso, activo), `Attendance`
-(`@@unique([businessDate, employeeId])`, `horaEntrada`/`horaSalida` como `HH:MM`),
+`Employee` (**`sucursalId`**, nombre, puesto, teléfono, **`salarioDiario`**, fechaIngreso, activo),
+`Attendance` (`@@unique([businessDate, employeeId])`, `horaEntrada`/`horaSalida` como `HH:MM`),
 `EmployeeAdvance` (adelantos) y `EmployeePayment` (pagos).
+
+**Cada empleado pertenece a una sucursal.** `Attendance` y `EmployeeAdvance` no llevan sucursal
+propia: la heredan del empleado, que es una sola fuente de verdad y no puede desincronizarse. El
+`sucursalId` que sí tienen `EmployeePayment` y `EmployeeAdvance` es otra cosa —la caja de la que
+salió el efectivo— y no debe confundirse con la sucursal a la que pertenece la persona.
 
 > ⚠️ `Employee.salarioDiario` es el **pago por día trabajado**. El nombre lleva la unidad porque de
 > ella depende todo el cálculo de planilla; el campo se llamaba `salario` y no tenía unidad definida.
@@ -467,17 +472,34 @@ el estado de la caja, y el cliente necesita distinguirlo.
 Las cargas y descargas de inventario (`ProductoCarga`) **no** se bloquean: son movimientos de
 producto, no de efectivo.
 
-### 6.10 Reportes de compras
+### 6.10 Reportes por rango
 
-`lib/reports.ts`. Agrega compras por rango con `groupBy=day|week`, y desglosa por producto y por
-cliente. Tres decisiones que conviene tener presentes:
+`lib/reports.ts` expone tres reportes con la misma forma —rango `from`/`to` y `groupBy=day|week`—
+que el panel `/reports` presenta en pestañas: **compras**, **ventas** y **gastos**.
+
+Dos reglas comunes a los tres:
 
 - Los períodos se generan **desde el calendario, no desde los datos**: un día o una semana sin
-  compras aparece en cero en vez de desaparecer del reporte.
-- Se incluyen las compras legacy sin cabecera de transacción, agrupadas bajo "Sin cliente":
-  omitirlas descuadraría el total contra el ledger.
-- `promedioPorLibra` es el total pagado dividido entre las libras compradas, **no** el promedio de
-  los precios unitarios; solo el primero es el precio real del período.
+  movimientos aparece en cero en vez de desaparecer del reporte.
+- Los promedios son el total dividido entre la cantidad, **no** el promedio de los precios
+  unitarios; solo el primero es el precio real del período.
+
+**Compras** (`getPurchaseReport`) — totales de libras, quintales oro y lempiras, con desglose por
+producto y por cliente, más `promedioPorLibra`.
+
+**Ventas** (`getSaleReport`) — el espejo del anterior, con dos diferencias que vienen del modelo:
+el monto vive en `Sale.monto` (no `total`), y producto, libras y quintales oro son opcionales. Una
+venta sin producto se agrupa bajo **"Sin producto"** en vez de descartarse, para que el desglose
+cuadre con el total. Añade `promedioPorQuintalOro` —el total entre los quintales oro— porque el
+café se vende por quintal oro y es el precio que interesa comparar entre semanas; vale 0 si no
+hubo ventas en oro.
+
+**Gastos** (`getExpenseReport`) — total y número de gastos, con desglose por categoría y, dentro de
+"Pago banco", por banco.
+
+Compras y ventas comparten el acumulador interno (libras, quintales oro, lempiras y un conteo).
+Ese conteo se llama `numeroRegistros` dentro de `lib/reports.ts` y cada reporte lo publica con su
+propio nombre en el DTO: `numeroCompras` o `numeroVentas`.
 
 ### 6.11 Planilla semanal calculada
 
@@ -488,6 +510,9 @@ subtotal = salarioDiario × días con asistencia registrada en el período
 neto     = max(0, subtotal − adelantos pendientes)
 ```
 
+- **Se calcula por sucursal.** Las cuatro consultas del cálculo —empleados, asistencia, adelantos y
+  planillas ya pagadas— se acotan a la sucursal que paga. Es la sucursal que desembolsa y a la que
+  se le carga el gasto, así que incluir personal de otra sería cargarle un costo ajeno.
 - Un día cuenta por **tener registro de asistencia**, no por las horas trabajadas.
 - Se descuentan los adelantos del período **y los pendientes de períodos anteriores**, por
   antigüedad; si no, un adelanto no descontado quedaría olvidado para siempre.
@@ -567,6 +592,8 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | Método | Ruta | Notas |
 |---|---|---|
 | GET | `/api/reports/purchases` | `?from&to&groupBy=day\|week&sucursalId`. Sin rango, la semana en curso. |
+| GET | `/api/reports/sales` | Mismos parámetros. Añade `promedioPorQuintalOro` a los totales. |
+| GET | `/api/reports/expenses` | Mismos parámetros. Desglosa por categoría y por banco. |
 
 ### Personal — **todas requieren rol `admin`**
 
@@ -578,6 +605,10 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | GET / POST · DELETE | `/api/employees/advances` · `/api/employees/advances/:id` |
 | GET / POST · DELETE | `/api/employees/payments` · `/api/employees/payments/:id` |
 | GET / POST | `/api/employees/payroll` — `GET` previsualiza la planilla del período (no escribe); `POST` la confirma |
+
+Todas las rutas `GET` de esta tabla aceptan `?sucursalId` y filtran por la **sucursal del empleado**.
+`POST /api/employees` toma la sucursal de `sucursalId` (o la principal si se omite), y el `PATCH`
+permite reasignar a un empleado de sucursal.
 
 Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan el efectivo
 (§18, decisión A). Borrar un anticipo ya descontado en una planilla devuelve **409 `CONFLICT`**.
@@ -954,7 +985,7 @@ pnpm dev                    # http://localhost:3000
 
 ## 13. Migraciones de base de datos
 
-21 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
+23 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
 
 | Migración | Cambio |
 |---|---|
@@ -979,6 +1010,8 @@ pnpm dev                    # http://localhost:3000
 | `20260824000000_drop_sync_event` | Elimina `SyncEvent` junto con la lógica de importación/exportación. |
 | `20260824010000_require_transaction_header` | `Purchase.purchaseTransactionId` y `Sale.saleTransactionId` pasan a `NOT NULL`. |
 | `20260824020000_add_cash_adjustment` | `DailyBalance.ajusteCaja`, para que el descuadre del arqueo llegue al saldo. |
+| `20260824030000_employee_sucursal` | `Employee.sucursalId` obligatorio, con backfill a la sucursal principal. |
+| `20260826000000_add_bancos_and_expense_categories` | Catálogo `Banco` y `Expense.bancoId`; categorías de gasto cerradas. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1000,7 +1033,7 @@ Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/
 pnpm test
 ```
 
-Cobertura actual (8 suites, 49 pruebas):
+Cobertura actual (8 suites, 58 pruebas):
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
 - `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` devuelve 201.
@@ -1013,8 +1046,9 @@ Cobertura actual (8 suites, 49 pruebas):
   horario, donde una implementación con hora local se correría un día.
 - `tests/lib/payroll.test.ts` — salario × días, descuento de anticipos, aplicación parcial con
   arrastre, neto nunca negativo, advertencias y exclusión de quien ya cobró el período.
-- `tests/lib/reports.test.ts` — totales, días sin compras en cero, corte semanal domingo–sábado,
-  compras legacy bajo "Sin cliente" y división por cero.
+- `tests/lib/reports.test.ts` — compras y ventas: totales, días sin movimientos en cero, corte
+  semanal domingo–sábado, agrupación por cliente, ventas sin producto, el precio por quintal oro
+  y la división por cero.
 
 - `tests/lib/summary-ticket.test.ts` — qué imprime el resumen según el estado de la caja: arqueo
   real cuando está cerrada, estimado cuando está abierta o no existe, y el nombre del signo de la
@@ -1158,12 +1192,7 @@ Ver §6.11 para el tratamiento de los adelantos parciales y la reversión.
 
 ### 18.4 Lo que queda abierto
 
-- **Personal no es por sucursal.** `Employee`, `Attendance` y `EmployeeAdvance` no tienen
-  `sucursalId`: la planilla se calcula sobre todos los empleados activos y el gasto se carga a la
-  sucursal indicada al confirmar. Con varias sucursales operando personal distinto, habría que
-  asignar cada empleado a la suya.
 - **Sin turnos.** Una sola sesión de caja por fecha y sucursal; no hay cortes por turno.
-- **Los reportes son solo de compras.** Ventas y gastos no tienen su equivalente por rango.
 - **Falta la exportación a CSV/Excel** que sustituye al export general retirado (§6.8). Debe
   producir archivos que una persona abra en una hoja de cálculo, no un volcado reimportable.
 

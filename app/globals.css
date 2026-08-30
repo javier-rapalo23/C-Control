@@ -426,22 +426,27 @@ h3 {
   margin-bottom: 16px;
 }
 
-.page-tabs a {
+.page-tabs a,
+.page-tabs button {
   padding: 8px 14px;
+  border: none;
   border-radius: 8px;
   background: var(--surface-alt);
   color: var(--text-soft);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 600;
+  cursor: pointer;
   transition: all 150ms ease;
 }
 
-.page-tabs a:hover {
+.page-tabs a:hover,
+.page-tabs button:hover {
   color: var(--text-main);
 }
 
-.page-tabs a.active {
+.page-tabs a.active,
+.page-tabs button.active {
   background: var(--ring);
   color: white;
 }

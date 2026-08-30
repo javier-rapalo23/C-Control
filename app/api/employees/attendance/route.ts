@@ -27,11 +27,13 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const employeeId = searchParams.get('employeeId');
+    const sucursalId = searchParams.get('sucursalId');
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
     const where: Prisma.AttendanceWhereInput = {};
     if (employeeId) where.employeeId = employeeId;
+    if (sucursalId) where.employee = { sucursalId };
     if (from || to) {
       where.businessDate = {};
       if (from) where.businessDate.gte = parseBusinessDate(from);

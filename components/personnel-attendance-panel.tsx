@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { AttendanceDTO, EmployeeDTO } from '@/types/domain';
+import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -34,6 +35,7 @@ type AttendanceForm = {
 };
 
 export default function PersonnelAttendancePanel() {
+  const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [employees, setEmployees] = useState<EmployeeDTO[]>([]);
   const [records, setRecords] = useState<AttendanceDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,19 +55,20 @@ export default function PersonnelAttendancePanel() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const res = await fetch('/api/employees', { cache: 'no-store' });
+      const res = await fetch(`/api/employees?sucursalId=${sucursalId}`, { cache: 'no-store' });
       const data = await parseApiResponse<EmployeeDTO[]>(res);
       setEmployees(data);
       setFormEmployeeId((current) => current || (data.length > 0 ? data[0].id : ''));
     } catch {
       // ignore errors fetching employees for the select
     }
-  }, []);
+  }, [sucursalId]);
 
   const fetchAttendance = useCallback(async () => {
     try {
       setLoading(true);
       const qs = new URLSearchParams();
+      if (sucursalId) qs.set('sucursalId', sucursalId);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
       const res = await fetch(`/api/employees/attendance?${qs.toString()}`, { cache: 'no-store' });
@@ -77,7 +80,7 @@ export default function PersonnelAttendancePanel() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, sucursalId]);
 
   useEffect(() => {
     void fetchEmployees();
@@ -172,6 +175,18 @@ export default function PersonnelAttendancePanel() {
     <section className="card-grid">
       <article className="card wide">
         <h3>Registrar entrada / salida</h3>
+        <div className="row" style={{ marginBottom: 12 }}>
+          <label style={{ gridColumn: 'span 6' }}>
+            Sucursal
+            <select value={sucursalId} onChange={(event) => setSucursalId(event.target.value)}>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         <form onSubmit={(e) => void registrarAsistencia(e)} className="row" style={{ marginTop: 8 }}>
           <label style={{ gridColumn: 'span 8' }}>
