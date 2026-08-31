@@ -48,6 +48,11 @@ git push -u origin main
    - **Output Directory**: `.next`
 4. Añade variables de entorno:
    - `DATABASE_URL` = (la URL de Railway copiada en Paso 2)
+   - `SESSION_SECRET` = **obligatoria**; sin ella no se emiten sesiones y nadie puede entrar.
+     Generar con: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
+   - `RBAC_USERS_JSON` = `{}` (recomendado). En producción las cuentas de prueba de `lib/auth.ts`
+     no existen aunque no se declare nada; ponerlo explícito lo deja claro para quien lea la
+     configuración. Ver la sección 8.6 de DOCUMENTACION.md.
 5. Despliega (Deploy)
 
 ## Paso 4: Ejecutar Migraciones
@@ -83,11 +88,33 @@ railway link
 railway run npx prisma migrate deploy
 ```
 
-## Paso 5: Verificar Despliegue
+## Paso 5: Crear el Primer Usuario Admin
+
+No existe ningún admin por defecto ni hardcodeado, así que un despliegue nuevo no tiene forma de
+entrar a Mantenimiento hasta que se cree uno. Con `DATABASE_URL` apuntando a la base de Railway:
+
+```bash
+pnpm create-admin --user javier --name "Javier Orellana"
+```
+
+Imprime una contraseña aleatoria **una sola vez** y la guarda hasheada con scrypt. Anótala y
+cámbiala desde Mantenimiento > Usuarios tras el primer ingreso.
+
+Para elegir la contraseña sin dejarla en el historial del shell:
+
+```bash
+pnpm create-admin --user javier --password-stdin
+```
+
+Otras opciones: `--list` (usuarios, roles y estado), `--reset` (restablece la contraseña de un
+usuario existente y lo reactiva), `--role` (por defecto `admin`).
+
+## Paso 6: Verificar Despliegue
 
 1. Ve a tu URL de Vercel (ej: `https://r-control-api.vercel.app`)
 2. Debe cargar el Dashboard
 3. Verifica `/api/health` → debe devolver `{"ok":true,...}`
+4. Inicia sesión con el admin del Paso 5
 
 ## Solución de Problemas
 
@@ -127,6 +154,10 @@ npm run prisma:migrate
 
 # Generar cliente Prisma
 npm run prisma:generate
+
+# Crear o restablecer un usuario admin
+npm run create-admin -- --user <userId> --name "<Nombre>"
+npm run create-admin -- --list
 ```
 
 ## Estructura del Proyecto

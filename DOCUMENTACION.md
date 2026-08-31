@@ -653,8 +653,16 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 
 ### 8.1 Sesión
 
-El login valida credenciales **primero contra la tabla `User`** (`getDbUserConfig`) y, si no
-encuentra al usuario, contra `RBAC_USERS_JSON` (`getAuthUserConfig`).
+El login valida credenciales **primero contra la tabla `User`** y, solo si el usuario no existe
+allí, contra `RBAC_USERS_JSON`. Ese orden lo resuelve `resolveUserConfig` (`lib/auth.ts`), que es el
+único punto de entrada: lo comparten el login, `GET /api/auth/me` y `requireModuleAccess`, para que
+no puedan divergir. Devuelve además de dónde salió la cuenta (`source: 'db' | 'env'`), que es lo que
+el login usa para decidir si rehashea (§8.2).
+
+Un usuario **desactivado** en la base (`activo: false`) devuelve `null` y **no cae al respaldo de
+entorno**: la baja es una decisión explícita y no puede revertirse porque su `userId` también figure
+en `RBAC_USERS_JSON`. Del mismo modo, un error de base de datos **propaga** en vez de degradar al
+respaldo: una caída de la base no debe convertirse en una concesión de acceso.
 
 La sesión es un **token firmado con HMAC-SHA256** (`lib/session.ts`), no el `userId` en claro:
 
@@ -804,7 +812,7 @@ puedan divergir.
 
 ### 8.6 Usuarios de fallback
 
-`lib/auth.ts` define cuentas de prueba solo si `RBAC_USERS_JSON` está ausente o es inválido:
+`lib/auth.ts` define cuentas de prueba **solo fuera de producción**:
 
 | Usuario | Rol | Contraseña |
 |---|---|---|
@@ -812,8 +820,38 @@ puedan divergir.
 | `consulta1` | viewer | `consulta123` |
 | `comprador1` | comprador | `comprador123` |
 
-**No existe un admin por defecto ni hardcodeado**: los administradores deben crearse en
-Mantenimiento → Usuarios (tabla `User`), decisión deliberada para no dejar una puerta trasera no revocable.
+> ⚠️ Sus contraseñas están en el código y en esta página. En producción equivaldrían a dejar la
+> puerta abierta, así que con `NODE_ENV=production` **no existen**: si `RBAC_USERS_JSON` falta, está
+> vacía o no es un JSON válido, `parseAuthUsers` devuelve **cero cuentas** y el acceso depende
+> únicamente de la tabla `User`. Falla cerrado.
+
+Cómo se resuelve `RBAC_USERS_JSON`:
+
+| Valor | Fuera de producción | En producción |
+|---|---|---|
+| Ausente o vacía | Cuentas de prueba | **Ninguna** |
+| JSON inválido | Cuentas de prueba | **Ninguna** |
+| `{}` | **Ninguna** | **Ninguna** |
+| JSON válido | Lo que declare | Lo que declare |
+
+Un JSON válido es una declaración explícita y se respeta tal cual, **incluso si queda vacío**: `{}`
+es la forma de decir "sin cuentas de respaldo". Antes un objeto vacío recaía en las cuentas de
+prueba, así que no había ninguna manera de desactivarlas. Las entradas con rol inválido se descartan
+una a una, sin que eso reactive los defaults.
+
+**No existe un admin por defecto ni hardcodeado**: es una decisión deliberada para no dejar una
+puerta trasera no revocable. Los administradores se crean con `pnpm create-admin`
+(`scripts/create-admin.mjs`) o desde Mantenimiento → Usuarios:
+
+```bash
+pnpm create-admin --user javier --name "Javier Orellana"   # contraseña aleatoria, se imprime 1 vez
+pnpm create-admin --user javier --password-stdin           # la lee de stdin, no queda en el historial
+pnpm create-admin --user javier --reset                     # restablece la contraseña y reactiva
+pnpm create-admin --list                                    # usuarios, roles y estado
+```
+
+Escribe siempre la contraseña ya hasheada con scrypt, de modo que nunca pase por texto plano ni en
+la base ni en los respaldos, y rechaza sobrescribir un usuario existente salvo con `--reset`.
 
 ---
 
@@ -943,7 +981,7 @@ Si `CompanySettings.printerIp` está vacío, las rutas de encolado responden
 | `SESSION_SECRET` | ✅ en producción | Clave para firmar las sesiones (HMAC-SHA256). Sin ella, en producción no se emiten sesiones. Generar con `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. |
 | `PRINT_AGENT_TOKEN` | Solo con agente | Token compartido con el agente de impresión local. |
 | `RBAC_ENABLED` | No (`true`) | Ponerlo en `false` desactiva el control de acceso de `/api`. |
-| `RBAC_USERS_JSON` | No | Usuarios/roles de fallback en JSON. Ej.: `{"operador1":{"role":"editor","password":"operador123"}}`. |
+| `RBAC_USERS_JSON` | Recomendada en producción | Usuarios/roles de respaldo en JSON. Ej.: `{"operador1":{"role":"editor","password":"operador123"}}`. En producción, si falta, no hay ninguna cuenta de respaldo (§8.6); ponerla en `{}` lo deja explícito. |
 | `NODE_ENV` | Automática | Marca la cookie de sesión como `secure` en producción y decide si se admite el secreto de desarrollo. |
 
 Otros archivos de configuración:
@@ -980,6 +1018,7 @@ pnpm dev                    # http://localhost:3000
 | `prisma:studio` | `prisma studio` | Explorador de datos. |
 | `print-agent` | `node scripts/print-agent.js` | Agente de impresión — **el archivo no está en el repo** (ver §17). |
 | `hash-passwords` | `node scripts/hash-passwords.mjs` | Backfill único de contraseñas legacy a scrypt. Acepta `--dry-run`. |
+| `create-admin` | `node scripts/create-admin.mjs` | Crea o restablece un usuario admin con la contraseña ya hasheada (§8.6). |
 
 ---
 
@@ -1033,7 +1072,7 @@ Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/
 pnpm test
 ```
 
-Cobertura actual (8 suites, 58 pruebas):
+Cobertura actual (9 suites, 73 pruebas):
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
 - `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` devuelve 201.
@@ -1042,6 +1081,11 @@ Cobertura actual (8 suites, 58 pruebas):
 - `tests/lib/session.test.ts` — firma y recuperación del rol, `userId` no ASCII, rechazo de payload
   manipulado para escalar privilegios, de firmas inventadas, del formato legacy de cookie y de
   tokens expirados; precedencia de `Bearer` sobre cookie e indiferencia ante `x-user-id`.
+- `tests/lib/auth.test.ts` — resolución de `RBAC_USERS_JSON`: que las cuentas de prueba no existan
+  en producción con la variable ausente, vacía o inválida; que `{}` las desactive en cualquier
+  entorno; que un rol inválido no las reactive. Y de `resolveUserConfig`: precedencia de la base
+  sobre el entorno, que un usuario desactivado no recupere acceso por el respaldo, y que un error
+  de base de datos no lo conceda.
 - `tests/lib/business-week.test.ts` — semana domingo–sábado, cruces de mes y año, y el cambio de
   horario, donde una implementación con hora local se correría un día.
 - `tests/lib/payroll.test.ts` — salario × días, descuento de anticipos, aplicación parcial con
@@ -1072,11 +1116,21 @@ está en [DEPLOY.md](DEPLOY.md); resumen:
 2. Importar el repositorio en Vercel (framework Next.js, root `./`).
 3. Configurar en Vercel `DATABASE_URL` y `SESSION_SECRET` (**ambas obligatorias**; sin la segunda
    nadie puede iniciar sesión) y, si aplica, `PRINT_AGENT_TOKEN`, `RBAC_ENABLED`, `RBAC_USERS_JSON`.
+   Con `NODE_ENV=production` las cuentas de prueba no existen aunque no se declare nada (§8.6);
+   declarar `RBAC_USERS_JSON='{}'` lo deja explícito para quien lea la configuración.
 4. Build Command: `pnpm vercel-build` (genera cliente, aplica migraciones y compila).
 5. Verificar `/api/health`.
-6. Crear el primer usuario admin en la tabla `User` (Prisma Studio o SQL directo), ya que no existe
-   admin por defecto. Se puede insertar la contraseña en texto plano: el login la acepta una vez y
-   la convierte a hash en ese mismo momento (§8.2).
+6. Crear el primer usuario admin, ya que no existe admin por defecto. Con `DATABASE_URL` apuntando
+   a la base de producción:
+
+   ```bash
+   pnpm create-admin --user <userId> --name "<Nombre>"
+   ```
+
+   Imprime una contraseña aleatoria **una sola vez** y la guarda hasheada. Anotarla y cambiarla
+   desde Mantenimiento → Usuarios tras el primer ingreso. Para elegir la contraseña sin dejarla en
+   el historial del shell: `pnpm create-admin --user <userId> --password-stdin`.
+   `pnpm create-admin --list` muestra los usuarios y su estado.
 7. Tras el despliegue, las sesiones anteriores dejan de ser válidas porque cambió el formato de la
    cookie: todos los usuarios deben iniciar sesión una vez más.
 
@@ -1133,6 +1187,16 @@ Puntos a tener presentes al trabajar sobre el código:
    como referencia de la lógica de negocio (§6).
 10. **Cobertura de pruebas baja**: los cálculos críticos (recálculo de balance, tara, conversión a oro,
     stock neto) no tienen pruebas.
+11. ~~**Las cuentas de prueba quedaban vivas en producción.**~~ **Resuelto**: `parseAuthUsers` solo
+    las ofrece fuera de producción, y un `RBAC_USERS_JSON` vacío o inválido ya no recae en ellas
+    (§8.6). Antes, desplegar sin esa variable dejaba `operador1`/`operador123` y sus dos compañeras
+    operando con rol editor, con contraseñas publicadas en esta misma página; y ponerla en `{}`
+    tampoco las desactivaba, así que no había forma de apagarlas. En el mismo cambio, un usuario
+    desactivado dejó de poder recuperar acceso por el respaldo de entorno, y un error de base de
+    datos dejó de degradar a él (§8.1).
+12. ~~**No había forma de crear el primer admin.**~~ **Resuelto**: `pnpm create-admin` (§8.6)
+    sustituye al paso manual con Prisma Studio o SQL directo contra la base de producción, y escribe
+    la contraseña ya hasheada en vez de depender de que el login la convierta en el primer ingreso.
 
 ---
 

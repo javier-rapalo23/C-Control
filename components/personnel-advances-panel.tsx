@@ -32,20 +32,35 @@ export default function PersonnelAdvancesPanel() {
   const [advanceMotivo, setAdvanceMotivo] = useState('');
 
   const fetchEmployees = useCallback(async () => {
+    // Sin sucursal la API devuelve el personal de todas las sucursales, y elegir
+    // por defecto el primero de esa lista dejaba seleccionado a un empleado que
+    // ni siquiera aparece en el desplegable.
+    if (!sucursalId) return;
+
     try {
-      const res = await fetch(`/api/employees?sucursalId=${sucursalId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/employees?sucursalId=${encodeURIComponent(sucursalId)}`, { cache: 'no-store' });
       const data = await parseApiResponse<EmployeeDTO[]>(res);
+      const activos = data.filter((employee) => employee.activo);
       setEmployees(data);
-      setAdvanceEmployeeId((current) => current || (data.length > 0 ? data[0].id : ''));
+      // La selección debe existir dentro de las opciones visibles: si no existe,
+      // el <select> muestra la primera opción pero el estado sigue apuntando al
+      // empleado anterior, y el anticipo se guarda a nombre de ese otro.
+      setAdvanceEmployeeId((current) =>
+        activos.some((employee) => employee.id === current) ? current : (activos[0]?.id ?? ''),
+      );
     } catch {
       // ignore errors fetching employees for the select
     }
   }, [sucursalId]);
 
   const fetchAdvances = useCallback(async () => {
+    if (!sucursalId) return;
+
     try {
       setLoading(true);
-      const res = await fetch(`/api/employees/advances?sucursalId=${sucursalId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/employees/advances?sucursalId=${encodeURIComponent(sucursalId)}`, {
+        cache: 'no-store',
+      });
       const data = await parseApiResponse<EmployeeAdvanceDTO[]>(res);
       setAdvances(data);
       setError(null);
@@ -75,6 +90,9 @@ export default function PersonnelAdvancesPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           businessDate: advanceDate,
+          // Sin esto el gasto del anticipo caía siempre en la sucursal principal,
+          // aunque el empleado y la caja fueran los de otra sucursal.
+          sucursalId,
           employeeId: advanceEmployeeId,
           monto: Number(advanceMonto),
           ...(advanceMotivo ? { motivo: advanceMotivo } : {}),

@@ -18,10 +18,10 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB_NAME?schema=public"
 SESSION_SECRET="..."
 # El control de acceso viene activo por defecto; solo hace falta para desactivarlo.
 RBAC_ENABLED="true"
+# Cuentas de respaldo. En produccion, si falta o esta vacia, no existe ninguna.
+# Fuera de produccion, si falta se usan las cuentas de prueba de lib/auth.ts.
 RBAC_USERS_JSON='{"operador1":{"role":"editor","password":"operador123"},"consulta1":{"role":"viewer","password":"consulta123"}}'
 ```
-
-Puedes usar `.env.example` como base.
 
 ## Seguridad por roles y usuarios (RBAC)
 
@@ -30,7 +30,9 @@ La API ahora soporta control de acceso por usuario y rol.
 - Login web en `/login` con usuario y contraseña
 - La sesion se guarda en una cookie HttpOnly llamada `rcontrol_user`, cuyo valor es un token firmado con HMAC-SHA256 que incluye usuario, rol y expiracion (`lib/session.ts`). Requiere `SESSION_SECRET`.
 - Clientes no web: usar el `token` que devuelve `POST /api/auth/login` y enviarlo como `Authorization: Bearer <token>`. La cabecera `x-user-id` ya no autentica.
-- Los usuarios `admin` deben crearse en Mantenimiento > Usuarios (tabla `User` en la base de datos). No existe ningun usuario admin por defecto ni hardcodeado: `RBAC_USERS_JSON`/`lib/auth.ts` solo deben usarse para cuentas de prueba de rango `editor`/`viewer`/`comprador`.
+- Los usuarios `admin` se crean con `pnpm create-admin --user <userId> --name "<Nombre>"` o desde Mantenimiento > Usuarios (tabla `User` en la base de datos). No existe ningun usuario admin por defecto ni hardcodeado: `RBAC_USERS_JSON`/`lib/auth.ts` solo deben usarse para cuentas de prueba de rango `editor`/`viewer`/`comprador`.
+- Las cuentas de prueba de `lib/auth.ts` (`operador1`, `consulta1`, `comprador1`) **solo existen fuera de produccion**. Con `NODE_ENV=production`, si `RBAC_USERS_JSON` falta, esta vacia o es invalida, no hay ninguna cuenta de respaldo y el acceso depende solo de la tabla `User`. Un `{}` explicito las desactiva en cualquier entorno.
+- Un usuario desactivado (`activo: false`) no recupera acceso aunque su `userId` figure en `RBAC_USERS_JSON`.
 - Las contrasenas de la tabla `User` se guardan hasheadas con scrypt (`lib/password.ts`). Las contrasenas legacy en texto plano se siguen aceptando y se convierten a hash en el primer login; `pnpm hash-passwords` hace el backfill completo de una pasada.
 - Jerarquia de roles: `viewer < editor < admin`
 
@@ -74,14 +76,15 @@ pnpm test
 pnpm prisma:generate
 pnpm prisma:migrate
 pnpm prisma:studio
+pnpm create-admin --list      # usuarios, roles y estado
+pnpm hash-passwords           # backfill de contrasenas legacy
 ```
 
 ## Correr localmente
 
 ```bash
 pnpm install
-cp .env.example .env
-# Edita DATABASE_URL en .env
+# Crea .env con las variables de la seccion anterior
 pnpm prisma:generate
 pnpm prisma:migrate
 pnpm dev

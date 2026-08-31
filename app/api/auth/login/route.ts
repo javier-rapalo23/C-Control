@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthUserConfig, getDbUserConfig } from '@/lib/auth';
+import { resolveUserConfig } from '@/lib/auth';
 import { hashPassword, needsRehash, verifyPassword } from '@/lib/password';
 import { prisma } from '@/lib/prisma';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, createSessionToken } from '@/lib/session';
@@ -17,17 +17,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: { code: 'INVALID', message: 'password is required' } }, { status: 400 });
     }
 
-    // Check DB users first, then fall back to env vars
-    const dbUserConfig = await getDbUserConfig(userId, prisma);
-    const userConfig = dbUserConfig ?? getAuthUserConfig(userId, process.env.RBAC_USERS_JSON);
+    // Tabla `User` primero; solo si el usuario no existe allí, `RBAC_USERS_JSON`.
+    // Un usuario desactivado no cae al respaldo de entorno (ver `resolveUserConfig`).
+    const resolved = await resolveUserConfig(userId, prisma, process.env.RBAC_USERS_JSON);
 
-    if (!userConfig) {
+    if (!resolved) {
       return NextResponse.json(
         { ok: false, error: { code: 'UNAUTHORIZED', message: 'Usuario no encontrado.' } },
         { status: 403 },
       );
     }
 
+    const userConfig = resolved.config;
     const storedPassword = userConfig.password ?? '';
     if (!(await verifyPassword(password, storedPassword))) {
       return NextResponse.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Contraseña incorrecta.' } }, { status: 401 });
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     // Migración transparente: la primera vez que un usuario con contraseña legacy
     // en texto plano se autentica, se reemplaza por su hash. Los usuarios de
     // `RBAC_USERS_JSON` no se tocan porque viven en el entorno, no en la base.
-    if (dbUserConfig && needsRehash(storedPassword)) {
+    if (resolved.source === 'db' && needsRehash(storedPassword)) {
       await prisma.user.update({ where: { userId }, data: { password: await hashPassword(password) } });
     }
 

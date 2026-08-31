@@ -16,7 +16,8 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
     "print-agent": "node scripts/print-agent.js",
-    "hash-passwords": "node scripts/hash-passwords.mjs"
+    "hash-passwords": "node scripts/hash-passwords.mjs",
+    "create-admin": "node scripts/create-admin.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",

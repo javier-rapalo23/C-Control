@@ -22,7 +22,7 @@ Propósito: documentar los endpoints disponibles, formato de petición/respuesta
 **Variables de entorno relevantes**
 - `SESSION_SECRET` — clave que firma las sesiones (HMAC-SHA256). Obligatoria en producción: sin ella no se emiten sesiones.
 - `RBAC_ENABLED` (true/false) — control de acceso en el middleware; **activo por defecto**.
-- `RBAC_USERS_JSON` — JSON con usuarios y roles/contraseñas (opcional, hay usuarios por defecto en `lib/auth`).
+- `RBAC_USERS_JSON` — JSON con usuarios y roles/contraseñas de respaldo. Fuera de producción, si falta se usan las cuentas de prueba de `lib/auth`; **en producción no hay ninguna cuenta de respaldo si falta, está vacía o es inválida**.
 - `NODE_ENV` — usado para marcar cookie `secure` en producción.
 - `DATABASE_URL` — conexión a la base de datos (usada por Prisma).
 

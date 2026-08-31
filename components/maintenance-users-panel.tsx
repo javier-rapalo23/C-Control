@@ -118,7 +118,7 @@ export default function MaintenanceUsersPanel() {
     <section className="card">
       <h3>Usuarios del sistema</h3>
       <p style={{ color: 'var(--text-soft)', fontSize: 13, marginBottom: 12 }}>
-        Los usuarios creados aquí se autentican desde la base de datos. Los usuarios de <code>RBAC_USERS_JSON</code> siguen funcionando como respaldo.
+        Los usuarios creados aquí se autentican desde la base de datos. Los de <code>RBAC_USERS_JSON</code> funcionan como respaldo solo si no existen aquí; desactivar un usuario de esta lista le quita el acceso aunque figure en esa variable.
       </p>
       {usersError ? <p style={{ color: 'var(--danger)' }}>{usersError}</p> : null}
 

@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getAuthUserConfig, getDbUserConfig } from '@/lib/auth';
+import { resolveUserConfig } from '@/lib/auth';
 import { getModuleRoles } from '@/lib/module-access';
 import { isRoleAllowed } from '@/lib/modules';
 import { prisma } from '@/lib/prisma';
@@ -26,17 +26,15 @@ export async function requireModuleAccess(moduleKey: string, redirectTo = '/') {
   // Se reconsulta el rol en lugar de confiar en el que viaja firmado en el token:
   // así un cambio de rol o una desactivación surten efecto en la siguiente
   // navegación, sin esperar a que la sesión expire.
-  const userConfig =
-    (await getDbUserConfig(session.userId, prisma)) ??
-    getAuthUserConfig(session.userId, process.env.RBAC_USERS_JSON);
-  if (!userConfig) {
+  const resolved = await resolveUserConfig(session.userId, prisma, process.env.RBAC_USERS_JSON);
+  if (!resolved) {
     redirect('/login');
   }
 
   const roles = await getModuleRoles(prisma, moduleKey);
-  if (!isRoleAllowed(roles, userConfig.role)) {
+  if (!isRoleAllowed(roles, resolved.config.role)) {
     redirect(redirectTo);
   }
 
-  return { userId: session.userId, role: userConfig.role };
+  return { userId: session.userId, role: resolved.config.role };
 }
