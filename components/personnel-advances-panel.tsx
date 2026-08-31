@@ -23,7 +23,12 @@ export default function PersonnelAdvancesPanel() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [employees, setEmployees] = useState<EmployeeDTO[]>([]);
   const [advances, setAdvances] = useState<EmployeeAdvanceDTO[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Un estado por acción: compartir uno solo hacía que eliminar una fila pusiera
+  // "Guardando..." en el botón del formulario —lejos de donde el usuario hizo
+  // clic— mientras la fila borrada no daba ninguna señal.
+  const [listLoading, setListLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [advanceEmployeeId, setAdvanceEmployeeId] = useState('');
@@ -57,7 +62,7 @@ export default function PersonnelAdvancesPanel() {
     if (!sucursalId) return;
 
     try {
-      setLoading(true);
+      setListLoading(true);
       const res = await fetch(`/api/employees/advances?sucursalId=${encodeURIComponent(sucursalId)}`, {
         cache: 'no-store',
       });
@@ -67,7 +72,7 @@ export default function PersonnelAdvancesPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando anticipos');
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
   }, [sucursalId]);
 
@@ -83,7 +88,7 @@ export default function PersonnelAdvancesPanel() {
       return;
     }
     try {
-      setLoading(true);
+      setSaving(true);
       setError(null);
       await fetch('/api/employees/advances', {
         method: 'POST',
@@ -105,19 +110,20 @@ export default function PersonnelAdvancesPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error registrando anticipo');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   async function deleteAdvance(id: string) {
     try {
-      setLoading(true);
+      setDeletingId(id);
+      setError(null);
       await fetch(`/api/employees/advances/${id}`, { method: 'DELETE' }).then(parseApiResponse);
       await fetchAdvances();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error eliminando anticipo');
     } finally {
-      setLoading(false);
+      setDeletingId(null);
     }
   }
 
@@ -169,8 +175,8 @@ export default function PersonnelAdvancesPanel() {
             <input value={advanceMotivo} onChange={(e) => setAdvanceMotivo(e.target.value)} placeholder="Opcional" />
           </label>
           <div style={{ gridColumn: 'span 12' }}>
-            <button className="btn-primary" type="submit" disabled={loading || !advanceEmployeeId}>
-              {loading ? 'Guardando...' : 'Registrar anticipo'}
+            <button className="btn-primary" type="submit" disabled={saving || !advanceEmployeeId}>
+              {saving ? 'Guardando...' : 'Registrar anticipo'}
             </button>
           </div>
         </form>
@@ -191,7 +197,14 @@ export default function PersonnelAdvancesPanel() {
       ) : null}
 
       <article className="card wide">
-        <h3>Historial de anticipos</h3>
+        <h3>
+          Historial de anticipos
+          {listLoading ? (
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--text-soft)' }}>
+              Actualizando...
+            </span>
+          ) : null}
+        </h3>
         <table className="table-like" style={{ marginTop: 8 }}>
           <thead>
             <tr>
@@ -204,19 +217,29 @@ export default function PersonnelAdvancesPanel() {
           </thead>
           <tbody>
             {advances.map((advance) => (
-              <tr key={advance.id}>
+              <tr key={advance.id} style={{ opacity: deletingId === advance.id ? 0.5 : 1 }}>
                 <td>{advance.businessDate}</td>
                 <td>{advance.employeeNombre}</td>
                 <td>{advance.motivo ?? '—'}</td>
                 <td>L {advance.monto.toFixed(2)}</td>
                 <td>
-                  <button className="btn-danger" type="button" onClick={() => void deleteAdvance(advance.id)} disabled={loading}>
-                    Eliminar
+                  <button
+                    className="btn-danger"
+                    type="button"
+                    onClick={() => void deleteAdvance(advance.id)}
+                    disabled={deletingId !== null}
+                  >
+                    {deletingId === advance.id ? 'Eliminando...' : 'Eliminar'}
                   </button>
                 </td>
               </tr>
             ))}
-            {advances.length === 0 && !loading ? (
+            {advances.length === 0 && listLoading ? (
+              <tr>
+                <td colSpan={5}>Cargando anticipos...</td>
+              </tr>
+            ) : null}
+            {advances.length === 0 && !listLoading ? (
               <tr>
                 <td colSpan={5}>No hay anticipos registrados.</td>
               </tr>
