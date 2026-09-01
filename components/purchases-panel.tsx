@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import { groupProductos } from '@/lib/producto-groups';
+import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHODS, paymentMethodLabel, type PaymentMethod } from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
 type CartItem = {
@@ -61,6 +62,7 @@ export default function PurchasesPanel() {
   const [rawbtEnabled, setRawbtEnabled] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
@@ -206,6 +208,7 @@ export default function PurchasesPanel() {
           businessDate,
           sucursalId,
           clientId: selectedClientId,
+          metodoPago,
           items: cart.map((item) => ({
             productoId: item.productoId,
             pesoBruto: Number(item.pesoBruto),
@@ -217,6 +220,7 @@ export default function PurchasesPanel() {
       }).then(parseApiResponse);
 
       setCart([]);
+      setMetodoPago(DEFAULT_PAYMENT_METHOD);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
@@ -325,6 +329,13 @@ export default function PurchasesPanel() {
         <article className="card third kpi">
           <div className="label">Compras del día</div>
           <div className="value">L {ledger?.totals.totalCompras.toFixed(2) ?? '0.00'}</div>
+          {/* Un deposito o un cheque no salen de la gaveta: sin esta nota, el saldo
+              parece no cuadrar contra las compras del dia. */}
+          {ledger && ledger.totals.totalComprasOtrosMedios !== 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+              L {ledger.totals.totalComprasOtrosMedios.toFixed(2)} con deposito o cheque (no restan de caja)
+            </div>
+          ) : null}
         </article>
         <article className="card third kpi">
           <div className="label">Transacciones</div>
@@ -544,12 +555,28 @@ export default function PurchasesPanel() {
               })
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
             <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
-            <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>
-              Guardar compra por cliente
-            </button>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ minWidth: 160 }}>
+                Forma de pago
+                <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value as PaymentMethod)}>
+                  {PAYMENT_METHODS.map((method) => (
+                    <option key={method.value} value={method.value}>
+                      {method.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>
+                Guardar compra por cliente
+              </button>
+            </div>
           </div>
+          <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 6 }}>
+            Solo las compras en efectivo restan del saldo de caja: un depósito o un cheque quedan
+            registrados pero no sacan dinero de la gaveta.
+          </p>
         </article>
 
         <article className="card wide">
@@ -567,7 +594,9 @@ export default function PurchasesPanel() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
                     <strong>{transaction.client.nombre}</strong>
-                    <div style={{ color: 'var(--text-soft)' }}>{transaction.items.length} items</div>
+                    <div style={{ color: 'var(--text-soft)' }}>
+                      {transaction.items.length} items · {paymentMethodLabel(transaction.metodoPago)}
+                    </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>

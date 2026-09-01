@@ -120,8 +120,12 @@ export type SummaryData = {
   sucursalNombre?: string;
   productos: Array<{ productoNombre: string; libras: number; total: number }>;
   totalCompras: number;
+  /** Parte de `totalCompras` pagada con depósito o cheque, que no salió de la caja. */
+  totalComprasOtrosMedios?: number;
   totalVentas: number;
   totalGastos: number;
+  /** Efectivo que entró a la caja sin ser una venta. */
+  totalIngresos?: number;
   saldoInicial: number;
   saldoActual: number;
   /**
@@ -167,7 +171,17 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
 
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Total Compras:', `L ${data.totalCompras.toFixed(2)}`)));
+  // Solo se imprimen si existen: un día sin estos movimientos sale igual que antes,
+  // y cuando los hay el ticket muestra por qué el saldo no cuadra con las compras.
+  const comprasOtrosMedios = data.totalComprasOtrosMedios ?? 0;
+  if (comprasOtrosMedios > 0) {
+    chunks.push(text(twoColumns(' no efectivo:', `L ${comprasOtrosMedios.toFixed(2)}`)));
+  }
   chunks.push(text(twoColumns('Total Ventas:', `L ${data.totalVentas.toFixed(2)}`)));
+  const totalIngresos = data.totalIngresos ?? 0;
+  if (totalIngresos > 0) {
+    chunks.push(text(twoColumns('Ingresos efectivo:', `L ${totalIngresos.toFixed(2)}`)));
+  }
   chunks.push(text(twoColumns('Total Gastos:', `L ${data.totalGastos.toFixed(2)}`)));
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Saldo inicial:', `L ${data.saldoInicial.toFixed(2)}`)));

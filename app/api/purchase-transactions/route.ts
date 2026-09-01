@@ -5,12 +5,14 @@ import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
+import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 
 function mapTransaction(transaction: {
   id: string;
   businessDate: Date;
   sucursalId: string;
   clientId: string;
+  metodoPago: string;
   total: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +50,7 @@ function mapTransaction(transaction: {
     businessDate: toBusinessDateString(transaction.businessDate),
     sucursalId: transaction.sucursalId,
     clientId: transaction.clientId,
+    metodoPago: transaction.metodoPago,
     total: Number(transaction.total),
     createdAt: transaction.createdAt.toISOString(),
     updatedAt: transaction.updatedAt.toISOString(),
@@ -172,6 +175,7 @@ export async function POST(request: Request) {
           businessDate: parseBusinessDate(payload.businessDate),
           sucursalId,
           clientId: client.id,
+          metodoPago: payload.metodoPago ?? DEFAULT_PAYMENT_METHOD,
           total,
           items: {
             create: items,

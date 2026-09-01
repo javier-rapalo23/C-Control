@@ -28,6 +28,7 @@ model Sucursal {
   expenses             Expense[]
   productoCargas       ProductoCarga[]
   cashSessions         CashSession[]
+  cashEntries          CashEntry[]
   employees            Employee[]
 }
 
@@ -99,6 +100,10 @@ model PurchaseTransaction {
   businessDate DateTime   @db.Date
   sucursalId   String
   clientId     String
+  /// Valor del catálogo de `lib/payment-methods.ts`. Solo "efectivo" resta del
+  /// saldo de caja: un depósito o un cheque no sacan dinero de la gaveta, aunque
+  /// la compra sí exista para inventario y reportes.
+  metodoPago   String     @default("efectivo")
   total        Decimal    @db.Decimal(12, 2)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -108,6 +113,26 @@ model PurchaseTransaction {
 
   @@index([businessDate])
   @@index([clientId])
+  @@index([sucursalId])
+}
+
+/// Efectivo que entra a la caja sin ser una venta: reposición del dueño, retiro
+/// del banco para tener cambio, devolución de un anticipo. Suma al saldo del día.
+///
+/// No se registra como una venta negativa ni como un gasto en negativo porque
+/// ensuciaría los reportes de venta y de gasto con movimientos que no lo son.
+model CashEntry {
+  id            String   @id @default(cuid())
+  businessDate  DateTime @db.Date
+  sucursalId    String
+  descripcion   String
+  monto         Decimal  @db.Decimal(12, 2)
+  /// `userId` de quien lo registró, igual que en la apertura y el cierre de caja.
+  registradoPor String
+  createdAt     DateTime @default(now())
+  sucursal      Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
   @@index([sucursalId])
 }
 

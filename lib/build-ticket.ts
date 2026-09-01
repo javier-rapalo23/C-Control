@@ -120,8 +120,10 @@ export async function buildSummaryForDate(businessDate: string, sucursalIdInput?
     sucursalNombre: sucursal?.nombre,
     productos: Object.values(byProducto).sort((a, b) => b.total - a.total),
     totalCompras: ledger.totals.totalCompras,
+    totalComprasOtrosMedios: ledger.totals.totalComprasOtrosMedios,
     totalVentas: ledger.totals.totalVentas,
     totalGastos: ledger.totals.totalGastos,
+    totalIngresos: ledger.totals.totalIngresos,
     saldoInicial: ledger.balance.saldoInicial,
     saldoActual: ledger.totals.saldoActual,
     arqueo: cashSession

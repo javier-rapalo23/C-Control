@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BANK_EXPENSE_CATEGORY, MANUAL_EXPENSE_CATEGORIA_VALUES } from '@/lib/expenses';
+import { PAYMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
@@ -65,7 +66,17 @@ export const createPurchaseTransactionSchema = z.object({
   businessDate: businessDateField,
   sucursalId: z.string().min(1).optional(),
   clientId: z.string().min(1),
+  // Opcional para no romper a los clientes que ya publicaban compras sin este
+  // campo: ausente significa efectivo, que es como se contaban hasta ahora.
+  metodoPago: z.enum(PAYMENT_METHOD_ENUM_VALUES).optional(),
   items: z.array(createPurchaseLineSchema).min(1),
+});
+
+export const createCashEntrySchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  descripcion: z.string().trim().min(1).max(250),
+  monto: z.number().positive(),
 });
 
 export const createSaleLineSchema = z

@@ -71,6 +71,8 @@ export type PurchaseTransactionDTO = {
   businessDate: string;
   sucursalId: string;
   clientId: string;
+  /** Valor del catálogo de `lib/payment-methods.ts`; solo "efectivo" resta de caja. */
+  metodoPago: string;
   total: number;
   createdAt: string;
   updatedAt: string;
@@ -128,6 +130,16 @@ export type ExpenseDTO = {
   bancoNombre: string | null;
   descripcion: string;
   monto: number;
+  createdAt: string;
+};
+
+export type CashEntryDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  descripcion: string;
+  monto: number;
+  registradoPor: string;
   createdAt: string;
 };
 
@@ -241,15 +253,22 @@ export type LedgerDTO = {
   sucursalId: string;
   balance: DailyBalanceDTO;
   totals: {
+    /** Todas las compras del día, sin importar cómo se pagaron. */
     totalCompras: number;
+    /** La parte de `totalCompras` pagada en efectivo: la única que resta del saldo. */
+    totalComprasEfectivo: number;
+    /** Compras pagadas con depósito o cheque, que no tocan la caja. */
+    totalComprasOtrosMedios: number;
     totalVentas: number;
     totalGastos: number;
+    totalIngresos: number;
     ajusteCaja: number;
     saldoActual: number;
   };
   purchases: PurchaseDTO[];
   sales: SaleDTO[];
   expenses: ExpenseDTO[];
+  cashEntries: CashEntryDTO[];
 };
 
 export type CashSessionDTO = {

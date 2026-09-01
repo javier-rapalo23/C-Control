@@ -250,10 +250,22 @@ export default function DashboardHome() {
         <article className="card third kpi">
           <div className="label">Compras del día</div>
           <div className="value">L {ledger?.totals.totalCompras.toFixed(2) ?? '0.00'}</div>
+          {/* Un deposito o un cheque no salen de la gaveta: sin esta nota, el saldo
+              parece no cuadrar contra las compras del dia. */}
+          {ledger && ledger.totals.totalComprasOtrosMedios !== 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+              L {ledger.totals.totalComprasOtrosMedios.toFixed(2)} con deposito o cheque (no restan de caja)
+            </div>
+          ) : null}
         </article>
         <article className="card third kpi">
           <div className="label">Movimientos</div>
-          <div className="value"> {ledger ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length : 0}</div>
+          <div className="value">
+            {' '}
+            {ledger
+              ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length + ledger.cashEntries.length
+              : 0}
+          </div>
         </article>
 
         <article className="card wide">

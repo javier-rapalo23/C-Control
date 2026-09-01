@@ -1,6 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
+import { CASH_PAYMENT_METHOD } from '@/lib/payment-methods';
 import type {
+  CashEntryDTO,
   DailyBalanceDTO,
   ExpenseDTO,
   LedgerDTO,
@@ -159,6 +161,26 @@ function mapExpense(expense: {
   };
 }
 
+export function mapCashEntry(entry: {
+  id: string;
+  businessDate: Date;
+  sucursalId: string;
+  descripcion: string;
+  monto: Prisma.Decimal;
+  registradoPor: string;
+  createdAt: Date;
+}): CashEntryDTO {
+  return {
+    id: entry.id,
+    businessDate: toBusinessDateString(entry.businessDate),
+    sucursalId: entry.sucursalId,
+    descripcion: entry.descripcion,
+    monto: decimalToNumber(entry.monto),
+    registradoPor: entry.registradoPor,
+    createdAt: entry.createdAt.toISOString(),
+  };
+}
+
 export async function ensureDailyBalance(db: DbClient, businessDateInput: string, sucursalId: string) {
   const businessDate = parseBusinessDate(businessDateInput);
 
@@ -178,9 +200,20 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const businessDate = parseBusinessDate(businessDateInput);
   const balance = await ensureDailyBalance(db, businessDateInput, sucursalId);
 
-  const [comprasAgg, ventasAgg, gastosAgg] = await Promise.all([
+  const [comprasAgg, comprasEfectivoAgg, ventasAgg, gastosAgg, ingresosAgg] = await Promise.all([
     db.purchase.aggregate({
       where: { businessDate, sucursalId },
+      _sum: { total: true },
+    }),
+    // El método de pago vive en la transacción, no en la línea, así que se filtra
+    // por la relación. Una compra con cheque o depósito no sacó dinero de la
+    // gaveta: existe para inventario y reportes, pero no puede restar del saldo.
+    db.purchase.aggregate({
+      where: {
+        businessDate,
+        sucursalId,
+        purchaseTransaction: { metodoPago: CASH_PAYMENT_METHOD },
+      },
       _sum: { total: true },
     }),
     db.sale.aggregate({
@@ -191,17 +224,25 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalId },
       _sum: { monto: true },
     }),
+    db.cashEntry.aggregate({
+      where: { businessDate, sucursalId },
+      _sum: { monto: true },
+    }),
   ]);
 
   const totalCompras = decimalToNumber(comprasAgg._sum.total);
+  const totalComprasEfectivo = decimalToNumber(comprasEfectivoAgg._sum.total);
+  const totalComprasOtrosMedios = Number((totalCompras - totalComprasEfectivo).toFixed(2));
   const totalVentas = decimalToNumber(ventasAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
+  const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
   const saldoInicial = decimalToNumber(balance.saldoInicial);
   // El ajuste del arqueo entra en la ecuación para que, una vez cerrada la caja,
   // el saldo sea el efectivo contado y no el teórico. Vale 0 mientras no se cierre,
   // así que las fechas sin arqueo se comportan igual que antes.
   const ajusteCaja = decimalToNumber(balance.ajusteCaja);
-  const saldoActual = saldoInicial + totalVentas - totalCompras - totalGastos + ajusteCaja;
+  const saldoActual =
+    saldoInicial + totalVentas + totalIngresos - totalComprasEfectivo - totalGastos + ajusteCaja;
 
   const updated = await db.dailyBalance.update({
     where: { id: balance.id },
@@ -212,8 +253,11 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     balance: mapBalance(updated),
     totals: {
       totalCompras,
+      totalComprasEfectivo,
+      totalComprasOtrosMedios,
       totalVentas,
       totalGastos,
+      totalIngresos,
       ajusteCaja,
       saldoActual,
     },
@@ -225,7 +269,7 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
   await ensureDailyBalance(db, businessDateInput, sucursalId);
   const recalculated = await recalculateDailyBalance(db, businessDateInput, sucursalId);
 
-  const [purchases, sales, expenses] = await Promise.all([
+  const [purchases, sales, expenses, cashEntries] = await Promise.all([
     db.purchase.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
     db.sale.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
     db.expense.findMany({
@@ -233,6 +277,7 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
       orderBy: { createdAt: 'desc' },
       include: { banco: { select: { nombre: true } } },
     }),
+    db.cashEntry.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
   ]);
 
   return {
@@ -243,5 +288,6 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
     purchases: purchases.map(mapPurchase),
     sales: sales.map(mapSale),
     expenses: expenses.map(mapExpense),
+    cashEntries: cashEntries.map(mapCashEntry),
   };
 }

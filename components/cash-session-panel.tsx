@@ -34,6 +34,11 @@ export default function CashSessionPanel() {
   const [montoContado, setMontoContado] = useState('');
   const [notas, setNotas] = useState('');
 
+  const [ingresoMonto, setIngresoMonto] = useState('');
+  const [ingresoDescripcion, setIngresoDescripcion] = useState('');
+  const [savingIngreso, setSavingIngreso] = useState(false);
+  const [deletingIngresoId, setDeletingIngresoId] = useState<string | null>(null);
+
   const fetchAll = useCallback(async () => {
     if (!sucursalId) return;
     try {
@@ -86,7 +91,49 @@ export default function CashSessionPanel() {
     }
   }
 
+  async function registrarIngreso(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      setSavingIngreso(true);
+      setError(null);
+      await fetch('/api/cash-entries', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          businessDate,
+          sucursalId,
+          descripcion: ingresoDescripcion,
+          monto: Number(ingresoMonto),
+        }),
+      }).then(parseApiResponse);
+
+      setIngresoMonto('');
+      setIngresoDescripcion('');
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error registrando el ingreso');
+    } finally {
+      setSavingIngreso(false);
+    }
+  }
+
+  async function eliminarIngreso(id: string) {
+    try {
+      setDeletingIngresoId(id);
+      setError(null);
+      await fetch(`/api/cash-entries/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error eliminando el ingreso');
+    } finally {
+      setDeletingIngresoId(null);
+    }
+  }
+
   const saldoEsperado = ledger?.totals.saldoActual ?? 0;
+  const cashEntries = ledger?.cashEntries ?? [];
+  const totalIngresos = ledger?.totals.totalIngresos ?? 0;
+  const cajaCerrada = session?.estado === 'cerrada';
   // Se calcula en vivo para que el cajero vea el descuadre antes de confirmar.
   const diferenciaPrevista = montoContado === '' ? null : Number(montoContado) - saldoEsperado;
 
@@ -149,6 +196,93 @@ export default function CashSessionPanel() {
           </div>
         </section>
       ) : null}
+
+      <section className="card" style={{ marginTop: 12 }}>
+        <h3>Ingresar efectivo</h3>
+        <p style={{ color: 'var(--text-soft)' }}>
+          Efectivo que entra a la caja sin ser una venta: reposición del dueño, retiro del banco para
+          tener cambio, devolución de un anticipo. Suma al saldo del día.
+        </p>
+
+        <form onSubmit={(event) => void registrarIngreso(event)} className="row" style={{ marginTop: 8 }}>
+          <label style={{ gridColumn: 'span 4' }}>
+            Monto
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={ingresoMonto}
+              onChange={(event) => setIngresoMonto(event.target.value)}
+              required
+            />
+          </label>
+          <label style={{ gridColumn: 'span 8' }}>
+            Concepto
+            <input
+              value={ingresoDescripcion}
+              onChange={(event) => setIngresoDescripcion(event.target.value)}
+              placeholder="Ej. Retiro del banco para cambio"
+              required
+            />
+          </label>
+          <div style={{ gridColumn: 'span 12' }}>
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={savingIngreso || cajaCerrada || ingresoMonto === '' || ingresoDescripcion.trim() === ''}
+            >
+              {savingIngreso ? 'Guardando...' : 'Registrar ingreso'}
+            </button>
+            {cajaCerrada ? (
+              <span style={{ marginLeft: 8, color: 'var(--text-soft)' }}>
+                La caja de esta fecha está cerrada.
+              </span>
+            ) : null}
+          </div>
+        </form>
+
+        <table className="table-like" style={{ marginTop: 12 }}>
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Monto</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cashEntries.map((entry) => (
+              <tr key={entry.id} style={{ opacity: deletingIngresoId === entry.id ? 0.5 : 1 }}>
+                <td>{entry.descripcion}</td>
+                <td>{money(entry.monto)}</td>
+                <td>
+                  <button
+                    className="btn-danger"
+                    type="button"
+                    disabled={deletingIngresoId !== null || cajaCerrada}
+                    onClick={() => void eliminarIngreso(entry.id)}
+                  >
+                    {deletingIngresoId === entry.id ? 'Eliminando...' : 'Eliminar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {cashEntries.length === 0 ? (
+              <tr>
+                <td colSpan={3}>No hay ingresos de efectivo en esta fecha.</td>
+              </tr>
+            ) : (
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td colSpan={2}>
+                  <strong>{money(totalIngresos)}</strong>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
 
       {session?.estado === 'abierta' ? (
         <section className="card" style={{ marginTop: 12 }}>
