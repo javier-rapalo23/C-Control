@@ -140,6 +140,26 @@ export default function PurchasesPanel() {
 
   const productoGroups = useMemo(() => groupProductos(productos), [productos]);
 
+  const selectedClient = useMemo(
+    () => clients.find((client) => client.id === selectedClientId) ?? null,
+    [clients, selectedClientId],
+  );
+
+  // El cliente "general" agrupa compras sueltas y no tiene estos datos; mostrar
+  // una lista de guiones solo ocuparía espacio, así que se omite lo que está vacío.
+  const selectedClientDatos = useMemo(() => {
+    if (!selectedClient) return [];
+
+    const nombreCompleto = [selectedClient.nombres, selectedClient.apellidos].filter(Boolean).join(' ');
+    return [
+      { label: 'Nombre completo', value: nombreCompleto || null },
+      { label: 'Clave IHCAFE', value: selectedClient.claveIhcafe ?? null },
+      { label: 'RTN', value: selectedClient.rtn ?? null },
+      { label: 'Teléfono', value: selectedClient.telefono ?? null },
+      { label: 'Cuenta bancaria', value: selectedClient.cuentaBancaria ?? null },
+    ].filter((dato) => dato.value !== null && dato.value !== '');
+  }, [selectedClient]);
+
   function handleClientCreated(client: ClientDTO) {
     setClients((current) => [client, ...current]);
     setSelectedClientId(client.id);
@@ -342,7 +362,7 @@ export default function PurchasesPanel() {
           <div className="value"> {transactions.length}</div>
         </article>
 
-        <article className="card half">
+        <article className="card wide">
           <h3>Cliente</h3>
           <label style={{ marginTop: 8 }}>
             Cliente para la compra
@@ -369,6 +389,22 @@ export default function PurchasesPanel() {
               </button>
             </div>
           </label>
+
+          {/* El nombre solo no basta para confirmar a quién se le compra: hay
+              clientes homónimos, y lo que los distingue es la clave IHCAFE y el
+              RTN. Verlos antes de guardar evita atribuirle la compra a otro. */}
+          {selectedClientDatos.length > 0 ? (
+            // `row` es la rejilla de 12 columnas del resto de formularios: cada dato
+            // ocupa 6, así que quedan dos por fila y en móvil colapsa a una sola.
+            <dl className="row" style={{ margin: '10px 0 0', fontSize: 13 }}>
+              {selectedClientDatos.map((dato) => (
+                <div key={dato.label} style={{ gridColumn: 'span 6' }}>
+                  <dt style={{ color: 'var(--text-soft)' }}>{dato.label}</dt>
+                  <dd style={{ margin: 0, fontWeight: 500 }}>{dato.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </article>
 
         <ClientQuickCreateModal
