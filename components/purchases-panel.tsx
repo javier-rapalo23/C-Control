@@ -46,8 +46,6 @@ function todayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
-
 export default function PurchasesPanel() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
@@ -59,7 +57,6 @@ export default function PurchasesPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
-  const [rawbtEnabled, setRawbtEnabled] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
@@ -123,15 +120,6 @@ export default function PurchasesPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    setRawbtEnabled(localStorage.getItem(RAWBT_STORAGE_KEY) === 'true');
-  }, []);
-
-  function toggleRawbt(value: boolean) {
-    setRawbtEnabled(value);
-    localStorage.setItem(RAWBT_STORAGE_KEY, value ? 'true' : 'false');
-  }
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
@@ -253,14 +241,6 @@ export default function PurchasesPanel() {
     try {
       setError(null);
       setPrintingId(transaction.id);
-
-      if (rawbtEnabled) {
-        const { payloadB64 } = await fetch(`/api/print/ticket/data?transactionId=${transaction.id}`, {
-          cache: 'no-store',
-        }).then(parseApiResponse<{ payloadB64: string }>);
-        window.location.href = `rawbt:base64,${payloadB64}`;
-        return;
-      }
 
       const { jobId } = await fetch('/api/print/ticket', {
         method: 'POST',
@@ -616,13 +596,7 @@ export default function PurchasesPanel() {
         </article>
 
         <article className="card wide">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <h3>Transacciones del día</h3>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-soft)' }}>
-              <input type="checkbox" checked={rawbtEnabled} onChange={(e) => toggleRawbt(e.target.checked)} />
-              Imprimir con RawBT en este dispositivo
-            </label>
-          </div>
+          <h3>Transacciones del día</h3>
           <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
             {transactions.length === 0 ? <p>No hay transacciones registradas para esta fecha.</p> : null}
             {transactions.map((transaction) => (

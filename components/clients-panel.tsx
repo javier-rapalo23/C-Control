@@ -414,31 +414,34 @@ export default function ClientsPanel() {
 
           <h4 style={{ marginTop: 16 }}>Nuevo cliente</h4>
           <form onSubmit={(e) => void createClient(e)} className="row" style={{ marginTop: 8 }}>
-            <label style={{ gridColumn: 'span 3' }}>
+            {/* Dos filas de tres campos: identidad arriba, contacto abajo. Repartir
+                cinco campos en la primera fila dejaba la clave, el RTN y el teléfono
+                en columnas de dos, demasiado angostas para lo que se escribe en ellas. */}
+            <label style={{ gridColumn: 'span 4' }}>
               Nombres
               <input value={newNombres} onChange={(e) => setNewNombres(e.target.value)} required />
             </label>
-            <label style={{ gridColumn: 'span 3' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               Apellidos
               <input value={newApellidos} onChange={(e) => setNewApellidos(e.target.value)} required />
             </label>
-            <label style={{ gridColumn: 'span 2' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               Clave IHCAFE
               <input value={newClaveIhcafe} onChange={(e) => setNewClaveIhcafe(e.target.value)} placeholder="06-05-09037" />
             </label>
-            <label style={{ gridColumn: 'span 2' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               RTN
               <input value={newRtn} onChange={(e) => setNewRtn(e.target.value)} />
             </label>
-            <label style={{ gridColumn: 'span 2' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               Teléfono
               <input value={newTelefono} onChange={(e) => setNewTelefono(e.target.value)} />
             </label>
-            <label style={{ gridColumn: 'span 8' }}>
+            <label style={{ gridColumn: 'span 4' }}>
               Dirección
               <input value={newDireccion} onChange={(e) => setNewDireccion(e.target.value)} />
             </label>
-            <div style={{ gridColumn: 'span 4', alignSelf: 'end' }}>
+            <div style={{ gridColumn: 'span 12' }}>
               <button className="btn-primary" type="submit" disabled={loading}>
                 Agregar cliente
               </button>

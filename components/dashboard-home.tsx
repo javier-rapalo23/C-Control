@@ -32,8 +32,6 @@ function todayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-const RAWBT_STORAGE_KEY = 'rcontrol_rawbt_enabled';
-
 export default function DashboardHome() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
@@ -49,7 +47,6 @@ export default function DashboardHome() {
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [productosLoading, setProductosLoading] = useState(false);
   const [companyName, setCompanyName] = useState<string | null>(null);
-  const [rawbtEnabled, setRawbtEnabled] = useState(false);
   const [printingSummary, setPrintingSummary] = useState(false);
 
   const fetchLedger = useCallback(async () => {
@@ -71,27 +68,10 @@ export default function DashboardHome() {
     void fetchLedger();
   }, [fetchLedger]);
 
-  useEffect(() => {
-    setRawbtEnabled(localStorage.getItem(RAWBT_STORAGE_KEY) === 'true');
-  }, []);
-
-  function toggleRawbt(value: boolean) {
-    setRawbtEnabled(value);
-    localStorage.setItem(RAWBT_STORAGE_KEY, value ? 'true' : 'false');
-  }
-
   async function printSummary() {
     try {
       setError(null);
       setPrintingSummary(true);
-
-      if (rawbtEnabled) {
-        const { payloadB64 } = await fetch(`/api/print/summary/data?businessDate=${businessDate}&sucursalId=${sucursalId}`, {
-          cache: 'no-store',
-        }).then(parseApiResponse<{ payloadB64: string }>);
-        window.location.href = `rawbt:base64,${payloadB64}`;
-        return;
-      }
 
       const { jobId } = await fetch('/api/print/summary', {
         method: 'POST',
@@ -272,10 +252,6 @@ export default function DashboardHome() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h3>Resumen de compras del día</h3>
             {/* <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-soft)' }}>
-                <input type="checkbox" checked={rawbtEnabled} onChange={(e) => toggleRawbt(e.target.checked)} />
-                Imprimir con RawBT en este dispositivo
-              </label>
               <button className="btn-primary" type="button" disabled={printingSummary} onClick={() => void printSummary()}>
                 {printingSummary ? 'Imprimiendo...' : 'Imprimir resumen del día'}
               </button>
