@@ -20,6 +20,7 @@ const emptyForm = {
   nombres: '',
   apellidos: '',
   claveIhcafe: '',
+  nombreFinca: '',
   telefono: '',
   direccion: '',
   rtn: '',
@@ -50,6 +51,7 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }: Pro
           nombres: form.nombres,
           apellidos: form.apellidos,
           claveIhcafe: form.claveIhcafe || undefined,
+          nombreFinca: form.nombreFinca || undefined,
           telefono: form.telefono || undefined,
           direccion: form.direccion || undefined,
           rtn: form.rtn || undefined,
@@ -118,6 +120,14 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }: Pro
               value={form.claveIhcafe}
               onChange={(event) => setField('claveIhcafe', event.target.value)}
               placeholder="06-05-09037"
+            />
+          </label>
+          <label style={{ marginTop: 8 }}>
+            Finca (opcional)
+            <input
+              value={form.nombreFinca}
+              onChange={(event) => setField('nombreFinca', event.target.value)}
+              placeholder="Nombre de la finca"
             />
           </label>
           <label style={{ marginTop: 8 }}>

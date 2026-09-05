@@ -8,6 +8,7 @@ function mapClient(client: {
   nombres: string | null;
   apellidos: string | null;
   claveIhcafe: string | null;
+  nombreFinca: string | null;
   telefono: string | null;
   direccion: string | null;
   rtn: string | null;
@@ -22,6 +23,7 @@ function mapClient(client: {
     nombres: client.nombres ?? null,
     apellidos: client.apellidos ?? null,
     claveIhcafe: client.claveIhcafe ?? null,
+    nombreFinca: client.nombreFinca ?? null,
     telefono: client.telefono ?? null,
     direccion: client.direccion ?? null,
     rtn: client.rtn ?? null,
@@ -70,6 +72,7 @@ export async function POST(request: Request) {
         nombres: payload.nombres,
         apellidos: payload.apellidos,
         claveIhcafe: payload.claveIhcafe,
+        nombreFinca: payload.nombreFinca,
         telefono: payload.telefono,
         direccion: payload.direccion,
         rtn: payload.rtn,

@@ -69,6 +69,7 @@ model Client {
   nombres              String?
   apellidos            String?
   claveIhcafe          String?
+  nombreFinca          String?
   telefono             String?
   direccion            String?
   rtn                  String?

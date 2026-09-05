@@ -27,6 +27,7 @@ export type ClientDTO = {
   nombres?: string | null;
   apellidos?: string | null;
   claveIhcafe?: string | null;
+  nombreFinca?: string | null;
   telefono?: string | null;
   direccion?: string | null;
   rtn?: string | null;

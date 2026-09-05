@@ -16,6 +16,7 @@ type EditingClient = {
   nombres: string;
   apellidos: string;
   claveIhcafe: string;
+  nombreFinca: string;
   direccion: string;
   rtn: string;
   telefono: string;
@@ -39,6 +40,7 @@ export default function ClientsPanel() {
   const [newNombres, setNewNombres] = useState('');
   const [newApellidos, setNewApellidos] = useState('');
   const [newClaveIhcafe, setNewClaveIhcafe] = useState('');
+  const [newNombreFinca, setNewNombreFinca] = useState('');
   const [newDireccion, setNewDireccion] = useState('');
   const [newRtn, setNewRtn] = useState('');
   const [newTelefono, setNewTelefono] = useState('');
@@ -79,6 +81,7 @@ export default function ClientsPanel() {
           nombres: newNombres,
           apellidos: newApellidos,
           claveIhcafe: newClaveIhcafe || undefined,
+          nombreFinca: newNombreFinca || undefined,
           direccion: newDireccion || undefined,
           rtn: newRtn || undefined,
           telefono: newTelefono || undefined,
@@ -87,6 +90,7 @@ export default function ClientsPanel() {
       setNewNombres('');
       setNewApellidos('');
       setNewClaveIhcafe('');
+      setNewNombreFinca('');
       setNewDireccion('');
       setNewRtn('');
       setNewTelefono('');
@@ -109,6 +113,7 @@ export default function ClientsPanel() {
           nombres: editingClient.nombres,
           apellidos: editingClient.apellidos,
           claveIhcafe: editingClient.claveIhcafe || undefined,
+          nombreFinca: editingClient.nombreFinca || undefined,
           direccion: editingClient.direccion || undefined,
           rtn: editingClient.rtn || undefined,
           telefono: editingClient.telefono || undefined,
@@ -225,6 +230,7 @@ export default function ClientsPanel() {
                 <th>Nombres</th>
                 <th>Apellidos</th>
                 <th>Clave IHCAFE</th>
+                <th>Finca</th>
                 <th>Dirección</th>
                 <th>RTN</th>
                 <th>Teléfono</th>
@@ -252,6 +258,12 @@ export default function ClientsPanel() {
                         value={editingClient.claveIhcafe}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, claveIhcafe: e.target.value })}
                         placeholder="06-05-09037"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={editingClient.nombreFinca}
+                        onChange={(e) => setEditingClient((prev) => prev && { ...prev, nombreFinca: e.target.value })}
                       />
                     </td>
                     <td>
@@ -287,6 +299,7 @@ export default function ClientsPanel() {
                       <td>{client.nombres ?? client.nombre}</td>
                       <td>{client.apellidos ?? ''}</td>
                       <td>{client.claveIhcafe ?? '—'}</td>
+                      <td>{client.nombreFinca ?? '—'}</td>
                       <td>{client.direccion ?? '—'}</td>
                       <td>{client.rtn ?? '—'}</td>
                       <td>{client.telefono ?? '—'}</td>
@@ -300,6 +313,7 @@ export default function ClientsPanel() {
                               nombres: client.nombres ?? '',
                               apellidos: client.apellidos ?? '',
                               claveIhcafe: client.claveIhcafe ?? '',
+                              nombreFinca: client.nombreFinca ?? '',
                               direccion: client.direccion ?? '',
                               rtn: client.rtn ?? '',
                               telefono: client.telefono ?? '',
@@ -322,7 +336,7 @@ export default function ClientsPanel() {
                     </tr>
                     {expandedClientId === client.id ? (
                       <tr>
-                        <td colSpan={7} style={{ background: 'var(--surface-alt)' }}>
+                        <td colSpan={8} style={{ background: 'var(--surface-alt)' }}>
                           <div style={{ padding: '8px 4px' }}>
                             <strong style={{ fontSize: 13 }}>Productores originales de {client.nombre}</strong>
                             {originalesError ? <p style={{ color: 'var(--danger)' }}>{originalesError}</p> : null}
@@ -406,7 +420,7 @@ export default function ClientsPanel() {
               )}
               {clients.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={7}>No hay clientes registrados.</td>
+                  <td colSpan={8}>No hay clientes registrados.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -414,7 +428,7 @@ export default function ClientsPanel() {
 
           <h4 style={{ marginTop: 16 }}>Nuevo cliente</h4>
           <form onSubmit={(e) => void createClient(e)} className="row" style={{ marginTop: 8 }}>
-            {/* Dos filas de tres campos: identidad arriba, contacto abajo. Repartir
+            {/* Filas de tres campos: identidad arriba, contacto abajo. Repartir
                 cinco campos en la primera fila dejaba la clave, el RTN y el teléfono
                 en columnas de dos, demasiado angostas para lo que se escribe en ellas. */}
             <label style={{ gridColumn: 'span 4' }}>
@@ -428,6 +442,10 @@ export default function ClientsPanel() {
             <label style={{ gridColumn: 'span 4' }}>
               Clave IHCAFE
               <input value={newClaveIhcafe} onChange={(e) => setNewClaveIhcafe(e.target.value)} placeholder="06-05-09037" />
+            </label>
+            <label style={{ gridColumn: 'span 4' }}>
+              Finca
+              <input value={newNombreFinca} onChange={(e) => setNewNombreFinca(e.target.value)} />
             </label>
             <label style={{ gridColumn: 'span 4' }}>
               RTN

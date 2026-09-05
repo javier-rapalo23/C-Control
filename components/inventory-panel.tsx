@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ProductoCategoria, ProductoDTO, ProductoStockDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
@@ -250,6 +251,7 @@ export default function InventoryPanel() {
                       <button
                         className="btn-primary"
                         type="button"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                         onClick={() =>
                           setEditingProducto({
                             id: m.id,
@@ -262,9 +264,16 @@ export default function InventoryPanel() {
                           })
                         }
                       >
+                        <Pencil size={14} aria-hidden="true" />
                         Editar
                       </button>
-                      <button className="btn-danger" type="button" onClick={() => void deleteProducto(m.id)}>
+                      <button
+                        className="btn-danger"
+                        type="button"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        onClick={() => void deleteProducto(m.id)}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
                         Eliminar
                       </button>
                     </td>
@@ -284,11 +293,15 @@ export default function InventoryPanel() {
             Tara / saco y factor oro son opcionales: se usan para calcular peso neto y quintales oro en Compras.
           </p>
           <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            {/* Dos filas de tres: los cinco campos en una sola dejaban el precio y el
+                factor oro en columnas de 2/12, donde la etiqueta parte en dos líneas
+                y el input queda encima del de al lado. Arriba lo obligatorio, abajo
+                lo opcional. */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Nombre
               <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Categoría
               <select value={newProdCategoria} onChange={(e) => setNewProdCategoria(e.target.value as ProductoCategoria | '')}>
                 <option value="">Sin categoría</option>
@@ -296,15 +309,15 @@ export default function InventoryPanel() {
                 <option value="pergamino">En Pergamino</option>
               </select>
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Precio por libra
               <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Tara / saco (lb)
               <input value={newProdTaraPorSaco} onChange={(e) => setNewProdTaraPorSaco(e.target.value)} type="number" step="0.01" />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
               Factor oro
               <input
                 value={newProdFactorOro}

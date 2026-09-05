@@ -12,6 +12,7 @@ function mapClient(client: {
   nombres: string | null;
   apellidos: string | null;
   claveIhcafe: string | null;
+  nombreFinca: string | null;
   telefono: string | null;
   direccion: string | null;
   rtn: string | null;
@@ -26,6 +27,7 @@ function mapClient(client: {
     nombres: client.nombres ?? null,
     apellidos: client.apellidos ?? null,
     claveIhcafe: client.claveIhcafe ?? null,
+    nombreFinca: client.nombreFinca ?? null,
     telefono: client.telefono ?? null,
     direccion: client.direccion ?? null,
     rtn: client.rtn ?? null,

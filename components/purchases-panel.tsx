@@ -142,6 +142,7 @@ export default function PurchasesPanel() {
     return [
       { label: 'Nombre completo', value: nombreCompleto || null },
       { label: 'Clave IHCAFE', value: selectedClient.claveIhcafe ?? null },
+      { label: 'Finca', value: selectedClient.nombreFinca ?? null },
       { label: 'RTN', value: selectedClient.rtn ?? null },
       { label: 'Teléfono', value: selectedClient.telefono ?? null },
       { label: 'Cuenta bancaria', value: selectedClient.cuentaBancaria ?? null },

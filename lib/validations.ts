@@ -28,6 +28,7 @@ export const createClientSchema = z.object({
   nombres: z.string().trim().min(2).max(120),
   apellidos: z.string().trim().min(2).max(120),
   claveIhcafe: z.string().trim().min(2).max(30).optional(),
+  nombreFinca: z.string().trim().min(2).max(150).optional(),
   telefono: z.string().trim().min(2).max(50).optional(),
   direccion: z.string().trim().min(2).max(250).optional(),
   rtn: z.string().trim().min(2).max(50).optional(),
