@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { BANK_EXPENSE_CATEGORY, MANUAL_EXPENSE_CATEGORIA_VALUES } from '@/lib/expenses';
+import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
+import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
 import { PAYMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
@@ -14,15 +15,26 @@ export const createSucursalSchema = z.object({
 
 export const updateSucursalSchema = createSucursalSchema.partial();
 
-export const productoCategoriaSchema = z.enum(['uva', 'pergamino']);
+export const productoCategoriaSchema = z.enum(PRODUCTO_CATEGORIAS as unknown as [string, ...string[]]);
 
+/**
+ * El nombre solo puede salir del catálogo cerrado de `lib/coffee-types.ts`, y la
+ * categoría no se acepta desde la petición: se deriva del catálogo. Así dos
+ * sucursales no pueden crear "seco" y "Pergamino seco" como productos distintos,
+ * que era lo que rompía los acumulados de temporada.
+ *
+ * Sin `precioPorLibra` ni `factorConversionOro`: los dos se capturan por línea.
+ */
 export const createProductoSchema = z.object({
-  nombre: z.string().trim().min(2).max(120),
-  categoria: productoCategoriaSchema.nullable().optional(),
-  precioPorLibra: z.number().positive(),
+  nombre: z.enum(COFFEE_TYPE_NOMBRES),
   taraPorSaco: z.number().min(0).optional(),
-  factorConversionOro: z.number().positive().optional(),
 });
+
+/**
+ * Rendimiento del lote **en porcentaje** (54 = 54 %). El tope es 99.9999 porque
+ * la columna es `Decimal(6, 4)` y no cabe un número mayor.
+ */
+export const porcentajeOroSchema = z.number().positive().max(99.9999);
 
 export const createClientSchema = z.object({
   nombres: z.string().trim().min(2).max(120),
@@ -50,14 +62,21 @@ export const setInitialBalanceSchema = z.object({
   saldoInicial: z.number(),
 });
 
+/**
+ * `precioPorLibra` es obligatorio: ya no hay precio de catálogo del que tirar.
+ * `porcentajeOro` es opcional —sin él la línea simplemente no reporta quintales
+ * oro— porque el rendimiento a veces se conoce después del pesaje, y no puede
+ * bloquear el pago al productor, que no depende del oro.
+ */
 export const createPurchaseLineSchema = z
   .object({
     productoId: z.string().min(1),
-    precioPorLibra: z.number().positive().optional(),
+    precioPorLibra: z.number().positive(),
     libras: z.number().positive().optional(),
     pesoBruto: z.number().positive().optional(),
     numeroSacos: z.number().int().min(0).optional(),
     taraPorSaco: z.number().min(0).optional(),
+    porcentajeOro: porcentajeOroSchema.optional(),
   })
   .refine((data) => data.libras !== undefined || data.pesoBruto !== undefined, {
     message: 'Debe indicar libras o peso bruto',
@@ -85,11 +104,16 @@ export const createSaleLineSchema = z
     productoId: z.string().min(1),
     libras: z.number().positive(),
     precioPorLibra: z.number().positive().optional(),
-    porcentajeOro: z.number().positive().max(99.9999).optional(),
+    porcentajeOro: porcentajeOroSchema.optional(),
     precioPorQuintalOro: z.number().positive().optional(),
   })
   .refine((data) => data.precioPorQuintalOro === undefined || data.porcentajeOro !== undefined, {
     message: 'porcentajeOro es requerido cuando se especifica precioPorQuintalOro',
+  })
+  // En modo por libra ya no hay precio de catálogo del que tirar, así que la
+  // línea tiene que traerlo.
+  .refine((data) => data.precioPorQuintalOro !== undefined || data.precioPorLibra !== undefined, {
+    message: 'precioPorLibra es requerido cuando no se vende por quintal oro',
   });
 
 export const createSaleTransactionSchema = z.object({
@@ -124,7 +148,7 @@ export const createExpenseSchema = z
     monto: z.number().positive(),
   })
   .superRefine((value, ctx) => {
-    if (value.categoria === BANK_EXPENSE_CATEGORY && !value.bancoId) {
+    if (requiresBanco(value.categoria) && !value.bancoId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bancoId'],
@@ -133,11 +157,11 @@ export const createExpenseSchema = z
       return;
     }
 
-    if (value.categoria !== BANK_EXPENSE_CATEGORY && value.bancoId) {
+    if (!requiresBanco(value.categoria) && value.bancoId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bancoId'],
-        message: `Solo los gastos de "${BANK_EXPENSE_CATEGORY}" llevan banco`,
+        message: `La categoría "${value.categoria}" no lleva banco`,
       });
     }
   });

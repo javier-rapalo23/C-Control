@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import { groupProductos } from '@/lib/producto-groups';
+import { previewQuintalesOro } from '@/lib/oro-preview';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHODS, paymentMethodLabel, type PaymentMethod } from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
@@ -17,17 +18,26 @@ type CartItem = {
   numeroSacos: string;
   taraPorSaco: string;
   precioPorLibra: string;
-  factorConversionOro: number;
+  /** Rendimiento del lote en porcentaje; vacío si todavía no se conoce. */
+  porcentajeOro: string;
 };
 
-function computeDerived(item: { pesoBruto: string; numeroSacos: string; taraPorSaco: string; precioPorLibra: string; factorConversionOro: number }) {
+/**
+ * Previsualización del carrito. El servidor recalcula todo al guardar
+ * (`POST /api/purchase-transactions`) y es el que manda; esto solo tiene que
+ * coincidir con él a la vista del usuario.
+ *
+ * El pago es `(pesoBruto − tara × sacos) × precio` y no pasa por el oro: los
+ * quintales oro son una cifra de referencia para la facturación de temporada.
+ */
+function computeDerived(item: { pesoBruto: string; numeroSacos: string; taraPorSaco: string; precioPorLibra: string; porcentajeOro: string }) {
   const pesoBruto = Number(item.pesoBruto) || 0;
   const numeroSacos = Number(item.numeroSacos) || 0;
   const taraPorSaco = Number(item.taraPorSaco) || 0;
   const precioPorLibra = Number(item.precioPorLibra) || 0;
   const taraTotal = numeroSacos * taraPorSaco;
   const pesoNeto = Math.max(0, pesoBruto - taraTotal);
-  const quintalesOro = (pesoNeto / 100) * (item.factorConversionOro || 1);
+  const quintalesOro = previewQuintalesOro(pesoNeto, Number(item.porcentajeOro) || 0);
   const subtotal = pesoNeto * precioPorLibra;
   return { pesoNeto, quintalesOro, subtotal };
 }
@@ -67,6 +77,7 @@ export default function PurchasesPanel() {
   const [itemNumeroSacos, setItemNumeroSacos] = useState('');
   const [itemTaraPorSaco, setItemTaraPorSaco] = useState('');
   const [itemPrice, setItemPrice] = useState('');
+  const [itemPorcentajeOro, setItemPorcentajeOro] = useState('');
 
   const fetchProductos = useCallback(async () => {
     const response = await fetch('/api/productos', { cache: 'no-store' });
@@ -75,7 +86,6 @@ export default function PurchasesPanel() {
 
     if (!itemProductoId && data.length > 0) {
       setItemProductoId(data[0].id);
-      setItemPrice(String(Number(data[0].precioPorLibra).toFixed(2)));
       setItemTaraPorSaco(data[0].taraPorSaco !== null && data[0].taraPorSaco !== undefined ? String(data[0].taraPorSaco) : '');
     }
   }, [itemProductoId]);
@@ -163,7 +173,12 @@ export default function PurchasesPanel() {
       return;
     }
 
-    const precioPorLibra = itemPrice || String(Number(producto.precioPorLibra).toFixed(2));
+    // El precio ya no sale del catálogo: si no se escribió, no hay de dónde sacarlo.
+    if (!itemPrice || Number(itemPrice) <= 0) {
+      setError('Escribe el precio por libra de esta compra');
+      return;
+    }
+
     const taraPorSaco = itemTaraPorSaco || String(producto.taraPorSaco ?? 0);
 
     setCart((current) => [
@@ -175,18 +190,20 @@ export default function PurchasesPanel() {
         pesoBruto: itemPesoBruto,
         numeroSacos: itemNumeroSacos || '0',
         taraPorSaco,
-        precioPorLibra,
-        factorConversionOro: producto.factorConversionOro ?? 1,
+        precioPorLibra: itemPrice,
+        porcentajeOro: itemPorcentajeOro,
       },
     ]);
 
     setItemPesoBruto('');
     setItemNumeroSacos('');
-    setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
+    // El precio y el rendimiento se conservan: dentro de una misma compra las
+    // líneas suelen repetirlos, y volver a escribirlos en cada saco era el
+    // trabajo que el papel no pedía.
     setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
   }
 
-  function updateCartItem(id: string, field: 'pesoBruto' | 'numeroSacos' | 'taraPorSaco' | 'precioPorLibra', value: string) {
+  function updateCartItem(id: string, field: 'pesoBruto' | 'numeroSacos' | 'taraPorSaco' | 'precioPorLibra' | 'porcentajeOro', value: string) {
     setCart((current) => current.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   }
 
@@ -224,6 +241,7 @@ export default function PurchasesPanel() {
             numeroSacos: Number(item.numeroSacos) || 0,
             taraPorSaco: Number(item.taraPorSaco) || 0,
             precioPorLibra: Number(item.precioPorLibra),
+            porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
           })),
         }),
       }).then(parseApiResponse);
@@ -411,7 +429,6 @@ export default function PurchasesPanel() {
                       type="button"
                       onClick={() => {
                         setItemProductoId(producto.id);
-                        setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
                         setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
                       }}
                       style={{
@@ -428,7 +445,7 @@ export default function PurchasesPanel() {
                         {producto.nombre}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                        L {Number(producto.precioPorLibra).toFixed(2)} / lb
+                        {producto.facturable ? 'Se factura' : 'No se factura'}
                       </div>
                     </button>
                   );
@@ -454,18 +471,31 @@ export default function PurchasesPanel() {
               <input value={itemTaraPorSaco} onChange={(event) => setItemTaraPorSaco(event.target.value)} type="number" step="0.01" />
             </label>
             */}
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
+            {/* El rendimiento no bloquea la compra: si todavía no se conoce, la línea
+                se guarda sin quintales oro y el productor cobra igual. */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+              Rendimiento (%)
+              <input
+                value={itemPorcentajeOro}
+                onChange={(event) => setItemPorcentajeOro(event.target.value)}
+                type="number"
+                step="0.01"
+                min="0"
+                max="99.99"
+                placeholder="54"
+              />
+            </label>
             {(() => {
-              const producto = productos.find((entry) => entry.id === itemProductoId);
               const preview = computeDerived({
                 pesoBruto: itemPesoBruto,
                 numeroSacos: itemNumeroSacos,
                 taraPorSaco: itemTaraPorSaco,
                 precioPorLibra: itemPrice,
-                factorConversionOro: producto?.factorConversionOro ?? 1,
+                porcentajeOro: itemPorcentajeOro,
               });
               return (
                 <div style={{ gridColumn: 'span 12', display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-soft)' }}>
@@ -473,7 +503,7 @@ export default function PurchasesPanel() {
                     Peso neto: <strong style={{ color: 'var(--text-main)' }}>{preview.pesoNeto.toFixed(2)} lb</strong>
                   </span>
                   <span>
-                    Quintales oro: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesOro.toFixed(2)}</strong>
+                    Quintales oro: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesOro > 0 ? preview.quintalesOro.toFixed(2) : '—'}</strong>
                   </span>
                   <span>
                     Subtotal: <strong style={{ color: 'var(--text-main)' }}>L {preview.subtotal.toFixed(2)}</strong>
@@ -554,13 +584,24 @@ export default function PurchasesPanel() {
                           step="0.01"
                         />
                       </label>
+                      <label style={{ flex: '1 1 80px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Rend. %</span>
+                        <input
+                          value={item.porcentajeOro}
+                          onChange={(event) => updateCartItem(item.id, 'porcentajeOro', event.target.value)}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="99.99"
+                        />
+                      </label>
                       <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Peso neto</div>
                         <strong>{derived.pesoNeto.toFixed(2)} lb</strong>
                       </div>
                       <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Qq oro</div>
-                        <strong>{derived.quintalesOro.toFixed(2)}</strong>
+                        <strong>{derived.quintalesOro > 0 ? derived.quintalesOro.toFixed(2) : '—'}</strong>
                       </div>
                       <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Subtotal</div>
@@ -633,6 +674,7 @@ export default function PurchasesPanel() {
                       <th>Peso bruto</th>
                       <th>Sacos</th>
                       <th>Peso neto</th>
+                      <th>Rend. %</th>
                       <th>Qq oro</th>
                       <th>Precio / libra</th>
                       <th>Subtotal</th>
@@ -645,6 +687,7 @@ export default function PurchasesPanel() {
                         <td>{item.pesoBruto !== null && item.pesoBruto !== undefined ? item.pesoBruto.toFixed(2) : '—'}</td>
                         <td>{item.numeroSacos ?? '—'}</td>
                         <td>{item.libras.toFixed(2)}</td>
+                        <td>{item.porcentajeOro !== null && item.porcentajeOro !== undefined ? `${item.porcentajeOro.toFixed(2)} %` : '—'}</td>
                         <td>{item.quintalesOro !== null && item.quintalesOro !== undefined ? item.quintalesOro.toFixed(2) : '—'}</td>
                         <td>L {item.precioPorLibra.toFixed(2)}</td>
                         <td>L {item.total.toFixed(2)}</td>

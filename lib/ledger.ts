@@ -79,6 +79,7 @@ function mapPurchase(purchase: {
   pesoBruto: Prisma.Decimal | null;
   numeroSacos: number | null;
   taraPorSaco: Prisma.Decimal | null;
+  porcentajeOro: Prisma.Decimal | null;
   quintalesOro: Prisma.Decimal | null;
   libras: Prisma.Decimal;
   total: Prisma.Decimal;
@@ -95,6 +96,7 @@ function mapPurchase(purchase: {
     pesoBruto: purchase.pesoBruto !== null ? decimalToNumber(purchase.pesoBruto) : null,
     numeroSacos: purchase.numeroSacos,
     taraPorSaco: purchase.taraPorSaco !== null ? decimalToNumber(purchase.taraPorSaco) : null,
+    porcentajeOro: purchase.porcentajeOro !== null ? decimalToNumber(purchase.porcentajeOro) : null,
     quintalesOro: purchase.quintalesOro !== null ? decimalToNumber(purchase.quintalesOro) : null,
     libras: decimalToNumber(purchase.libras),
     total: decimalToNumber(purchase.total),

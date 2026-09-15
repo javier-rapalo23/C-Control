@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
+import { computeQuintalesOro } from '@/lib/oro';
 
 function mapTransaction(transaction: {
   id: string;
@@ -130,11 +131,10 @@ export async function POST(request: Request) {
           const libras = new Prisma.Decimal(item.libras);
 
           if (item.precioPorQuintalOro !== undefined) {
-            // Modo Oro: quintalesOro = (libras/100) * (porcentajeOro/100) / 1.25; monto = quintalesOro * precioPorQuintalOro.
+            // Modo Oro: la conversión es la misma que en compras (`lib/oro.ts`).
             const porcentajeOro = new Prisma.Decimal(item.porcentajeOro!);
             const precioPorQuintalOro = new Prisma.Decimal(item.precioPorQuintalOro);
-            const quintalesVendidas = libras.div(100);
-            const quintalesOro = quintalesVendidas.mul(porcentajeOro.div(100)).div(1.25);
+            const quintalesOro = computeQuintalesOro(libras, porcentajeOro);
             const monto = quintalesOro.mul(precioPorQuintalOro);
 
             return {
@@ -151,7 +151,9 @@ export async function POST(request: Request) {
             };
           }
 
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
+          // El esquema exige `precioPorLibra` fuera del modo oro: el catálogo ya no
+          // guarda precio del que tirar.
+          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra!);
           const monto = precioPorLibra.mul(libras);
 
           return {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { BancoDTO } from '@/types/domain';
 import MaintenanceTabs from '@/components/maintenance-tabs';
-import { BANK_EXPENSE_CATEGORY } from '@/lib/expenses';
+import { BANK_LINKED_CATEGORIES } from '@/lib/expenses';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -90,8 +90,8 @@ export default function BancosPanel() {
       <section className="hero">
         <h1>Bancos</h1>
         <p>
-          Bancos a los que la empresa hace pagos. Cada gasto de &quot;{BANK_EXPENSE_CATEGORY}&quot; se registra contra uno
-          de ellos, y de ahí sale el desglose por banco del reporte de gastos.
+          Bancos a los que la empresa hace pagos. Cada gasto de {BANK_LINKED_CATEGORIES.map((categoria) => `"${categoria}"`).join(' y ')} se
+          registra contra uno de ellos, y de ahí sale el desglose por banco del reporte de gastos.
         </p>
       </section>
 

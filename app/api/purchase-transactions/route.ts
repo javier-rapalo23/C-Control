@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
+import { computeQuintalesOro } from '@/lib/oro';
 import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 
 function mapTransaction(transaction: {
@@ -38,6 +39,7 @@ function mapTransaction(transaction: {
     pesoBruto: Prisma.Decimal | null;
     numeroSacos: number | null;
     taraPorSaco: Prisma.Decimal | null;
+    porcentajeOro: Prisma.Decimal | null;
     quintalesOro: Prisma.Decimal | null;
     libras: Prisma.Decimal;
     total: Prisma.Decimal;
@@ -74,6 +76,7 @@ function mapTransaction(transaction: {
       pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
       numeroSacos: item.numeroSacos,
       taraPorSaco: item.taraPorSaco !== null ? Number(item.taraPorSaco) : null,
+      porcentajeOro: item.porcentajeOro !== null ? Number(item.porcentajeOro) : null,
       quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
       libras: Number(item.libras),
       total: Number(item.total),
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
             throw new Error(`Producto not found: ${item.productoId}`);
           }
 
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra ?? Number(producto.precioPorLibra));
+          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra);
 
           let pesoBruto: Prisma.Decimal | null = null;
           let numeroSacos: number | null = null;
@@ -147,8 +150,11 @@ export async function POST(request: Request) {
             libras = new Prisma.Decimal(item.libras ?? 0);
           }
 
-          const factorConversionOro = new Prisma.Decimal(producto.factorConversionOro ?? 1);
-          const quintalesOro = libras.div(100).mul(factorConversionOro);
+          // El oro es solo una cifra de referencia para la facturación de fin de
+          // temporada: sin rendimiento capturado la línea no lo reporta, y el pago
+          // al productor —libras × precio— sale igual.
+          const porcentajeOro = item.porcentajeOro !== undefined ? new Prisma.Decimal(item.porcentajeOro) : null;
+          const quintalesOro = porcentajeOro !== null ? computeQuintalesOro(libras, porcentajeOro) : null;
 
           const total = precioPorLibra.mul(libras);
 
@@ -161,6 +167,7 @@ export async function POST(request: Request) {
             pesoBruto,
             numeroSacos,
             taraPorSaco,
+            porcentajeOro,
             quintalesOro,
             libras,
             total,

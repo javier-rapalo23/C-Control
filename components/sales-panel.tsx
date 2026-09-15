@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import { groupProductos, isCafeCategoria } from '@/lib/producto-groups';
+import { previewQuintalesOro } from '@/lib/oro-preview';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
 type CartItem =
@@ -27,14 +28,11 @@ type CartItem =
       precioPorQuintalOro: string;
     };
 
-const ORO_DIVISOR = 1.25;
-
 function computeOroDerived(item: { libras: string; porcentajeOro: string; precioPorQuintalOro: string }) {
   const libras = Number(item.libras) || 0;
-  const porcentajeOro = Number(item.porcentajeOro) || 0;
   const precioPorQuintalOro = Number(item.precioPorQuintalOro) || 0;
   const quintalesVendidas = libras / 100;
-  const quintalesOro = (quintalesVendidas * (porcentajeOro / 100)) / ORO_DIVISOR;
+  const quintalesOro = previewQuintalesOro(libras, Number(item.porcentajeOro) || 0);
   const total = quintalesOro * precioPorQuintalOro;
   return { quintalesVendidas, quintalesOro, total };
 }
@@ -86,7 +84,6 @@ export default function SalesPanel() {
 
     if (!itemProductoId && data.length > 0) {
       setItemProductoId(data[0].id);
-      setItemPrice(String(Number(data[0].precioPorLibra).toFixed(2)));
     }
   }, [itemProductoId]);
 
@@ -187,7 +184,11 @@ export default function SalesPanel() {
       return;
     }
 
-    const precioPorLibra = itemPrice || String(Number(producto.precioPorLibra).toFixed(2));
+    // El precio ya no sale del catálogo: si no se escribió, no hay de dónde sacarlo.
+    if (!itemPrice || Number(itemPrice) <= 0) {
+      setError('Escribe el precio por libra de esta venta');
+      return;
+    }
 
     setError(null);
     setCart((current) => [
@@ -198,12 +199,12 @@ export default function SalesPanel() {
         productoId: producto.id,
         productoNombre: producto.nombre,
         libras: itemLibras,
-        precioPorLibra,
+        precioPorLibra: itemPrice,
       },
     ]);
 
+    // El precio se conserva entre líneas: dentro de una misma venta se repite.
     setItemLibras('');
-    setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
   }
 
   function updateCartItem(id: string, patch: Partial<CartItem>) {
@@ -408,14 +409,10 @@ export default function SalesPanel() {
                       key={producto.id}
                       type="button"
                       onClick={() => {
+                        // Nada se precarga: precio y rendimiento son del lote, no del producto.
                         setItemProductoId(producto.id);
-                        setItemPrice(String(Number(producto.precioPorLibra).toFixed(2)));
                         setItemPrecioPorQuintalOro('');
-                        setItemPorcentajeOro(
-                          isCafeCategoria(producto) && producto.factorConversionOro !== null && producto.factorConversionOro !== undefined
-                            ? String(Number(producto.factorConversionOro) * 100)
-                            : '',
-                        );
+                        setItemPorcentajeOro('');
                       }}
                       style={{
                         padding: '12px 10px',
@@ -431,7 +428,7 @@ export default function SalesPanel() {
                         {producto.nombre}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                        L {Number(producto.precioPorLibra).toFixed(2)} / lb
+                        {producto.facturable ? 'Se factura' : 'No se factura'}
                       </div>
                     </button>
                   );

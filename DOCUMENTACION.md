@@ -35,6 +35,7 @@
 16. [Convenciones de código](#16-convenciones-de-código)
 17. [Observaciones y deuda técnica](#17-observaciones-y-deuda-técnica)
 18. [Decisiones de caja, reportes y planilla](#18-decisiones-de-caja-reportes-y-planilla)
+19. [Brechas frente a la operación en papel](#19-brechas-frente-a-la-operación-en-papel)
 
 ---
 
@@ -132,6 +133,7 @@ flowchart TB
 | Middleware | Redirección a `/login` para páginas, RBAC para `/api`, inyección de cabeceras `x-auth-*` | `middleware.ts` |
 | Route Handlers | Parseo/validación Zod → transacción Prisma → mapeo a DTO → `ApiResponse<T>` | `app/api/**/route.ts` |
 | Dominio | Recálculo de balances, resolución de sucursal, conversión de decimales, agrupación de productos | `lib/ledger.ts`, `lib/producto-groups.ts`, `lib/business-date.ts` |
+| Café | Catálogo cerrado de tipos y la única conversión a quintales oro | `lib/coffee-types.ts`, `lib/oro.ts` (servidor), `lib/oro-preview.ts` (navegador) |
 | Validación | Esquemas Zod compartidos por todas las rutas | `lib/validations.ts` |
 | Sesión | Firma/verificación HMAC del token (Edge + Node) y hashing scrypt de contraseñas (solo Node) | `lib/session.ts`, `lib/password.ts` |
 | Caja y planilla | Arqueo, bloqueo de fechas cerradas, reportes por rango y cálculo de planilla | `lib/cash-session.ts`, `lib/reports.ts`, `lib/payroll.ts` |
@@ -240,8 +242,15 @@ movimientos. Si no existe ninguna, `getDefaultSucursalId()` crea automáticament
 
 #### `Producto`
 
-`nombre` (único), `categoria?` (`uva` | `pergamino`), `precioPorLibra`, `taraPorSaco?`, `factorConversionOro?`.
-La categoría determina si en Ventas se habilita el modo de conversión a oro.
+`nombre` (único), `categoria?` (`uva` | `pergamino` | `otros`), `taraPorSaco?`.
+
+El nombre solo puede salir del **catálogo cerrado** de `lib/coffee-types.ts` (§6.6), y la categoría
+se deriva de él: la API no la acepta desde la petición. Solo `uva` y `pergamino` se facturan al
+cierre de temporada.
+
+**No lleva precio ni factor de conversión a oro.** El café se paga a un precio distinto por cliente
+y por día, y el rendimiento varía por lote y por productor: los dos se capturan a mano en cada línea
+de compra o venta. Ver §6.4 y §19.2.
 
 #### `ProductoCarga`
 
@@ -258,7 +267,8 @@ apellidos, clave IHCAFE) que respaldan a un cliente.
 #### `PurchaseTransaction` / `Purchase`
 
 Cabecera + líneas de una compra por cliente. Cada `Purchase` guarda, además del resultado
-(`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`, `quintalesOro`.
+(`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`,
+`porcentajeOro` y `quintalesOro`.
 `Purchase.purchaseTransactionId` y `Sale.saleTransactionId` son **obligatorios**: toda compra y
 toda venta pertenece a una transacción, y por tanto tiene cliente.
 
@@ -270,8 +280,9 @@ Cabecera + líneas de venta. `Sale` soporta dos formas:
 - **Venta por producto**: `productoId`, `libras`, y `precioPorLibra` *o* el trío oro
   (`porcentajeOro`, `quintalesOro`, `precioPorQuintalOro`).
 
-> ⚠️ `Sale.porcentajeOro` se guarda como **porcentaje** (`53.0000`), mientras que
-> `Producto.factorConversionOro` se guarda como **fracción**. Son campos distintos.
+> `porcentajeOro` se guarda como **porcentaje** (`53.0000`), no como fracción, y en
+> `Sale` y `Purchase` significa exactamente lo mismo. La columna es `Decimal(6, 4)`, así que el
+> valor máximo que cabe es `99.9999`.
 
 #### `DailyBalance`
 
@@ -281,7 +292,23 @@ nunca se escribe a mano).
 
 #### `Expense`
 
-`categoria`, `descripcion`, `monto` por fecha y sucursal.
+`categoria`, `descripcion`, `monto` por fecha y sucursal, más `bancoId?`.
+
+La categoría sale del catálogo cerrado de `lib/expenses.ts`: antes era texto libre y "gasolina",
+"Gasolina" y "GASOLINA" convivían, lo que hacía imposible agrupar por categoría en un reporte.
+
+| Categoría | Notas |
+| --- | --- |
+| Gasolina | |
+| Energía, Agua, Alquiler | Servicios del local. Tienen categoría propia y no "Varios" porque son fijos y mensuales: mezclados ahí no se veía cuánto se va en ellos. |
+| Planilla | La escribe el módulo Personal, no el usuario (§18.0). |
+| Pago banco | Exige `bancoId`. |
+| Pago tarjeta | Exige `bancoId`: una tarjeta pertenece a un banco y el pago se desglosa con él. |
+| Varios | Cabulla, sacos, básculas; el detalle vive en la descripción. |
+
+`requiresBanco(categoria)` se deriva del catálogo y no de una comparación suelta. Cuando "Pago
+tarjeta" pasó a llevar banco, el único cambio fue su `requiereBanco`: el formulario, la validación
+Zod y el desglose del reporte lo siguieron solos.
 
 #### `CashSession`
 
@@ -369,13 +396,20 @@ si se envía pesoBruto:
 si no:
     libras    = libras (enviadas directamente)
 
-precioPorLibra = línea.precioPorLibra ?? producto.precioPorLibra
-quintalesOro   = (libras / 100) × (producto.factorConversionOro ?? 1)
-total          = precioPorLibra × libras
+total        = precioPorLibra × libras                  ← lo que cobra el productor
+quintalesOro = computeQuintalesOro(libras, porcentajeOro)   si hay porcentajeOro; si no, null
 ```
 
 El total de la transacción es la suma de los totales de línea. La validación Zod
 (`createPurchaseLineSchema`) exige que se envíe **`libras` o `pesoBruto`**.
+
+**`precioPorLibra` es obligatorio en la línea.** Ya no hay precio de catálogo del que tirar: el
+café se paga a un precio distinto por cliente y por día, así que se escribe a mano en cada compra.
+
+**`porcentajeOro` es opcional.** Sin él la línea se guarda sin quintales oro. Es deliberado: el
+rendimiento a veces se conoce después del pesaje, y no puede bloquear el pago al productor, que
+no pasa por el oro. Los quintales oro son **solo una cifra de referencia** para la facturación de
+fin de temporada (§19.4) — no entran en ningún saldo, arqueo ni cierre.
 
 ### 6.5 Ventas — conversión a quintales oro
 
@@ -384,29 +418,69 @@ En `POST /api/sale-transactions`, cada línea toma una de dos rutas:
 **Modo oro** (cuando llega `precioPorQuintalOro`; entonces `porcentajeOro` es obligatorio):
 
 ```
-quintalesVendidos = libras / 100
-quintalesOro      = quintalesVendidos × (porcentajeOro / 100) / 1.25
-monto             = quintalesOro × precioPorQuintalOro
+quintalesOro = computeQuintalesOro(libras, porcentajeOro)
+monto        = quintalesOro × precioPorQuintalOro
 ```
-
-El divisor `1.25` es el factor de rendimiento de pergamino a oro del negocio.
 
 **Modo por libra** (resto de casos):
 
 ```
-precioPorLibra = línea.precioPorLibra ?? producto.precioPorLibra
-monto          = precioPorLibra × libras
+monto = precioPorLibra × libras
 ```
 
-El modo oro se habilita en la UI solo cuando `producto.categoria ∈ {uva, pergamino}`
-(`isCafeCategoria`, chequeo estricto por categoría, sin inferencia por nombre).
+`precioPorLibra` es obligatorio fuera del modo oro, por la misma razón que en compras: el catálogo
+ya no guarda precio.
 
-### 6.6 Agrupación de productos
+El modo oro se habilita en la UI para cualquier producto con categoría (`isCafeCategoria`, chequeo
+estricto por el campo, sin inferencia por nombre). Incluye `otros` —requema, verde, guacuco,
+repaso—: esos tipos no se facturan, pero el rendimiento se captura y se guarda igual. Lo que decide
+qué entra en la facturación es `esCategoriaFacturable`, al armar el reporte de temporada.
 
-`lib/producto-groups.ts` clasifica productos en **En Uva**, **En Pergamino** y **Otros**:
-primero por el campo `categoria`; si está vacío, por coincidencia de palabras clave en el nombre
-normalizado sin diacríticos (`uva/verde/requema/guacuco/repaso` → uva;
-`mojado/oriado/seco/segundo/corriente` → pergamino).
+#### La conversión a oro
+
+```
+quintalesOro = (libras / 100) × (porcentajeOro / 100) / 1.25
+```
+
+`lib/oro.ts` es la **única** implementación, compartida por compras y ventas. El divisor `1.25` es
+el factor de rendimiento de pergamino a oro del negocio, y `porcentajeOro` es el rendimiento del
+lote en porcentaje (`54` = 54 %), capturado por línea.
+
+El caso con el que el negocio verificó la fórmula: **11.37 qq al 54 % = 4.91 qq oro**. Está como
+prueba en `tests/lib/oro.test.ts`.
+
+`lib/oro-preview.ts` repite la fórmula en punto flotante para las previsualizaciones del carrito:
+`lib/oro.ts` importa `Prisma.Decimal` y arrastraría el cliente de Prisma al bundle del navegador.
+`tests/lib/oro-preview.test.ts` es lo que impide que las dos se separen.
+
+### 6.6 Catálogo de tipos de café
+
+`lib/coffee-types.ts` es el **catálogo cerrado** de los ocho tipos que compra el negocio:
+
+| Tipo | Categoría | ¿Se factura? |
+| --- | --- | --- |
+| Pergamino húmedo, Pergamino mojado, Pergamino seco | `pergamino` | Sí |
+| Uva | `uva` | Sí |
+| Requema, Verde, Guacuco, Repaso | `otros` | No |
+
+Vive en código y no como filas editables porque los tipos no cambian de una temporada a otra, y
+dejarlos abiertos permitía que una sucursal escribiera "seco" y otra "Pergamino Seco": dos productos
+distintos para el mismo café, que los acumulados de temporada contaban por separado.
+
+`esCategoriaFacturable(categoria)` es una función y no una columna del catálogo para que no puedan
+discrepar: se deriva de la categoría, que es lo que el negocio realmente decide. La API la expone en
+cada `ProductoDTO` como `facturable`, calculada al serializar.
+
+La tabla `Producto` sigue existiendo —compras, ventas y cargas apuntan a ella por id y el histórico
+no se puede reescribir—. `pnpm seed-coffee-types` crea las filas que falten y alinea las categorías;
+es idempotente y deja **sin tocar** los productos que no están en el catálogo, listando cuántos
+movimientos tiene cada uno.
+
+#### Agrupación en la UI
+
+`lib/producto-groups.ts` agrupa en **En Uva**, **En Pergamino** y **Otros**, primero por el campo
+`categoria`. El respaldo por nombre existe solo para las filas anteriores al catálogo y se deriva
+del propio catálogo, así que agregar un tipo no obliga a tocar dos listas.
 
 ### 6.7 Inventario y stock
 
@@ -495,7 +569,7 @@ café se vende por quintal oro y es el precio que interesa comparar entre semana
 hubo ventas en oro.
 
 **Gastos** (`getExpenseReport`) — total y número de gastos, con desglose por categoría y, dentro de
-"Pago banco", por banco.
+las categorías que llevan banco ("Pago banco" y "Pago tarjeta"), por banco.
 
 Compras y ventas comparten el acumulador interno (libras, quintales oro, lempiras y un conteo).
 Ese conteo se llama `numeroRegistros` dentro de `lib/reports.ts` y cada reporte lo publica con su
@@ -549,8 +623,8 @@ Los clientes no web envían `Authorization: Bearer <token>` con el token devuelt
 
 | Método | Ruta | Notas |
 |---|---|---|
-| GET / POST | `/api/productos` | `createProductoSchema`. |
-| PATCH / DELETE | `/api/productos/:id` | `updateProductoSchema` (parcial). |
+| GET / POST | `/api/productos` | `createProductoSchema`: `nombre` del catálogo cerrado + `taraPorSaco?`. La categoría la pone el servidor. |
+| PATCH / DELETE | `/api/productos/:id` | `updateProductoSchema` (parcial). Renombrar mueve el producto a otro tipo del catálogo y arrastra la categoría. |
 | GET | `/api/productos/stock` | Query: `productoId?`, `sucursalId?`, `from?`, `to?`. |
 | GET / POST | `/api/producto-cargas` | Cargas de inventario. Query GET: `productoId?`, `sucursalId?`. |
 | DELETE | `/api/producto-cargas/:id` | |
@@ -884,11 +958,11 @@ servidor autorizó la navegación.
 
 | Panel | Líneas | Contenido |
 |---|---|---|
-| `sales-panel.tsx` | 722 | Ventas por cliente, carrito, modo oro, impresión. |
-| `purchases-panel.tsx` | 657 | Compras por cliente, pesaje bruto/tara/sacos, ticket. |
+| `sales-panel.tsx` | 689 | Ventas por cliente, carrito, modo oro, impresión. |
+| `purchases-panel.tsx` | 707 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, ticket. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
 | `dashboard-home.tsx` | 382 | Resumen diario y agrupación por producto. |
-| `inventory-panel.tsx` | 346 | Stock neto y cargas. |
+| `inventory-panel.tsx` | 320 | Catálogo de tipos de café, stock neto y cargas. |
 | `personnel-*.tsx` | 177–300 | Empleados, asistencia, adelantos, pagos. |
 | `maintenance-*.tsx` | 147–220 | Empresa, usuarios, roles. |
 | `sucursales-panel.tsx` | 208 | Sucursales. |
@@ -1019,6 +1093,8 @@ pnpm dev                    # http://localhost:3000
 | `print-agent` | `node scripts/print-agent.js` | Agente de impresión — **el archivo no está en el repo** (ver §17). |
 | `hash-passwords` | `node scripts/hash-passwords.mjs` | Backfill único de contraseñas legacy a scrypt. Acepta `--dry-run`. |
 | `create-admin` | `node scripts/create-admin.mjs` | Crea o restablece un usuario admin con la contraseña ya hasheada (§8.6). |
+| `seed-coffee-types` | `node scripts/seed-coffee-types.mjs` | Sincroniza `Producto` con el catálogo cerrado de tipos de café (§6.6). Idempotente; acepta `--dry-run`. |
+| `reset-movimientos` | `node scripts/reset-movimientos.mjs` | Borra todo el movimiento y conserva los catálogos, para arrancar una temporada en cero tras un piloto. Exige `--si-borrar-todo`; acepta `--dry-run`. |
 
 ---
 
@@ -1051,6 +1127,9 @@ pnpm dev                    # http://localhost:3000
 | `20260824020000_add_cash_adjustment` | `DailyBalance.ajusteCaja`, para que el descuadre del arqueo llegue al saldo. |
 | `20260824030000_employee_sucursal` | `Employee.sucursalId` obligatorio, con backfill a la sucursal principal. |
 | `20260826000000_add_bancos_and_expense_categories` | Catálogo `Banco` y `Expense.bancoId`; categorías de gasto cerradas. |
+| `20260831000000_cash_entries_and_purchase_payment_method` | `CashEntry` y `PurchaseTransaction.metodoPago`. |
+| `20260905000000_add_client_nombre_finca` | `Client.nombreFinca`. |
+| `20260914000000_coffee_catalog_manual_price` | Elimina `Producto.precioPorLibra` y `Producto.factorConversionOro`; agrega `Purchase.porcentajeOro`. El precio y el rendimiento pasan a capturarse por línea (§6.4, §6.6). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1075,7 +1154,13 @@ pnpm test
 Cobertura actual (9 suites, 73 pruebas):
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
-- `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` devuelve 201.
+- `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` deriva la
+  categoría del catálogo, marca `facturable` y rechaza un nombre que no está en él.
+- `tests/lib/oro.test.ts` — la conversión a quintales oro, con el caso que verificó el negocio
+  (11.37 qq al 54 % = 4.91 qq oro).
+- `tests/lib/oro-preview.test.ts` — que la previsualización del carrito no se separe del servidor.
+- `tests/lib/producto-groups.test.ts` — la clasificación por catálogo, incluido que verde, requema,
+  guacuco y repaso **no** son uva.
 - `tests/lib/password.test.ts` — formato scrypt, sal distinta por llamada, verificación correcta/incorrecta,
   entradas vacías y hashes malformados, compatibilidad con contraseñas legacy y `needsRehash`.
 - `tests/lib/session.test.ts` — firma y recuperación del rol, `userId` no ASCII, rechazo de payload
@@ -1197,6 +1282,18 @@ Puntos a tener presentes al trabajar sobre el código:
 12. ~~**No había forma de crear el primer admin.**~~ **Resuelto**: `pnpm create-admin` (§8.6)
     sustituye al paso manual con Prisma Studio o SQL directo contra la base de producción, y escribe
     la contraseña ya hasheada en vez de depender de que el login la convierta en el primer ingreso.
+13. ~~**La conversión a oro no es la misma en compras que en ventas.**~~ **Resuelto**: `lib/oro.ts`
+    es la única implementación y el rendimiento se captura por línea en los dos módulos (§19.2).
+    Queda el histórico: los `Purchase.quintalesOro` guardados antes de la migración
+    `20260914000000_coffee_catalog_manual_price` se calcularon con el factor fijo del producto y su
+    `porcentajeOro` quedó en `NULL`. **No se pueden recalcular** —nadie registró el rendimiento real
+    de esos lotes—, así que `totalQuintalesOro` del reporte de compras (§6.10) mezcla dos criterios
+    en cualquier rango que cruce esa fecha. El dinero nunca estuvo afectado.
+14. ~~**`lib/producto-groups.ts` busca `'oriado'`, no `'oreado'`.**~~ **Resuelto** junto con el
+    catálogo cerrado (§6.6); hay prueba en `tests/lib/producto-groups.test.ts`.
+15. **No hay cuenta corriente ni traslados entre sucursales.** `CashEntry` registra efectivo que
+    entra a una caja pero no de dónde salió, así que mandar dinero de una sucursal a otra se
+    registra hoy como dos hechos sin relación y no descuenta de la sucursal que lo envió. Ver §19.1.
 
 ---
 
@@ -1259,6 +1356,104 @@ Ver §6.11 para el tratamiento de los adelantos parciales y la reversión.
 - **Sin turnos.** Una sola sesión de caja por fecha y sucursal; no hay cortes por turno.
 - **Falta la exportación a CSV/Excel** que sustituye al export general retirado (§6.8). Debe
   producir archivos que una persona abra en una hoja de cálculo, no un volcado reimportable.
+
+---
+
+## 19. Brechas frente a la operación en papel
+
+Esta sección nace de cotejar el libro y las planillas en papel del negocio contra lo que la
+aplicación hace hoy. **Nada de lo que aquí se describe como pendiente está implementado**; se
+registra para que el orden y las razones no vuelvan a discutirse desde cero, igual que §18 hace
+con las decisiones ya construidas.
+
+### 19.0 Una "bodega" del libro es una `Sucursal` — **decisión**
+
+Las pestañas del libro (casa blanca, hacienda, marcamo…) se leían como proveedores externos a los
+que se compra a crédito. **No lo son: son las sucursales del negocio.** La distinción importaba
+mucho, porque un proveedor externo habría exigido una entidad nueva con saldo propio, y una
+sucursal ya existe y ya particiona compras, ventas, gastos, caja y personal (§5).
+
+La consecuencia es que el módulo "Bodegas" del libro **no es un módulo nuevo**: es una vista
+acumulada sobre datos que la aplicación ya guarda, más las dos piezas que le faltan (§19.1).
+
+### 19.1 Cuenta corriente y caja central — **pendiente**
+
+El libro lleva, por bodega, un acumulado de quintales comprados en la temporada y la cuenta
+`pendiente = Σ(compras) − Σ(depósitos)`, donde un "depósito" es dinero que se le manda a esa
+bodega. En la aplicación las compras ya están; faltan dos cosas.
+
+**Traslado de efectivo entre sucursales.** Hoy `CashEntry` registra que entró efectivo a una caja
+pero no de dónde salió, así que mandar dinero de una sucursal a otra son dos hechos sin relación y
+la sucursal que lo envió no lo descuenta. Se prevé un modelo propio —origen, destino, monto, fecha
+y quién lo registró— en vez de dos `CashEntry` sueltos: solo un registro único puede restar de una
+caja y sumar a la otra en la misma operación, borrarse sin dejar la mitad viva, y cuadrar cuando
+alguien pregunte cuánto se le ha mandado a una sucursal en la temporada.
+
+**Vista de cuenta corriente por sucursal.** Un reporte de solo lectura con quintales comprados,
+lempiras gastadas, traslados recibidos y el pendiente resultante, acumulado por temporada.
+
+### 19.2 Una sola conversión a oro — **implementado**
+
+Compras y ventas convertían a quintales oro con fórmulas distintas (§17.13). Se unificaron en
+`lib/oro.ts` —el divisor `1.25` incluido— y el porcentaje de rendimiento pasó a capturarse por
+línea también en compras, como ya se hacía en ventas: el rendimiento varía por lote y por
+productor, así que amarrarlo al catálogo de productos era la limitación de fondo. Ver §6.5 para la
+fórmula y el caso con el que el negocio la verificó.
+
+El histórico quedó como estaba. Los `Purchase.quintalesOro` anteriores se calcularon con el factor
+fijo del producto y su `porcentajeOro` quedó en `NULL`: **no se pueden recalcular**, porque nadie
+registró el rendimiento real de esos lotes. Se dejaron en su valor original en vez de borrarlos —una
+cifra vieja y explicada es más útil que un hueco— y la deuda queda anotada en §17.13.
+
+Lo que nunca estuvo en juego es el dinero: el total de una compra es `libras × precioPorLibra` y no
+pasa por el oro, así que ningún saldo, arqueo ni cierre pasado se movió.
+
+### 19.2.1 El catálogo de café y el precio a mano — **implementado**
+
+De la misma reunión salieron tres aclaraciones más, todas sobre el producto:
+
+**Los tipos de café son ocho y son fijos** (§6.6). La clasificación por palabras clave que había
+metía verde, requema, guacuco y repaso dentro de *uva*; son tipos por su cuenta.
+
+**Solo uva y pergamino se facturan.** No cambia la captura —los ocho tipos se compran, se pagan y
+guardan su rendimiento igual—; es un filtro del reporte de fin de temporada (§19.4). Por eso
+`facturable` se deriva de la categoría al serializar y no es una columna.
+
+**El café no lleva precio.** Varía demasiado por cliente y por día para vivir en el catálogo, donde
+lo único que garantizaba era estar desactualizado. `Producto.precioPorLibra` se eliminó y la casilla
+de precio en Compras y Ventas pasó a ser obligatoria. El pago al productor es, y siguió siendo:
+
+```
+total = (pesoBruto − taraPorSaco × numeroSacos) × precioPorLibra
+```
+
+### 19.3 Número de factura capturado a mano — **decisión**
+
+El número que aparece en las planillas es el del talonario físico, no uno que deba generar el
+sistema. Se agrega como campo de texto opcional **en la cabecera de la transacción**, no en la
+línea: una factura ampara la compra completa a un productor, y ponerlo por línea permitiría que
+dos líneas de la misma compra declararan facturas distintas. Se descartó el correlativo automático
+porque obligaría a una tabla de correlativos y a control de concurrencia para reproducir un número
+que ya viene impreso en papel.
+
+### 19.4 Hoja de facturación por productor — **pendiente**
+
+La planilla por productor (fecha, factura, tipo, rendimiento, quintales oro, valor y totales) es
+**un reporte de solo lectura sobre las compras que ya existen**, no una captura nueva. El reporte
+de compras actual agrupa por rango con desglose por cliente (§6.10), que no es lo mismo: aquí se
+necesita el detalle línea por línea de un productor concreto, en el formato con el que él está
+acostumbrado a que le liquiden.
+
+### 19.5 Lo que sigue abierto
+
+- **Abono en ventas.** El libro anota el abono que hace el cliente; `SaleTransaction` solo guarda
+  `total`, sin saldo pendiente. Falta decidir si la venta pasa a tener estado de cobro —lo que
+  arrastra una cuenta por cobrar por cliente— o si el abono es solo un dato informativo.
+- ~~**"Húmedo" no existe en el catálogo.**~~ **Resuelto**: es uno de los tres estados del pergamino
+  en el catálogo cerrado (§6.6).
+- **La caja es diaria, no de temporada.** `CashSession` abre y cierra por fecha y sucursal (§6.9).
+  El libro razona en apertura y cierre de temporada; queda por ver si eso es un reporte acumulado
+  sobre las sesiones diarias o un ciclo propio.
 
 ---
 

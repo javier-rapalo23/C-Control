@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
-import type { ProductoCategoria, ProductoDTO, ProductoStockDTO } from '@/types/domain';
+import type { ProductoDTO, ProductoStockDTO } from '@/types/domain';
+import { COFFEE_TYPES, PRODUCTO_CATEGORIA_LABELS, type ProductoCategoria } from '@/lib/coffee-types';
 import { useSucursal } from '@/lib/use-sucursal';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -26,19 +27,16 @@ export default function InventoryPanel() {
 
   // Productos CRUD state
   const [productosError, setProductosError] = useState<string | null>(null);
+  // Ni precio ni factor oro: los dos se capturan por línea en Compras y Ventas.
+  // La categoría tampoco se edita — la fija el catálogo de `lib/coffee-types.ts`
+  // a partir del nombre del tipo.
   const [editingProducto, setEditingProducto] = useState<{
     id: string;
     nombre: string;
-    categoria: ProductoCategoria | '';
-    precioPorLibra: string;
     taraPorSaco: string;
-    factorConversionOro: string;
   } | null>(null);
   const [newProdNombre, setNewProdNombre] = useState('');
-  const [newProdCategoria, setNewProdCategoria] = useState<ProductoCategoria | ''>('');
-  const [newProdPrecio, setNewProdPrecio] = useState('');
   const [newProdTaraPorSaco, setNewProdTaraPorSaco] = useState('');
-  const [newProdFactorOro, setNewProdFactorOro] = useState('');
 
   const fetchAll = useCallback(async () => {
     if (!sucursalId) return;
@@ -81,6 +79,14 @@ export default function InventoryPanel() {
     void fetchAll();
   }, [fetchAll]);
 
+  // Solo se ofrecen los tipos del catálogo que todavía no tienen fila. Crear uno
+  // repetido chocaría contra el índice único de `Producto.nombre`, y el error de
+  // base de datos no le dice nada a quien está en el mostrador.
+  const tiposDisponibles = useMemo(() => {
+    const activos = new Set(productos.map((producto) => producto.nombre.toLowerCase()));
+    return COFFEE_TYPES.filter((tipo) => !activos.has(tipo.nombre.toLowerCase()));
+  }, [productos]);
+
   async function createProducto(event: React.FormEvent) {
     event.preventDefault();
     try {
@@ -91,17 +97,11 @@ export default function InventoryPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           nombre: newProdNombre,
-          categoria: newProdCategoria || undefined,
-          precioPorLibra: Number(newProdPrecio),
           taraPorSaco: newProdTaraPorSaco ? Number(newProdTaraPorSaco) : undefined,
-          factorConversionOro: newProdFactorOro ? Number(newProdFactorOro) : undefined,
         }),
       }).then(parseApiResponse);
       setNewProdNombre('');
-      setNewProdCategoria('');
-      setNewProdPrecio('');
       setNewProdTaraPorSaco('');
-      setNewProdFactorOro('');
       await fetchAll();
     } catch (err) {
       setProductosError(err instanceof Error ? err.message : 'Error creando producto');
@@ -119,10 +119,7 @@ export default function InventoryPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           nombre: editingProducto.nombre,
-          categoria: editingProducto.categoria || null,
-          precioPorLibra: Number(editingProducto.precioPorLibra),
           taraPorSaco: editingProducto.taraPorSaco ? Number(editingProducto.taraPorSaco) : undefined,
-          factorConversionOro: editingProducto.factorConversionOro ? Number(editingProducto.factorConversionOro) : undefined,
         }),
       }).then(parseApiResponse);
       setEditingProducto(null);
@@ -169,17 +166,20 @@ export default function InventoryPanel() {
 
         {/* Productos */}
         <article className="card wide">
-          <h3>Productos</h3>
+          <h3>Tipos de café</h3>
+          <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: -4 }}>
+            El catálogo es fijo. El precio y el rendimiento no viven aquí: cambian por cliente y por
+            día, y se escriben a mano en cada línea de Compras y Ventas.
+          </p>
           {productosError ? <p style={{ color: 'var(--danger)' }}>{productosError}</p> : null}
 
           <table className="table-like">
             <thead>
               <tr>
-                <th>Nombre</th>
+                <th>Tipo</th>
                 <th>Categoría</th>
-                <th>Precio / libra</th>
+                <th>Facturación</th>
                 <th>Tara / saco</th>
-                <th>Factor oro</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -188,30 +188,19 @@ export default function InventoryPanel() {
                 editingProducto?.id === m.id ? (
                   <tr key={m.id}>
                     <td>
-                      <input
+                      <select
                         value={editingProducto.nombre}
                         onChange={(e) => setEditingProducto((prev) => prev && { ...prev, nombre: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        value={editingProducto.categoria}
-                        onChange={(e) =>
-                          setEditingProducto((prev) => prev && { ...prev, categoria: e.target.value as ProductoCategoria | '' })
-                        }
                       >
-                        <option value="">Sin categoría</option>
-                        <option value="uva">En Uva</option>
-                        <option value="pergamino">En Pergamino</option>
+                        {COFFEE_TYPES.map((tipo) => (
+                          <option key={tipo.nombre} value={tipo.nombre}>
+                            {tipo.nombre}
+                          </option>
+                        ))}
                       </select>
                     </td>
-                    <td>
-                      <input
-                        value={editingProducto.precioPorLibra}
-                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, precioPorLibra: e.target.value })}
-                        type="number"
-                        step="0.01"
-                      />
+                    <td colSpan={2} style={{ color: 'var(--text-soft)' }}>
+                      Se ajusta sola al tipo elegido
                     </td>
                     <td>
                       <input
@@ -220,15 +209,6 @@ export default function InventoryPanel() {
                         type="number"
                         step="0.01"
                         placeholder="lb/saco"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={editingProducto.factorConversionOro}
-                        onChange={(e) => setEditingProducto((prev) => prev && { ...prev, factorConversionOro: e.target.value })}
-                        type="number"
-                        step="0.0001"
-                        placeholder="ej. 0.8"
                       />
                     </td>
                     <td style={{ display: 'flex', gap: 6 }}>
@@ -243,10 +223,9 @@ export default function InventoryPanel() {
                 ) : (
                   <tr key={m.id}>
                     <td>{m.nombre}</td>
-                    <td>{m.categoria === 'uva' ? 'En Uva' : m.categoria === 'pergamino' ? 'En Pergamino' : '—'}</td>
-                    <td>L {Number(m.precioPorLibra).toFixed(2)}</td>
+                    <td>{m.categoria ? PRODUCTO_CATEGORIA_LABELS[m.categoria as ProductoCategoria] : '—'}</td>
+                    <td>{m.facturable ? 'Se factura' : 'No se factura'}</td>
                     <td>{m.taraPorSaco !== null && m.taraPorSaco !== undefined ? `${m.taraPorSaco.toFixed(2)} lb` : '—'}</td>
-                    <td>{m.factorConversionOro !== null && m.factorConversionOro !== undefined ? m.factorConversionOro.toFixed(4) : '—'}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <button
                         className="btn-primary"
@@ -256,11 +235,7 @@ export default function InventoryPanel() {
                           setEditingProducto({
                             id: m.id,
                             nombre: m.nombre,
-                            categoria: m.categoria ?? '',
-                            precioPorLibra: String(Number(m.precioPorLibra).toFixed(2)),
                             taraPorSaco: m.taraPorSaco !== null && m.taraPorSaco !== undefined ? String(m.taraPorSaco) : '',
-                            factorConversionOro:
-                              m.factorConversionOro !== null && m.factorConversionOro !== undefined ? String(m.factorConversionOro) : '',
                           })
                         }
                       >
@@ -282,57 +257,47 @@ export default function InventoryPanel() {
               )}
               {productos.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={6}>No hay productos registrados.</td>
+                  <td colSpan={5}>No hay tipos de café registrados.</td>
                 </tr>
               ) : null}
             </tbody>
           </table>
 
-          <h4 style={{ marginTop: 16 }}>Nuevo producto</h4>
-          <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: -4 }}>
-            Tara / saco y factor oro son opcionales: se usan para calcular peso neto y quintales oro en Compras.
-          </p>
-          <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
-            {/* Dos filas de tres: los cinco campos en una sola dejaban el precio y el
-                factor oro en columnas de 2/12, donde la etiqueta parte en dos líneas
-                y el input queda encima del de al lado. Arriba lo obligatorio, abajo
-                lo opcional. */}
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Nombre
-              <input value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required />
-            </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Categoría
-              <select value={newProdCategoria} onChange={(e) => setNewProdCategoria(e.target.value as ProductoCategoria | '')}>
-                <option value="">Sin categoría</option>
-                <option value="uva">En Uva</option>
-                <option value="pergamino">En Pergamino</option>
-              </select>
-            </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Precio por libra
-              <input value={newProdPrecio} onChange={(e) => setNewProdPrecio(e.target.value)} type="number" step="0.01" required />
-            </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Tara / saco (lb)
-              <input value={newProdTaraPorSaco} onChange={(e) => setNewProdTaraPorSaco(e.target.value)} type="number" step="0.01" />
-            </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Factor oro
-              <input
-                value={newProdFactorOro}
-                onChange={(e) => setNewProdFactorOro(e.target.value)}
-                type="number"
-                step="0.0001"
-                placeholder="ej. 0.8"
-              />
-            </label>
-            <div style={{ gridColumn: 'span 12', marginTop: 4 }}>
-              <button className="btn-primary" type="submit" disabled={loading}>
-                Agregar
-              </button>
-            </div>
-          </form>
+          {tiposDisponibles.length > 0 ? (
+            <>
+              <h4 style={{ marginTop: 16 }}>Activar un tipo</h4>
+              <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: -4 }}>
+                Solo aparecen los tipos del catálogo que todavía no están activos. La tara por saco
+                es opcional y sirve para descontar el peso de los sacos en Compras.
+              </p>
+              <form onSubmit={(e) => void createProducto(e)} className="row" style={{ marginTop: 8 }}>
+                <label className="stack-on-tablet" style={{ gridColumn: 'span 6' }}>
+                  Tipo de café
+                  <select value={newProdNombre} onChange={(e) => setNewProdNombre(e.target.value)} required>
+                    <option value="">Elegir tipo…</option>
+                    {tiposDisponibles.map((tipo) => (
+                      <option key={tipo.nombre} value={tipo.nombre}>
+                        {tipo.nombre} — {PRODUCTO_CATEGORIA_LABELS[tipo.categoria]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="stack-on-tablet" style={{ gridColumn: 'span 6' }}>
+                  Tara / saco (lb)
+                  <input value={newProdTaraPorSaco} onChange={(e) => setNewProdTaraPorSaco(e.target.value)} type="number" step="0.01" />
+                </label>
+                <div style={{ gridColumn: 'span 12', marginTop: 4 }}>
+                  <button className="btn-primary" type="submit" disabled={loading || !newProdNombre}>
+                    Agregar
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 16 }}>
+              Los ocho tipos del catálogo ya están activos.
+            </p>
+          )}
         </article>
 
         {/* Stock cards por producto */}

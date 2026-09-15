@@ -109,7 +109,20 @@ pnpm create-admin --user javier --password-stdin
 Otras opciones: `--list` (usuarios, roles y estado), `--reset` (restablece la contraseña de un
 usuario existente y lo reactiva), `--role` (por defecto `admin`).
 
-## Paso 6: Verificar Despliegue
+## Paso 6: Sembrar el Catálogo de Tipos de Café
+
+Los ocho tipos de café viven en código (`lib/coffee-types.ts`), pero las compras y ventas apuntan a
+filas de `Producto`. Con `DATABASE_URL` apuntando a la base:
+
+```bash
+pnpm seed-coffee-types --dry-run   # muestra lo que haría, sin escribir
+pnpm seed-coffee-types             # crea los tipos que falten y alinea las categorías
+```
+
+Es idempotente: conviene correrlo después de cada despliegue que toque el catálogo. Los productos
+que no estén en el catálogo se listan con sus movimientos y **no se tocan**.
+
+## Paso 7: Verificar Despliegue
 
 1. Ve a tu URL de Vercel (ej: `https://r-control-api.vercel.app`)
 2. Debe cargar el Dashboard

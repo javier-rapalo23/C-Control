@@ -8,15 +8,21 @@ export type SucursalDTO = {
   updatedAt: string;
 };
 
-export type ProductoCategoria = 'uva' | 'pergamino';
+import type { ProductoCategoria } from '@/lib/coffee-types';
 
+export type { ProductoCategoria };
+
+/**
+ * Sin precio ni factor de conversión a oro: los dos se capturan por línea, no en
+ * el catálogo. Ver `lib/coffee-types.ts` y `lib/oro.ts`.
+ */
 export type ProductoDTO = {
   id: string;
   nombre: string;
   categoria?: ProductoCategoria | null;
-  precioPorLibra: number;
   taraPorSaco?: number | null;
-  factorConversionOro?: number | null;
+  /** Derivado de `categoria`: solo uva y pergamino entran en la facturación. */
+  facturable: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -58,6 +64,8 @@ export type PurchaseDTO = {
   pesoBruto?: number | null;
   numeroSacos?: number | null;
   taraPorSaco?: number | null;
+  /** Rendimiento del lote en porcentaje (54 = 54 %), capturado por línea. */
+  porcentajeOro?: number | null;
   quintalesOro?: number | null;
   libras: number;
   total: number;
