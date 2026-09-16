@@ -5,7 +5,7 @@ import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
-import { groupProductos, isCafeCategoria } from '@/lib/producto-groups';
+import { isCafeCategoria } from '@/lib/producto-groups';
 import { previewQuintalesOro } from '@/lib/oro-preview';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
@@ -137,7 +137,6 @@ export default function SalesPanel() {
     [cart],
   );
 
-  const productoGroups = useMemo(() => groupProductos(productos), [productos]);
   const selectedProducto = useMemo(() => productos.find((entry) => entry.id === itemProductoId), [productos, itemProductoId]);
   const isOroMode = selectedProducto ? isCafeCategoria(selectedProducto) : false;
 
@@ -396,46 +395,41 @@ export default function SalesPanel() {
         <article className="card wide">
           <h3>Agregar item al carrito</h3>
 
-          {productoGroups.map((group) => (
-            <div key={group.label} style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-                {group.label}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-                {group.items.map((producto) => {
-                  const selected = itemProductoId === producto.id;
-                  return (
-                    <button
-                      key={producto.id}
-                      type="button"
-                      onClick={() => {
-                        // Nada se precarga: precio y rendimiento son del lote, no del producto.
-                        setItemProductoId(producto.id);
-                        setItemPrecioPorQuintalOro('');
-                        setItemPorcentajeOro('');
-                      }}
-                      style={{
-                        padding: '12px 10px',
-                        border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
-                        borderRadius: 'var(--radius)',
-                        background: selected ? 'var(--ring-soft)' : 'var(--surface)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
-                        {producto.nombre}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                        {producto.facturable ? 'Se factura' : 'No se factura'}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          {/* Los ocho tipos salen en una sola parrilla, sin agrupar por categoría:
+              son pocos y se buscan por nombre, no por si van en uva o en pergamino. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
+            {productos.map((producto) => {
+              const selected = itemProductoId === producto.id;
+              return (
+                <button
+                  key={producto.id}
+                  type="button"
+                  onClick={() => {
+                    // Nada se precarga: precio y rendimiento son del lote, no del producto.
+                    setItemProductoId(producto.id);
+                    setItemPrecioPorQuintalOro('');
+                    setItemPorcentajeOro('');
+                  }}
+                  style={{
+                    padding: '12px 10px',
+                    border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
+                    borderRadius: 'var(--radius)',
+                    background: selected ? 'var(--ring-soft)' : 'var(--surface)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
+                    {producto.nombre}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
+                    {producto.facturable ? 'Se factura' : 'No se factura'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
             {isOroMode ? (
@@ -639,7 +633,16 @@ export default function SalesPanel() {
                         disabled={printingId === transaction.id}
                         onClick={() => void printTicket(transaction)}
                       >
-                        {printingId === transaction.id ? 'Imprimiendo...' : 'Imprimir'}
+                        {printingId === transaction.id ? 'Imprimiendo...' : 'Ticket'}
+                      </button>
+                      {/* Pestaña aparte: la factura A4 se imprime desde el diálogo del
+                          navegador, no por el agente térmico. */}
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        onClick={() => window.open(`/print/venta/${transaction.id}`, '_blank', 'noopener')}
+                      >
+                        Factura A4
                       </button>
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar

@@ -5,7 +5,6 @@ import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
-import { groupProductos } from '@/lib/producto-groups';
 import { previewQuintalesOro } from '@/lib/oro-preview';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHODS, paymentMethodLabel, type PaymentMethod } from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
@@ -70,6 +69,7 @@ export default function PurchasesPanel() {
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
+  const [numeroFactura, setNumeroFactura] = useState('');
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
@@ -135,8 +135,6 @@ export default function PurchasesPanel() {
     () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
     [cart],
   );
-
-  const productoGroups = useMemo(() => groupProductos(productos), [productos]);
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) ?? null,
@@ -235,6 +233,7 @@ export default function PurchasesPanel() {
           sucursalId,
           clientId: selectedClientId,
           metodoPago,
+          numeroFactura: numeroFactura.trim() || undefined,
           items: cart.map((item) => ({
             productoId: item.productoId,
             pesoBruto: Number(item.pesoBruto),
@@ -248,6 +247,7 @@ export default function PurchasesPanel() {
 
       setCart([]);
       setMetodoPago(DEFAULT_PAYMENT_METHOD);
+      setNumeroFactura('');
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
@@ -415,52 +415,50 @@ export default function PurchasesPanel() {
         <article className="card wide">
           <h3>Agregar item al carrito</h3>
 
-          {productoGroups.map((group) => (
-            <div key={group.label} style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-                {group.label}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-                {group.items.map((producto) => {
-                  const selected = itemProductoId === producto.id;
-                  return (
-                    <button
-                      key={producto.id}
-                      type="button"
-                      onClick={() => {
-                        setItemProductoId(producto.id);
-                        setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
-                      }}
-                      style={{
-                        padding: '12px 10px',
-                        border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
-                        borderRadius: 'var(--radius)',
-                        background: selected ? 'var(--ring-soft)' : 'var(--surface)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
-                        {producto.nombre}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                        {producto.facturable ? 'Se factura' : 'No se factura'}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          {/* Los ocho tipos salen en una sola parrilla, sin agrupar por categoría:
+              son pocos y quien pesa los busca por nombre, no por si van en uva o en
+              pergamino. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
+            {productos.map((producto) => {
+              const selected = itemProductoId === producto.id;
+              return (
+                <button
+                  key={producto.id}
+                  type="button"
+                  onClick={() => {
+                    setItemProductoId(producto.id);
+                    setItemTaraPorSaco(producto.taraPorSaco !== null && producto.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '');
+                  }}
+                  style={{
+                    padding: '12px 10px',
+                    border: `2px solid ${selected ? 'var(--ring)' : 'var(--border-color)'}`,
+                    borderRadius: 'var(--radius)',
+                    background: selected ? 'var(--ring-soft)' : 'var(--surface)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
+                    {producto.nombre}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
+                    {producto.facturable ? 'Se factura' : 'No se factura'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
+            {/* Cuatro campos a 3 columnas cada uno: reparten las 12 exactas, así que
+                quedan del mismo ancho y sin hueco al final de la fila. */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Peso bruto (lb)
               <input value={itemPesoBruto} onChange={(event) => setItemPesoBruto(event.target.value)} type="number" step="0.01" required />
             </label>
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-              Número de sacos
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Tara
               <input value={itemNumeroSacos} onChange={(event) => setItemNumeroSacos(event.target.value)} type="number" step="1" min="0" />
             </label>
             {/* Tara / saco: por ahora se toma del valor configurado en el producto (itemTaraPorSaco se sigue
@@ -471,13 +469,13 @@ export default function PurchasesPanel() {
               <input value={itemTaraPorSaco} onChange={(event) => setItemTaraPorSaco(event.target.value)} type="number" step="0.01" />
             </label>
             */}
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
             {/* El rendimiento no bloquea la compra: si todavía no se conoce, la línea
                 se guarda sin quintales oro y el productor cobra igual. */}
-            <label className="stack-on-tablet" style={{ gridColumn: 'span 2' }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
               Rendimiento (%)
               <input
                 value={itemPorcentajeOro}
@@ -486,7 +484,6 @@ export default function PurchasesPanel() {
                 step="0.01"
                 min="0"
                 max="99.99"
-                placeholder="54"
               />
             </label>
             {(() => {
@@ -616,6 +613,16 @@ export default function PurchasesPanel() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
             <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              {/* Del talonario físico: el sistema no lo genera (§19.3). */}
+              <label style={{ minWidth: 140 }}>
+                Factura No.
+                <input
+                  value={numeroFactura}
+                  onChange={(event) => setNumeroFactura(event.target.value)}
+                  placeholder="opcional"
+                  maxLength={40}
+                />
+              </label>
               <label style={{ minWidth: 160 }}>
                 Forma de pago
                 <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value as PaymentMethod)}>
@@ -648,6 +655,7 @@ export default function PurchasesPanel() {
                     <strong>{transaction.client.nombre}</strong>
                     <div style={{ color: 'var(--text-soft)' }}>
                       {transaction.items.length} items · {paymentMethodLabel(transaction.metodoPago)}
+                      {transaction.numeroFactura ? ` · Factura ${transaction.numeroFactura}` : ''}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -659,7 +667,16 @@ export default function PurchasesPanel() {
                         disabled={printingId === transaction.id}
                         onClick={() => void printTicket(transaction)}
                       >
-                        {printingId === transaction.id ? 'Imprimiendo...' : 'Imprimir'}
+                        {printingId === transaction.id ? 'Imprimiendo...' : 'Ticket'}
+                      </button>
+                      {/* Pestaña aparte: la factura A4 se imprime desde el diálogo del
+                          navegador, no por el agente térmico. */}
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        onClick={() => window.open(`/print/compra/${transaction.id}`, '_blank', 'noopener')}
+                      >
+                        Factura A4
                       </button>
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar

@@ -20,6 +20,10 @@ export default function MaintenanceCompanyPanel() {
     email: '',
     printerIp: '',
     printerPort: '9100',
+    cai: '',
+    facturaRangoDesde: '',
+    facturaRangoHasta: '',
+    facturaFechaLimite: '',
   });
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -39,6 +43,10 @@ export default function MaintenanceCompanyPanel() {
         email: data.email,
         printerIp: data.printerIp,
         printerPort: String(data.printerPort || 9100),
+        cai: data.cai,
+        facturaRangoDesde: data.facturaRangoDesde,
+        facturaRangoHasta: data.facturaRangoHasta,
+        facturaFechaLimite: data.facturaFechaLimite,
       });
       setCompanyError(null);
     } catch (err) {
@@ -128,6 +136,46 @@ export default function MaintenanceCompanyPanel() {
             onChange={(e) => setCompanyForm((f) => ({ ...f, printerPort: e.target.value }))}
             type="number"
             placeholder="9100"
+          />
+        </label>
+
+        <div style={{ gridColumn: 'span 12', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
+          <h4 style={{ margin: '0 0 4px' }}>Factura autorizada (SAR)</h4>
+          <p style={{ color: 'var(--text-soft)', fontSize: 13, margin: '0 0 12px' }}>
+            Opcional. Mientras el CAI esté vacío, la factura A4 sale como comprobante interno. En
+            cuanto se llene, el bloque fiscal aparece impreso en cada factura.
+          </p>
+        </div>
+        <label style={{ gridColumn: 'span 12' }}>
+          CAI
+          <input
+            value={companyForm.cai}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, cai: e.target.value }))}
+            placeholder="dejar vacío si aún se factura con talonario"
+          />
+        </label>
+        <label style={{ gridColumn: 'span 4' }}>
+          Rango autorizado desde
+          <input
+            value={companyForm.facturaRangoDesde}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, facturaRangoDesde: e.target.value }))}
+            placeholder="000-001-01-00000001"
+          />
+        </label>
+        <label style={{ gridColumn: 'span 4' }}>
+          Rango autorizado hasta
+          <input
+            value={companyForm.facturaRangoHasta}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, facturaRangoHasta: e.target.value }))}
+            placeholder="000-001-01-00005000"
+          />
+        </label>
+        <label style={{ gridColumn: 'span 4' }}>
+          Fecha límite de emisión
+          <input
+            value={companyForm.facturaFechaLimite}
+            onChange={(e) => setCompanyForm((f) => ({ ...f, facturaFechaLimite: e.target.value }))}
+            placeholder="31/12/2027"
           />
         </label>
 

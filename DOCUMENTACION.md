@@ -26,7 +26,7 @@
 7. [Contrato de la API REST](#7-contrato-de-la-api-rest)
 8. [Autenticación, roles y acceso a módulos](#8-autenticación-roles-y-acceso-a-módulos)
 9. [Frontend](#9-frontend)
-10. [Impresión térmica](#10-impresión-térmica)
+10. [Impresión](#10-impresión)
 11. [Configuración y variables de entorno](#11-configuración-y-variables-de-entorno)
 12. [Entorno de desarrollo local](#12-entorno-de-desarrollo-local)
 13. [Migraciones de base de datos](#13-migraciones-de-base-de-datos)
@@ -132,8 +132,9 @@ flowchart TB
 |---|---|---|
 | Middleware | Redirección a `/login` para páginas, RBAC para `/api`, inyección de cabeceras `x-auth-*` | `middleware.ts` |
 | Route Handlers | Parseo/validación Zod → transacción Prisma → mapeo a DTO → `ApiResponse<T>` | `app/api/**/route.ts` |
-| Dominio | Recálculo de balances, resolución de sucursal, conversión de decimales, agrupación de productos | `lib/ledger.ts`, `lib/producto-groups.ts`, `lib/business-date.ts` |
+| Dominio | Recálculo de balances, resolución de sucursal, conversión de decimales | `lib/ledger.ts`, `lib/business-date.ts` |
 | Café | Catálogo cerrado de tipos y la única conversión a quintales oro | `lib/coffee-types.ts`, `lib/oro.ts` (servidor), `lib/oro-preview.ts` (navegador) |
+| Impresión | Buffer ESC/POS del ticket térmico y datos de la factura A4 | `lib/thermal-printer.ts`, `lib/build-ticket.ts`, `lib/build-invoice.ts` |
 | Validación | Esquemas Zod compartidos por todas las rutas | `lib/validations.ts` |
 | Sesión | Firma/verificación HMAC del token (Edge + Node) y hashing scrypt de contraseñas (solo Node) | `lib/session.ts`, `lib/password.ts` |
 | Caja y planilla | Arqueo, bloqueo de fechas cerradas, reportes por rango y cálculo de planilla | `lib/cash-session.ts`, `lib/reports.ts`, `lib/payroll.ts` |
@@ -266,7 +267,8 @@ apellidos, clave IHCAFE) que respaldan a un cliente.
 
 #### `PurchaseTransaction` / `Purchase`
 
-Cabecera + líneas de una compra por cliente. Cada `Purchase` guarda, además del resultado
+Cabecera + líneas de una compra por cliente. La cabecera lleva `metodoPago` y `numeroFactura?` —el
+número del talonario físico, capturado a mano (§19.3)—. Cada `Purchase` guarda, además del resultado
 (`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`,
 `porcentajeOro` y `quintalesOro`.
 `Purchase.purchaseTransactionId` y `Sale.saleTransactionId` son **obligatorios**: toda compra y
@@ -345,7 +347,10 @@ parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánt
 
 #### Configuración y sistema
 
-- `CompanySettings` — singleton con datos de la empresa e IP/puerto de la impresora térmica.
+- `CompanySettings` — singleton con datos de la empresa, IP/puerto de la impresora térmica y los
+  datos de factura autorizada (`cai`, `facturaRangoDesde`, `facturaRangoHasta`,
+  `facturaFechaLimite`). Vacíos mientras se facture con talonario físico: con `cai` lleno, la
+  factura A4 empieza a imprimir el bloque fiscal (§10.2).
 - `User` — usuarios persistidos (`userId` único, `password` hasheado con scrypt, `role`, `activo`).
 - `ModuleAccess` — override de roles permitidos por módulo (`roles String[]`).
 - `PrintJob` — cola de impresión (`pending` → `claimed` → `done` | `error`).
@@ -476,11 +481,16 @@ no se puede reescribir—. `pnpm seed-coffee-types` crea las filas que falten y 
 es idempotente y deja **sin tocar** los productos que no están en el catálogo, listando cuántos
 movimientos tiene cada uno.
 
-#### Agrupación en la UI
+#### Presentación en la UI
 
-`lib/producto-groups.ts` agrupa en **En Uva**, **En Pergamino** y **Otros**, primero por el campo
-`categoria`. El respaldo por nombre existe solo para las filas anteriores al catálogo y se deriva
-del propio catálogo, así que agregar un tipo no obliga a tocar dos listas.
+Compras y Ventas muestran **los ocho tipos juntos**, en una sola parrilla ordenada por nombre. Antes
+se agrupaban en "En Uva", "En Pergamino" y "Otros"; con ocho tipos los encabezados ocupaban más alto
+que lo que organizaban, y quien pesa los busca por nombre y no por categoría.
+
+De aquello quedó solo `isCafeCategoria` en `lib/producto-groups.ts`, que decide si la línea admite
+conversión a oro. `classifyProducto` y `groupProductos` se eliminaron junto con los encabezados: su
+respaldo por nombre servía a las filas anteriores al catálogo, y con el catálogo cerrado todo
+`Producto` nace con categoría.
 
 ### 6.7 Inventario y stock
 
@@ -702,6 +712,7 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 | Método | Ruta | Notas |
 |---|---|---|
 | POST | `/api/print/ticket` | `{ transactionId, kind?: 'purchase' \| 'sale' }` → encola `PrintJob`. |
+| — | `/print/compra/:id`, `/print/venta/:id` | **Páginas**, no API: factura A4 para el diálogo del navegador (§10.2). |
 | GET | `/api/print/ticket/data` | Devuelve `payloadB64` sin encolar (impresión directa desde el cliente). |
 | POST | `/api/print/summary` | `{ businessDate, sucursalId? }` → encola el resumen del día. |
 | GET | `/api/print/summary/data` | `payloadB64` del resumen. |
@@ -958,8 +969,10 @@ servidor autorizó la navegación.
 
 | Panel | Líneas | Contenido |
 |---|---|---|
-| `sales-panel.tsx` | 689 | Ventas por cliente, carrito, modo oro, impresión. |
-| `purchases-panel.tsx` | 707 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, ticket. |
+| `sales-panel.tsx` | 692 | Ventas por cliente, carrito, modo oro, ticket y factura A4. |
+| `purchases-panel.tsx` | 723 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, número de factura, ticket y factura A4. |
+| `invoice-a4.tsx` | 317 | Hoja de factura A4 con su CSS de impresión (§10.2). Se renderiza en el servidor. |
+| `invoice-toolbar.tsx` | 22 | Botón de imprimir de la página de factura; el CSS de impresión lo oculta. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
 | `dashboard-home.tsx` | 382 | Resumen diario y agrupación por producto. |
 | `inventory-panel.tsx` | 320 | Catálogo de tipos de café, stock neto y cargas. |
@@ -982,7 +995,21 @@ y renderizan pestañas
 
 ---
 
-## 10. Impresión térmica
+## 10. Impresión
+
+Hay **dos caminos, y no compiten**: el ticket térmico es el comprobante rápido del mostrador y la
+factura A4 es el documento que se le entrega al productor o al cliente. Cada uno llega a su
+impresora por una vía distinta, porque el problema es distinto.
+
+| | Ticket térmico | Factura A4 |
+| --- | --- | --- |
+| Destino | ESC/POS de red, 32 columnas | Cualquier impresora del sistema operativo |
+| Camino | `PrintJob` → agente local → TCP 9100 | Diálogo de impresión del navegador |
+| Formato | Buffer binario armado en el servidor | HTML maquetado con `@page { size: A4 }` |
+| Contenido | Solo el resultado: libras, precio, total | Trazabilidad completa del pesaje y firmas |
+| Requiere | IP de impresora + agente corriendo | Nada |
+
+### 10.1 Ticket térmico
 
 Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por defecto).
 
@@ -1005,7 +1032,7 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
 `lib/build-ticket.ts` reúne los datos (transacción + `CompanySettings`, que se autocrea vía upsert)
 y devuelve `{ buffer, company }`.
 
-### Flujo con agente local
+#### Flujo con agente local
 
 Como el servidor desplegado (Vercel) no puede abrir sockets hacia la LAN del cliente, la impresión
 se desacopla mediante la tabla `PrintJob`:
@@ -1044,6 +1071,46 @@ Alternativamente, `GET /api/print/ticket/data` y `GET /api/print/summary/data` d
 
 Si `CompanySettings.printerIp` está vacío, las rutas de encolado responden
 `400 PRINTER_NOT_CONFIGURED` remitiendo a Mantenimiento → Empresa.
+
+### 10.2 Factura A4
+
+Páginas propias —`/print/compra/:id` y `/print/venta/:id`— que maquetan la factura en HTML y la
+mandan a imprimir con el diálogo del navegador. Los paneles de Compras y Ventas las abren en una
+pestaña nueva con el botón **Factura A4**, al lado del de **Ticket**.
+
+**Por qué no pasa por el agente.** El agente existe porque el servidor desplegado no puede abrir
+sockets contra la LAN del cliente, y una ESC/POS de red solo entiende ESC/POS. Una láser o de
+inyección, en cambio, ya está instalada en la máquina del usuario: el navegador le llega sin
+intermediarios. Montar A4 sobre la cola habría significado generar PDF en el servidor y un agente
+capaz de imprimirlo, para resolver algo que el sistema operativo ya resuelve.
+
+`lib/build-invoice.ts` reúne los datos —es un módulo aparte de `build-ticket.ts` porque los dos
+documentos no cargan lo mismo: en 32 columnas solo cabe el resultado, y en A4 sí entra la
+trazabilidad del pesaje (bruto, sacos, tara, rendimiento, quintales oro) que es justo lo que el
+productor revisa cuando le liquidan—. Devuelve datos y no un buffer: en A4 maqueta el navegador.
+
+`components/invoice-a4.tsx` es la hoja. Su CSS de impresión **oculta todo el documento y vuelve a
+mostrar solo la factura**, en vez de enumerar las clases del encabezado y el menú: así un cambio en
+la navegación no reaparece dentro de una factura ya impresa.
+
+Las páginas llaman a `requireModuleAccess` por su cuenta (`purchases` y `sales`): se abren fuera
+del panel, así que el permiso del módulo no viaja con ellas.
+
+#### Bloque fiscal
+
+La factura imprime CAI, rango autorizado y fecha límite **solo si `CompanySettings.cai` tiene
+valor**. Mientras esté vacío sale como comprobante interno, que es lo que corresponde mientras el
+negocio facture con talonario físico. Activar la facturación autorizada es llenar esos campos en
+Mantenimiento → Empresa; no hay que tocar código.
+
+Lo que **no** incluye es el correlativo automático dentro del rango autorizado: eso exige tabla de
+correlativos y control de concurrencia (§19.3), y hoy el número lo pone a mano quien factura.
+
+#### Numeración
+
+El folio sale de `PurchaseTransaction.numeroFactura`, capturado a mano en la cabecera de la compra
+(§19.3). **Las ventas no llevan folio**: §19.3 lo decidió solo para compras, y la factura de venta
+se identifica por fecha y cliente hasta que se active el CAI.
 
 ---
 
@@ -1130,6 +1197,7 @@ pnpm dev                    # http://localhost:3000
 | `20260831000000_cash_entries_and_purchase_payment_method` | `CashEntry` y `PurchaseTransaction.metodoPago`. |
 | `20260905000000_add_client_nombre_finca` | `Client.nombreFinca`. |
 | `20260914000000_coffee_catalog_manual_price` | Elimina `Producto.precioPorLibra` y `Producto.factorConversionOro`; agrega `Purchase.porcentajeOro`. El precio y el rendimiento pasan a capturarse por línea (§6.4, §6.6). |
+| `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` (§19.3) y los campos de factura autorizada en `CompanySettings`, inactivos hasta que se llene el CAI (§10.2). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1159,8 +1227,13 @@ Cobertura actual (9 suites, 73 pruebas):
 - `tests/lib/oro.test.ts` — la conversión a quintales oro, con el caso que verificó el negocio
   (11.37 qq al 54 % = 4.91 qq oro).
 - `tests/lib/oro-preview.test.ts` — que la previsualización del carrito no se separe del servidor.
-- `tests/lib/producto-groups.test.ts` — la clasificación por catálogo, incluido que verde, requema,
-  guacuco y repaso **no** son uva.
+- `tests/lib/coffee-types.test.ts` — el catálogo cerrado: los ocho tipos, que verde, requema,
+  guacuco y repaso **no** son uva, y que solo uva y pergamino se facturan.
+- `tests/lib/build-invoice.test.ts` — datos de la factura A4: totales, venta libre sin producto, y
+  que el bloque fiscal aparezca solo con CAI.
+- `tests/components/invoice-a4.test.tsx` — renderiza la hoja con `renderToStaticMarkup` y comprueba
+  que el pie de la tabla cuadre en columnas con el encabezado, que es lo que se rompe al agregar
+  una columna y olvidar el `colSpan`.
 - `tests/lib/password.test.ts` — formato scrypt, sal distinta por llamada, verificación correcta/incorrecta,
   entradas vacías y hashes malformados, compatibilidad con contraseñas legacy y `needsRehash`.
 - `tests/lib/session.test.ts` — firma y recuperación del rol, `userId` no ASCII, rechazo de payload
@@ -1289,8 +1362,9 @@ Puntos a tener presentes al trabajar sobre el código:
     `porcentajeOro` quedó en `NULL`. **No se pueden recalcular** —nadie registró el rendimiento real
     de esos lotes—, así que `totalQuintalesOro` del reporte de compras (§6.10) mezcla dos criterios
     en cualquier rango que cruce esa fecha. El dinero nunca estuvo afectado.
-14. ~~**`lib/producto-groups.ts` busca `'oriado'`, no `'oreado'`.**~~ **Resuelto** junto con el
-    catálogo cerrado (§6.6); hay prueba en `tests/lib/producto-groups.test.ts`.
+14. ~~**`lib/producto-groups.ts` busca `'oriado'`, no `'oreado'`.**~~ **Sin efecto**: la
+    clasificación por nombre se eliminó con los encabezados de la parrilla (§6.6). Con el catálogo
+    cerrado la categoría siempre viene puesta, así que ya no hay nombre que adivinar.
 15. **No hay cuenta corriente ni traslados entre sucursales.** `CashEntry` registra efectivo que
     entra a una caja pero no de dónde salió, así que mandar dinero de una sucursal a otra se
     registra hoy como dos hechos sin relación y no descuenta de la sucursal que lo envió. Ver §19.1.
@@ -1427,14 +1501,17 @@ de precio en Compras y Ventas pasó a ser obligatoria. El pago al productor es, 
 total = (pesoBruto − taraPorSaco × numeroSacos) × precioPorLibra
 ```
 
-### 19.3 Número de factura capturado a mano — **decisión**
+### 19.3 Número de factura capturado a mano — **implementado**
 
 El número que aparece en las planillas es el del talonario físico, no uno que deba generar el
-sistema. Se agrega como campo de texto opcional **en la cabecera de la transacción**, no en la
-línea: una factura ampara la compra completa a un productor, y ponerlo por línea permitiría que
-dos líneas de la misma compra declararan facturas distintas. Se descartó el correlativo automático
-porque obligaría a una tabla de correlativos y a control de concurrencia para reproducir un número
-que ya viene impreso en papel.
+sistema. Se agregó como campo de texto opcional **en la cabecera de la transacción**
+(`PurchaseTransaction.numeroFactura`), no en la línea: una factura ampara la compra completa a un
+productor, y ponerlo por línea permitiría que dos líneas de la misma compra declararan facturas
+distintas. Se descartó el correlativo automático porque obligaría a una tabla de correlativos y a
+control de concurrencia para reproducir un número que ya viene impreso en papel.
+
+Es opcional a propósito: no siempre se factura en el momento del pesaje, y el productor no puede
+quedarse esperando por el papel para cobrar.
 
 ### 19.4 Hoja de facturación por productor — **pendiente**
 

@@ -82,6 +82,8 @@ export type PurchaseTransactionDTO = {
   clientId: string;
   /** Valor del catálogo de `lib/payment-methods.ts`; solo "efectivo" resta de caja. */
   metodoPago: string;
+  /** Número del talonario físico, capturado a mano. Nulo si aún no se facturó. */
+  numeroFactura: string | null;
   total: number;
   createdAt: string;
   updatedAt: string;
@@ -173,6 +175,11 @@ export type CompanySettingsDTO = {
   email: string;
   printerIp: string;
   printerPort: number;
+  /** Vacío mientras se facture con talonario físico; con valor activa el bloque fiscal de la factura A4. */
+  cai: string;
+  facturaRangoDesde: string;
+  facturaRangoHasta: string;
+  facturaFechaLimite: string;
   updatedAt: string;
 };
 

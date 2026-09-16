@@ -11,6 +11,10 @@ function formatCompany(c: {
   email: string;
   printerIp: string;
   printerPort: number;
+  cai: string;
+  facturaRangoDesde: string;
+  facturaRangoHasta: string;
+  facturaFechaLimite: string;
   updatedAt: Date;
 }) {
   return { ...c, updatedAt: c.updatedAt.toISOString() };

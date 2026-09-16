@@ -89,6 +89,9 @@ export const createPurchaseTransactionSchema = z.object({
   // Opcional para no romper a los clientes que ya publicaban compras sin este
   // campo: ausente significa efectivo, que es como se contaban hasta ahora.
   metodoPago: z.enum(PAYMENT_METHOD_ENUM_VALUES).optional(),
+  // Número del talonario físico; opcional porque no siempre se factura en el
+  // momento del pesaje y el productor no puede quedarse esperando por el papel.
+  numeroFactura: z.string().trim().min(1).max(40).optional(),
   items: z.array(createPurchaseLineSchema).min(1),
 });
 
@@ -178,6 +181,12 @@ export const companySettingsSchema = z.object({
   email: z.string().trim().email().max(120).optional().or(z.literal('')),
   printerIp: z.string().trim().max(100).optional().or(z.literal('')),
   printerPort: z.number().int().min(1).max(65535).optional(),
+  // Facturación autorizada (SAR). Se aceptan vacíos: mientras `cai` lo esté, la
+  // factura A4 no imprime el bloque fiscal y el negocio sigue con su talonario.
+  cai: z.string().trim().max(50).optional().or(z.literal('')),
+  facturaRangoDesde: z.string().trim().max(40).optional().or(z.literal('')),
+  facturaRangoHasta: z.string().trim().max(40).optional().or(z.literal('')),
+  facturaFechaLimite: z.string().trim().max(40).optional().or(z.literal('')),
 });
 
 export const createUserSchema = z.object({

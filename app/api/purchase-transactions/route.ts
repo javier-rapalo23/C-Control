@@ -14,6 +14,7 @@ function mapTransaction(transaction: {
   sucursalId: string;
   clientId: string;
   metodoPago: string;
+  numeroFactura: string | null;
   total: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ function mapTransaction(transaction: {
     sucursalId: transaction.sucursalId,
     clientId: transaction.clientId,
     metodoPago: transaction.metodoPago,
+    numeroFactura: transaction.numeroFactura,
     total: Number(transaction.total),
     createdAt: transaction.createdAt.toISOString(),
     updatedAt: transaction.updatedAt.toISOString(),
@@ -183,6 +185,7 @@ export async function POST(request: Request) {
           sucursalId,
           clientId: client.id,
           metodoPago: payload.metodoPago ?? DEFAULT_PAYMENT_METHOD,
+          numeroFactura: payload.numeroFactura ?? null,
           total,
           items: {
             create: items,
