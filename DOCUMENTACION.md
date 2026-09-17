@@ -57,7 +57,7 @@ Bloques funcionales:
 | Clientes | `/clients` | Catálogo de clientes, datos IHCAFE y "clientes originales" asociados. |
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
 | Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
-| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado. |
+| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos y salidas de efectivo. |
 | Reportes | `/reports` | Compras, ventas y gastos por rango, agrupados por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
@@ -65,7 +65,7 @@ Bloques funcionales:
 **Ecuación central del negocio:**
 
 ```
-saldoActual = saldoInicial + totalVentas − totalCompras − totalGastos + ajusteCaja
+saldoActual = saldoInicial + totalVentas + totalIngresos − totalComprasEfectivo − totalGastos − totalSalidas + ajusteCaja
 ```
 
 evaluada por `(businessDate, sucursalId)`. `ajusteCaja` vale 0 salvo que la caja del día se haya
@@ -318,6 +318,16 @@ Arqueo de caja, `@@unique([businessDate, sucursalId])`. Guarda la apertura (`mon
 `abiertaPor`), el cierre (`montoContado`, `saldoEsperado`, `diferencia`, `cerradaPor`) y el
 `estado` (`abierta` | `cerrada`). Una sesión **cerrada bloquea la escritura** de esa fecha (§6.9).
 
+#### `CashEntry` y `CashWithdrawal`
+
+Efectivo que entra (`CashEntry`) o sale (`CashWithdrawal`) de la caja sin ser venta, compra ni
+gasto: reposición del dueño, retiro del banco para cambio, retiro del dueño, depósito del sobrante
+al banco. Mismas columnas (`descripcion`, `monto`, `registradoPor`) por fecha y sucursal; el
+ingreso suma al saldo y la salida resta.
+
+Son tablas propias y no un `Expense` o una `Sale` con signo para no ensuciar los reportes de gasto
+y de venta con dinero que solo cambió de lugar. Ambas respetan el bloqueo de caja cerrada.
+
 #### Personal
 
 `Employee` (**`sucursalId`**, nombre, puesto, teléfono, **`salarioDiario`**, fechaIngreso, activo),
@@ -374,8 +384,8 @@ parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánt
 | Función | Comportamiento |
 |---|---|
 | `ensureDailyBalance(db, fecha, sucursalId)` | `upsert` del `DailyBalance`; si no existe lo crea con saldos en 0. |
-| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)`, `SUM(Sale.monto)`, `SUM(Expense.monto)` del día/sucursal y reescribe `saldoActual = saldoInicial + ventas − compras − gastos + ajusteCaja`. |
-| `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas y gastos ordenadas por `createdAt desc`. |
+| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)` (y la parte en efectivo), `SUM(Sale.monto)`, `SUM(Expense.monto)`, `SUM(CashEntry.monto)` y `SUM(CashWithdrawal.monto)` del día/sucursal y reescribe `saldoActual = saldoInicial + ventas + ingresos − compras en efectivo − gastos − salidas + ajusteCaja`. |
+| `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas, gastos, ingresos (`cashEntries`) y salidas (`cashWithdrawals`) ordenadas por `createdAt desc`. |
 
 **Invariante:** toda ruta que cree o elimine compras, ventas o gastos llama a `recalculateDailyBalance`
 **dentro de la misma transacción Prisma**. El saldo nunca se ajusta por deltas, siempre se recalcula desde cero.
@@ -670,6 +680,12 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | POST | `/api/cash-sessions` | `{ businessDate, montoApertura, sucursalId?, notas? }`. Abre y fija el saldo inicial. |
 | POST | `/api/cash-sessions/close` | `{ businessDate, montoContado, sucursalId?, notas? }`. Devuelve el arqueo con la diferencia. |
 | POST | `/api/cash-sessions/reopen` | **admin.** `{ businessDate, sucursalId? }`. |
+| GET / POST | `/api/cash-entries` | Ingresos de efectivo. POST `{ businessDate, descripcion, monto, sucursalId? }`; GET por `businessDate` o `from`/`to`. |
+| DELETE | `/api/cash-entries/:id` | **admin.** |
+| GET / POST | `/api/cash-withdrawals` | Salidas de efectivo. Mismo contrato que `/api/cash-entries`; restan del saldo. |
+| DELETE | `/api/cash-withdrawals/:id` | **admin.** |
+
+Ingresos y salidas devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada.
 
 ### Reportes
 
@@ -1198,6 +1214,7 @@ pnpm dev                    # http://localhost:3000
 | `20260905000000_add_client_nombre_finca` | `Client.nombreFinca`. |
 | `20260914000000_coffee_catalog_manual_price` | Elimina `Producto.precioPorLibra` y `Producto.factorConversionOro`; agrega `Purchase.porcentajeOro`. El precio y el rendimiento pasan a capturarse por línea (§6.4, §6.6). |
 | `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` (§19.3) y los campos de factura autorizada en `CompanySettings`, inactivos hasta que se llene el CAI (§10.2). |
+| `20260916000000_add_cash_withdrawals` | `CashWithdrawal`: salidas de efectivo que restan del saldo sin ser gasto. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 

@@ -102,6 +102,8 @@ export const createCashEntrySchema = z.object({
   monto: z.number().positive(),
 });
 
+export const createCashWithdrawalSchema = createCashEntrySchema;
+
 export const createSaleLineSchema = z
   .object({
     productoId: z.string().min(1),

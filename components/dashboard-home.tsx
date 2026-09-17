@@ -243,7 +243,9 @@ export default function DashboardHome() {
           <div className="value">
             {' '}
             {ledger
-              ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length + ledger.cashEntries.length
+              ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length +
+                ledger.cashEntries.length +
+                ledger.cashWithdrawals.length
               : 0}
           </div>
         </article>

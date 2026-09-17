@@ -29,6 +29,7 @@ model Sucursal {
   productoCargas       ProductoCarga[]
   cashSessions         CashSession[]
   cashEntries          CashEntry[]
+  cashWithdrawals      CashWithdrawal[]
   employees            Employee[]
 }
 
@@ -134,6 +135,27 @@ model PurchaseTransaction {
 /// No se registra como una venta negativa ni como un gasto en negativo porque
 /// ensuciaría los reportes de venta y de gasto con movimientos que no lo son.
 model CashEntry {
+  id            String   @id @default(cuid())
+  businessDate  DateTime @db.Date
+  sucursalId    String
+  descripcion   String
+  monto         Decimal  @db.Decimal(12, 2)
+  /// `userId` de quien lo registró, igual que en la apertura y el cierre de caja.
+  registradoPor String
+  createdAt     DateTime @default(now())
+  sucursal      Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
+  @@index([sucursalId])
+}
+
+/// Efectivo que sale de la caja sin ser una compra ni un gasto: retiro del dueño,
+/// depósito del sobrante al banco. Resta del saldo del día.
+///
+/// Es la contraparte de `CashEntry` y por la misma razón no es un `Expense`: el
+/// dinero no se gastó, solo dejó la gaveta, y contarlo como gasto inflaría el
+/// reporte de gastos.
+model CashWithdrawal {
   id            String   @id @default(cuid())
   businessDate  DateTime @db.Date
   sucursalId    String

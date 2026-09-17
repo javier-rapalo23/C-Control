@@ -154,6 +154,9 @@ export type CashEntryDTO = {
   createdAt: string;
 };
 
+/** Misma forma que `CashEntryDTO`; lo que cambia es el signo con el que entra al saldo. */
+export type CashWithdrawalDTO = CashEntryDTO;
+
 export type DailyBalanceDTO = {
   id: string;
   businessDate: string;
@@ -278,6 +281,8 @@ export type LedgerDTO = {
     totalVentas: number;
     totalGastos: number;
     totalIngresos: number;
+    /** Efectivo retirado de la caja sin ser compra ni gasto. Resta del saldo. */
+    totalSalidas: number;
     ajusteCaja: number;
     saldoActual: number;
   };
@@ -285,6 +290,7 @@ export type LedgerDTO = {
   sales: SaleDTO[];
   expenses: ExpenseDTO[];
   cashEntries: CashEntryDTO[];
+  cashWithdrawals: CashWithdrawalDTO[];
 };
 
 export type CashSessionDTO = {

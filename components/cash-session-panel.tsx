@@ -39,6 +39,11 @@ export default function CashSessionPanel() {
   const [savingIngreso, setSavingIngreso] = useState(false);
   const [deletingIngresoId, setDeletingIngresoId] = useState<string | null>(null);
 
+  const [salidaMonto, setSalidaMonto] = useState('');
+  const [salidaDescripcion, setSalidaDescripcion] = useState('');
+  const [savingSalida, setSavingSalida] = useState(false);
+  const [deletingSalidaId, setDeletingSalidaId] = useState<string | null>(null);
+
   const fetchAll = useCallback(async () => {
     if (!sucursalId) return;
     try {
@@ -130,9 +135,50 @@ export default function CashSessionPanel() {
     }
   }
 
+  async function registrarSalida(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      setSavingSalida(true);
+      setError(null);
+      await fetch('/api/cash-withdrawals', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          businessDate,
+          sucursalId,
+          descripcion: salidaDescripcion,
+          monto: Number(salidaMonto),
+        }),
+      }).then(parseApiResponse);
+
+      setSalidaMonto('');
+      setSalidaDescripcion('');
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error registrando la salida');
+    } finally {
+      setSavingSalida(false);
+    }
+  }
+
+  async function eliminarSalida(id: string) {
+    try {
+      setDeletingSalidaId(id);
+      setError(null);
+      await fetch(`/api/cash-withdrawals/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error eliminando la salida');
+    } finally {
+      setDeletingSalidaId(null);
+    }
+  }
+
   const saldoEsperado = ledger?.totals.saldoActual ?? 0;
   const cashEntries = ledger?.cashEntries ?? [];
   const totalIngresos = ledger?.totals.totalIngresos ?? 0;
+  const cashWithdrawals = ledger?.cashWithdrawals ?? [];
+  const totalSalidas = ledger?.totals.totalSalidas ?? 0;
   const cajaCerrada = session?.estado === 'cerrada';
   // Se calcula en vivo para que el cajero vea el descuadre antes de confirmar.
   const diferenciaPrevista = montoContado === '' ? null : Number(montoContado) - saldoEsperado;
@@ -277,6 +323,93 @@ export default function CashSessionPanel() {
                 </td>
                 <td colSpan={2}>
                   <strong>{money(totalIngresos)}</strong>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="card" style={{ marginTop: 12 }}>
+        <h3>Retirar efectivo</h3>
+        <p style={{ color: 'var(--text-soft)' }}>
+          Efectivo que sale de la caja sin ser una compra ni un gasto: retiro del dueño, depósito del
+          sobrante al banco. Resta del saldo del día.
+        </p>
+
+        <form onSubmit={(event) => void registrarSalida(event)} className="row" style={{ marginTop: 8 }}>
+          <label style={{ gridColumn: 'span 4' }}>
+            Monto
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={salidaMonto}
+              onChange={(event) => setSalidaMonto(event.target.value)}
+              required
+            />
+          </label>
+          <label style={{ gridColumn: 'span 8' }}>
+            Concepto
+            <input
+              value={salidaDescripcion}
+              onChange={(event) => setSalidaDescripcion(event.target.value)}
+              placeholder="Ej. Depósito del sobrante al banco"
+              required
+            />
+          </label>
+          <div style={{ gridColumn: 'span 12' }}>
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={savingSalida || cajaCerrada || salidaMonto === '' || salidaDescripcion.trim() === ''}
+            >
+              {savingSalida ? 'Guardando...' : 'Registrar salida'}
+            </button>
+            {cajaCerrada ? (
+              <span style={{ marginLeft: 8, color: 'var(--text-soft)' }}>
+                La caja de esta fecha está cerrada.
+              </span>
+            ) : null}
+          </div>
+        </form>
+
+        <table className="table-like" style={{ marginTop: 12 }}>
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Monto</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cashWithdrawals.map((withdrawal) => (
+              <tr key={withdrawal.id} style={{ opacity: deletingSalidaId === withdrawal.id ? 0.5 : 1 }}>
+                <td>{withdrawal.descripcion}</td>
+                <td>{money(withdrawal.monto)}</td>
+                <td>
+                  <button
+                    className="btn-danger"
+                    type="button"
+                    disabled={deletingSalidaId !== null || cajaCerrada}
+                    onClick={() => void eliminarSalida(withdrawal.id)}
+                  >
+                    {deletingSalidaId === withdrawal.id ? 'Eliminando...' : 'Eliminar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {cashWithdrawals.length === 0 ? (
+              <tr>
+                <td colSpan={3}>No hay salidas de efectivo en esta fecha.</td>
+              </tr>
+            ) : (
+              <tr>
+                <td>
+                  <strong>Total</strong>
+                </td>
+                <td colSpan={2}>
+                  <strong>{money(totalSalidas)}</strong>
                 </td>
               </tr>
             )}

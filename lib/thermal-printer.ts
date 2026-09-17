@@ -126,6 +126,8 @@ export type SummaryData = {
   totalGastos: number;
   /** Efectivo que entró a la caja sin ser una venta. */
   totalIngresos?: number;
+  /** Efectivo que salió de la caja sin ser compra ni gasto. */
+  totalSalidas?: number;
   saldoInicial: number;
   saldoActual: number;
   /**
@@ -183,6 +185,10 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
     chunks.push(text(twoColumns('Ingresos efectivo:', `L ${totalIngresos.toFixed(2)}`)));
   }
   chunks.push(text(twoColumns('Total Gastos:', `L ${data.totalGastos.toFixed(2)}`)));
+  const totalSalidas = data.totalSalidas ?? 0;
+  if (totalSalidas > 0) {
+    chunks.push(text(twoColumns('Salidas efectivo:', `L ${totalSalidas.toFixed(2)}`)));
+  }
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Saldo inicial:', `L ${data.saldoInicial.toFixed(2)}`)));
 

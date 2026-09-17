@@ -183,6 +183,9 @@ export function mapCashEntry(entry: {
   };
 }
 
+// Las salidas tienen las mismas columnas que los ingresos; solo cambia el signo en el saldo.
+export const mapCashWithdrawal: typeof mapCashEntry = mapCashEntry;
+
 export async function ensureDailyBalance(db: DbClient, businessDateInput: string, sucursalId: string) {
   const businessDate = parseBusinessDate(businessDateInput);
 
@@ -202,7 +205,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const businessDate = parseBusinessDate(businessDateInput);
   const balance = await ensureDailyBalance(db, businessDateInput, sucursalId);
 
-  const [comprasAgg, comprasEfectivoAgg, ventasAgg, gastosAgg, ingresosAgg] = await Promise.all([
+  const [comprasAgg, comprasEfectivoAgg, ventasAgg, gastosAgg, ingresosAgg, salidasAgg] = await Promise.all([
     db.purchase.aggregate({
       where: { businessDate, sucursalId },
       _sum: { total: true },
@@ -230,6 +233,10 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalId },
       _sum: { monto: true },
     }),
+    db.cashWithdrawal.aggregate({
+      where: { businessDate, sucursalId },
+      _sum: { monto: true },
+    }),
   ]);
 
   const totalCompras = decimalToNumber(comprasAgg._sum.total);
@@ -238,13 +245,14 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const totalVentas = decimalToNumber(ventasAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
+  const totalSalidas = decimalToNumber(salidasAgg._sum.monto);
   const saldoInicial = decimalToNumber(balance.saldoInicial);
   // El ajuste del arqueo entra en la ecuación para que, una vez cerrada la caja,
   // el saldo sea el efectivo contado y no el teórico. Vale 0 mientras no se cierre,
   // así que las fechas sin arqueo se comportan igual que antes.
   const ajusteCaja = decimalToNumber(balance.ajusteCaja);
   const saldoActual =
-    saldoInicial + totalVentas + totalIngresos - totalComprasEfectivo - totalGastos + ajusteCaja;
+    saldoInicial + totalVentas + totalIngresos - totalComprasEfectivo - totalGastos - totalSalidas + ajusteCaja;
 
   const updated = await db.dailyBalance.update({
     where: { id: balance.id },
@@ -260,6 +268,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalVentas,
       totalGastos,
       totalIngresos,
+      totalSalidas,
       ajusteCaja,
       saldoActual,
     },
@@ -271,7 +280,7 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
   await ensureDailyBalance(db, businessDateInput, sucursalId);
   const recalculated = await recalculateDailyBalance(db, businessDateInput, sucursalId);
 
-  const [purchases, sales, expenses, cashEntries] = await Promise.all([
+  const [purchases, sales, expenses, cashEntries, cashWithdrawals] = await Promise.all([
     db.purchase.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
     db.sale.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
     db.expense.findMany({
@@ -280,6 +289,7 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
       include: { banco: { select: { nombre: true } } },
     }),
     db.cashEntry.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
+    db.cashWithdrawal.findMany({ where: { businessDate, sucursalId }, orderBy: { createdAt: 'desc' } }),
   ]);
 
   return {
@@ -291,5 +301,6 @@ export async function getLedgerByDate(db: DbClient, businessDateInput: string, s
     sales: sales.map(mapSale),
     expenses: expenses.map(mapExpense),
     cashEntries: cashEntries.map(mapCashEntry),
+    cashWithdrawals: cashWithdrawals.map(mapCashWithdrawal),
   };
 }

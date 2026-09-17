@@ -15,6 +15,7 @@ function fakeDb(options: {
   ventas?: number[];
   gastos?: number[];
   ingresos?: number[];
+  salidas?: number[];
 }) {
   const compras = options.compras ?? [];
   const balance = {
@@ -50,6 +51,7 @@ function fakeDb(options: {
     sale: { aggregate: async () => ({ _sum: { monto: sum(options.ventas ?? []) } }) },
     expense: { aggregate: async () => ({ _sum: { monto: sum(options.gastos ?? []) } }) },
     cashEntry: { aggregate: async () => ({ _sum: { monto: sum(options.ingresos ?? []) } }) },
+    cashWithdrawal: { aggregate: async () => ({ _sum: { monto: sum(options.salidas ?? []) } }) },
   } as never;
 }
 
@@ -76,6 +78,18 @@ describe('recalculateDailyBalance', () => {
 
     expect(totals.totalIngresos).toBe(500);
     expect(totals.saldoActual).toBe(1000);
+  });
+
+  it('resta las salidas de efectivo del saldo sin contarlas como gasto', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({ saldoInicial: 1000, gastos: [50], salidas: [200, 100] }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalSalidas).toBe(300);
+    expect(totals.totalGastos).toBe(50);
+    expect(totals.saldoActual).toBe(650);
   });
 
   it('no resta del saldo las compras con depósito o cheque', async () => {
