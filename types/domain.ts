@@ -157,6 +157,20 @@ export type CashEntryDTO = {
 /** Misma forma que `CashEntryDTO`; lo que cambia es el signo con el que entra al saldo. */
 export type CashWithdrawalDTO = CashEntryDTO;
 
+export type CashTransferDTO = {
+  id: string;
+  businessDate: string;
+  sucursalOrigenId: string;
+  /** Denormalizados para mostrar "Enviado a X" sin volver a consultar sucursales. */
+  sucursalOrigenNombre: string;
+  sucursalDestinoId: string;
+  sucursalDestinoNombre: string;
+  descripcion: string | null;
+  monto: number;
+  registradoPor: string;
+  createdAt: string;
+};
+
 export type DailyBalanceDTO = {
   id: string;
   businessDate: string;
@@ -283,6 +297,10 @@ export type LedgerDTO = {
     totalIngresos: number;
     /** Efectivo retirado de la caja sin ser compra ni gasto. Resta del saldo. */
     totalSalidas: number;
+    /** Efectivo recibido de otras bodegas. Suma al saldo. */
+    totalTrasladosRecibidos: number;
+    /** Efectivo enviado a otras bodegas. Resta del saldo. */
+    totalTrasladosEnviados: number;
     ajusteCaja: number;
     saldoActual: number;
   };
@@ -291,6 +309,8 @@ export type LedgerDTO = {
   expenses: ExpenseDTO[];
   cashEntries: CashEntryDTO[];
   cashWithdrawals: CashWithdrawalDTO[];
+  /** Traslados donde esta bodega es origen o destino. */
+  cashTransfers: CashTransferDTO[];
 };
 
 export type CashSessionDTO = {

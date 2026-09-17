@@ -57,7 +57,7 @@ Bloques funcionales:
 | Clientes | `/clients` | Catálogo de clientes, datos IHCAFE y "clientes originales" asociados. |
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
 | Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
-| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos y salidas de efectivo. |
+| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos, salidas y traslados de efectivo entre bodegas. |
 | Reportes | `/reports` | Compras, ventas y gastos por rango, agrupados por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
@@ -65,7 +65,8 @@ Bloques funcionales:
 **Ecuación central del negocio:**
 
 ```
-saldoActual = saldoInicial + totalVentas + totalIngresos − totalComprasEfectivo − totalGastos − totalSalidas + ajusteCaja
+saldoActual = saldoInicial + totalVentas + totalIngresos + totalTrasladosRecibidos
+            − totalComprasEfectivo − totalGastos − totalSalidas − totalTrasladosEnviados + ajusteCaja
 ```
 
 evaluada por `(businessDate, sucursalId)`. `ajusteCaja` vale 0 salvo que la caja del día se haya
@@ -328,6 +329,17 @@ ingreso suma al saldo y la salida resta.
 Son tablas propias y no un `Expense` o una `Sale` con signo para no ensuciar los reportes de gasto
 y de venta con dinero que solo cambió de lugar. Ambas respetan el bloqueo de caja cerrada.
 
+#### `CashTransfer`
+
+Traslado de efectivo entre bodegas (sucursales): `sucursalOrigenId`, `sucursalDestinoId`, `monto`,
+`descripcion?`, `registradoPor`, por fecha. Resta del saldo del origen y suma al del destino en la
+misma `businessDate`.
+
+Es **un solo registro** y no un `CashWithdrawal` más un `CashEntry`: así las dos cajas se mueven en
+la misma transacción, borrarlo no deja la mitad viva, y se puede sumar cuánto se le ha mandado a
+una bodega. La base impide con un `CHECK` que origen y destino sean la misma. Crear o borrar un
+traslado exige que **las dos** cajas de esa fecha estén abiertas, y recalcula ambos saldos.
+
 #### Personal
 
 `Employee` (**`sucursalId`**, nombre, puesto, teléfono, **`salarioDiario`**, fechaIngreso, activo),
@@ -384,8 +396,8 @@ parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánt
 | Función | Comportamiento |
 |---|---|
 | `ensureDailyBalance(db, fecha, sucursalId)` | `upsert` del `DailyBalance`; si no existe lo crea con saldos en 0. |
-| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)` (y la parte en efectivo), `SUM(Sale.monto)`, `SUM(Expense.monto)`, `SUM(CashEntry.monto)` y `SUM(CashWithdrawal.monto)` del día/sucursal y reescribe `saldoActual = saldoInicial + ventas + ingresos − compras en efectivo − gastos − salidas + ajusteCaja`. |
-| `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas, gastos, ingresos (`cashEntries`) y salidas (`cashWithdrawals`) ordenadas por `createdAt desc`. |
+| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)` (y la parte en efectivo), `SUM(Sale.monto)`, `SUM(Expense.monto)`, `SUM(CashEntry.monto)`, `SUM(CashWithdrawal.monto)` y `SUM(CashTransfer.monto)` como destino y como origen del día/sucursal, y reescribe `saldoActual = saldoInicial + ventas + ingresos + traslados recibidos − compras en efectivo − gastos − salidas − traslados enviados + ajusteCaja`. |
+| `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas, gastos, ingresos (`cashEntries`), salidas (`cashWithdrawals`) y traslados donde la bodega es origen o destino (`cashTransfers`), ordenadas por `createdAt desc`. |
 
 **Invariante:** toda ruta que cree o elimine compras, ventas o gastos llama a `recalculateDailyBalance`
 **dentro de la misma transacción Prisma**. El saldo nunca se ajusta por deltas, siempre se recalcula desde cero.
@@ -684,8 +696,11 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | DELETE | `/api/cash-entries/:id` | **admin.** |
 | GET / POST | `/api/cash-withdrawals` | Salidas de efectivo. Mismo contrato que `/api/cash-entries`; restan del saldo. |
 | DELETE | `/api/cash-withdrawals/:id` | **admin.** |
+| GET / POST | `/api/cash-transfers` | Traslados entre bodegas. POST `{ businessDate, sucursalOrigenId, sucursalDestinoId, monto, descripcion? }`; 400 si origen = destino o alguna bodega no existe o está inactiva. GET devuelve los traslados donde `sucursalId` es origen o destino, por `businessDate` o `from`/`to`. |
+| DELETE | `/api/cash-transfers/:id` | **admin.** Revierte el traslado en las dos bodegas. |
 
-Ingresos y salidas devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada.
+Ingresos, salidas y traslados devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada;
+en un traslado basta con que esté cerrada la del origen o la del destino.
 
 ### Reportes
 
@@ -1215,6 +1230,7 @@ pnpm dev                    # http://localhost:3000
 | `20260914000000_coffee_catalog_manual_price` | Elimina `Producto.precioPorLibra` y `Producto.factorConversionOro`; agrega `Purchase.porcentajeOro`. El precio y el rendimiento pasan a capturarse por línea (§6.4, §6.6). |
 | `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` (§19.3) y los campos de factura autorizada en `CompanySettings`, inactivos hasta que se llene el CAI (§10.2). |
 | `20260916000000_add_cash_withdrawals` | `CashWithdrawal`: salidas de efectivo que restan del saldo sin ser gasto. |
+| `20260917000000_add_cash_transfers` | `CashTransfer`: traslados de efectivo entre bodegas, con `CHECK` de origen distinto a destino. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1382,9 +1398,8 @@ Puntos a tener presentes al trabajar sobre el código:
 14. ~~**`lib/producto-groups.ts` busca `'oriado'`, no `'oreado'`.**~~ **Sin efecto**: la
     clasificación por nombre se eliminó con los encabezados de la parrilla (§6.6). Con el catálogo
     cerrado la categoría siempre viene puesta, así que ya no hay nombre que adivinar.
-15. **No hay cuenta corriente ni traslados entre sucursales.** `CashEntry` registra efectivo que
-    entra a una caja pero no de dónde salió, así que mandar dinero de una sucursal a otra se
-    registra hoy como dos hechos sin relación y no descuenta de la sucursal que lo envió. Ver §19.1.
+15. **No hay cuenta corriente por sucursal.** Los traslados de efectivo entre bodegas ya existen
+    (`CashTransfer`), pero falta el reporte acumulado por temporada. Ver §19.1.
 
 ---
 
@@ -1467,20 +1482,18 @@ sucursal ya existe y ya particiona compras, ventas, gastos, caja y personal (§5
 La consecuencia es que el módulo "Bodegas" del libro **no es un módulo nuevo**: es una vista
 acumulada sobre datos que la aplicación ya guarda, más las dos piezas que le faltan (§19.1).
 
-### 19.1 Cuenta corriente y caja central — **pendiente**
+### 19.1 Cuenta corriente y caja central — **traslados implementados, cuenta corriente pendiente**
 
 El libro lleva, por bodega, un acumulado de quintales comprados en la temporada y la cuenta
 `pendiente = Σ(compras) − Σ(depósitos)`, donde un "depósito" es dinero que se le manda a esa
-bodega. En la aplicación las compras ya están; faltan dos cosas.
+bodega. En la aplicación las compras ya están; faltaban dos cosas.
 
-**Traslado de efectivo entre sucursales.** Hoy `CashEntry` registra que entró efectivo a una caja
-pero no de dónde salió, así que mandar dinero de una sucursal a otra son dos hechos sin relación y
-la sucursal que lo envió no lo descuenta. Se prevé un modelo propio —origen, destino, monto, fecha
-y quién lo registró— en vez de dos `CashEntry` sueltos: solo un registro único puede restar de una
-caja y sumar a la otra en la misma operación, borrarse sin dejar la mitad viva, y cuadrar cuando
-alguien pregunte cuánto se le ha mandado a una sucursal en la temporada.
+**Traslado de efectivo entre bodegas — implementado.** `CashTransfer` (§5) registra origen,
+destino, monto, fecha y quién lo hizo en un solo registro, desde el módulo Caja. Resta de una caja
+y suma a la otra en la misma transacción y se borra entero. `GET /api/cash-transfers` con
+`from`/`to` ya responde cuánto se le ha mandado a una bodega en un rango.
 
-**Vista de cuenta corriente por sucursal.** Un reporte de solo lectura con quintales comprados,
+**Vista de cuenta corriente por sucursal — pendiente.** Un reporte de solo lectura con quintales comprados,
 lempiras gastadas, traslados recibidos y el pendiente resultante, acumulado por temporada.
 
 ### 19.2 Una sola conversión a oro — **implementado**

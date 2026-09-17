@@ -104,6 +104,19 @@ export const createCashEntrySchema = z.object({
 
 export const createCashWithdrawalSchema = createCashEntrySchema;
 
+export const createCashTransferSchema = z
+  .object({
+    businessDate: businessDateField,
+    sucursalOrigenId: z.string().min(1),
+    sucursalDestinoId: z.string().min(1),
+    descripcion: z.string().trim().max(250).optional(),
+    monto: z.number().positive(),
+  })
+  .refine((data) => data.sucursalOrigenId !== data.sucursalDestinoId, {
+    message: 'La bodega de destino debe ser distinta a la de origen',
+    path: ['sucursalDestinoId'],
+  });
+
 export const createSaleLineSchema = z
   .object({
     productoId: z.string().min(1),

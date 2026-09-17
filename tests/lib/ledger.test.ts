@@ -16,6 +16,8 @@ function fakeDb(options: {
   gastos?: number[];
   ingresos?: number[];
   salidas?: number[];
+  trasladosRecibidos?: number[];
+  trasladosEnviados?: number[];
 }) {
   const compras = options.compras ?? [];
   const balance = {
@@ -52,6 +54,16 @@ function fakeDb(options: {
     expense: { aggregate: async () => ({ _sum: { monto: sum(options.gastos ?? []) } }) },
     cashEntry: { aggregate: async () => ({ _sum: { monto: sum(options.ingresos ?? []) } }) },
     cashWithdrawal: { aggregate: async () => ({ _sum: { monto: sum(options.salidas ?? []) } }) },
+    // Un mismo traslado cuenta como recibido o enviado según de qué lado esté la sucursal.
+    cashTransfer: {
+      aggregate: async ({ where }: { where: { sucursalOrigenId?: string; sucursalDestinoId?: string } }) => ({
+        _sum: {
+          monto: sum(
+            where.sucursalDestinoId ? (options.trasladosRecibidos ?? []) : (options.trasladosEnviados ?? []),
+          ),
+        },
+      }),
+    },
   } as never;
 }
 
@@ -90,6 +102,18 @@ describe('recalculateDailyBalance', () => {
     expect(totals.totalSalidas).toBe(300);
     expect(totals.totalGastos).toBe(50);
     expect(totals.saldoActual).toBe(650);
+  });
+
+  it('suma los traslados recibidos y resta los enviados a otras bodegas', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({ saldoInicial: 1000, trasladosRecibidos: [400], trasladosEnviados: [150, 50] }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalTrasladosRecibidos).toBe(400);
+    expect(totals.totalTrasladosEnviados).toBe(200);
+    expect(totals.saldoActual).toBe(1200);
   });
 
   it('no resta del saldo las compras con depósito o cheque', async () => {

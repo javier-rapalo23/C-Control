@@ -128,6 +128,9 @@ export type SummaryData = {
   totalIngresos?: number;
   /** Efectivo que salió de la caja sin ser compra ni gasto. */
   totalSalidas?: number;
+  /** Efectivo recibido de otras bodegas y enviado a ellas. */
+  totalTrasladosRecibidos?: number;
+  totalTrasladosEnviados?: number;
   saldoInicial: number;
   saldoActual: number;
   /**
@@ -188,6 +191,14 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
   const totalSalidas = data.totalSalidas ?? 0;
   if (totalSalidas > 0) {
     chunks.push(text(twoColumns('Salidas efectivo:', `L ${totalSalidas.toFixed(2)}`)));
+  }
+  const trasladosRecibidos = data.totalTrasladosRecibidos ?? 0;
+  if (trasladosRecibidos > 0) {
+    chunks.push(text(twoColumns('Traslados recib.:', `L ${trasladosRecibidos.toFixed(2)}`)));
+  }
+  const trasladosEnviados = data.totalTrasladosEnviados ?? 0;
+  if (trasladosEnviados > 0) {
+    chunks.push(text(twoColumns('Traslados env.:', `L ${trasladosEnviados.toFixed(2)}`)));
   }
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Saldo inicial:', `L ${data.saldoInicial.toFixed(2)}`)));

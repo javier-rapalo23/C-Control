@@ -30,6 +30,8 @@ model Sucursal {
   cashSessions         CashSession[]
   cashEntries          CashEntry[]
   cashWithdrawals      CashWithdrawal[]
+  cashTransfersOut     CashTransfer[]        @relation("CashTransferOrigen")
+  cashTransfersIn      CashTransfer[]        @relation("CashTransferDestino")
   employees            Employee[]
 }
 
@@ -168,6 +170,30 @@ model CashWithdrawal {
 
   @@index([businessDate])
   @@index([sucursalId])
+}
+
+/// Efectivo que una bodega (sucursal) le manda a otra. Resta del saldo del origen
+/// y suma al del destino en la misma fecha.
+///
+/// Es un registro único y no un `CashWithdrawal` más un `CashEntry` sueltos: así
+/// las dos cajas se mueven en la misma operación, borrarlo no deja la mitad viva,
+/// y se puede responder cuánto se le ha mandado a una bodega.
+model CashTransfer {
+  id                String   @id @default(cuid())
+  businessDate      DateTime @db.Date
+  sucursalOrigenId  String
+  sucursalDestinoId String
+  descripcion       String?
+  monto             Decimal  @db.Decimal(12, 2)
+  /// `userId` de quien lo registró, igual que en la apertura y el cierre de caja.
+  registradoPor     String
+  createdAt         DateTime @default(now())
+  sucursalOrigen    Sucursal @relation("CashTransferOrigen", fields: [sucursalOrigenId], references: [id], onDelete: Restrict)
+  sucursalDestino   Sucursal @relation("CashTransferDestino", fields: [sucursalDestinoId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
+  @@index([sucursalOrigenId])
+  @@index([sucursalDestinoId])
 }
 
 model DailyBalance {

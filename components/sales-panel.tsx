@@ -63,6 +63,8 @@ export default function SalesPanel() {
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [clients, setClients] = useState<ClientDTO[]>([]);
   const [transactions, setTransactions] = useState<SaleTransactionDTO[]>([]);
+  // Libras en stock por producto en la sucursal. `null` si no se pudo consultar.
+  const [stockByProducto, setStockByProducto] = useState<Record<string, number | null>>({});
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,30 @@ export default function SalesPanel() {
     if (!itemProductoId && data.length > 0) {
       setItemProductoId(data[0].id);
     }
+    return data;
   }, [itemProductoId]);
+
+  // Misma consulta que Inventario, para que las libras de la parrilla coincidan
+  // con las que se ven allá.
+  const fetchStock = useCallback(
+    async (lista: ProductoDTO[]) => {
+      const entries = await Promise.all(
+        lista.map(async (producto) => {
+          try {
+            const response = await fetch(`/api/productos/stock?productoId=${producto.id}&sucursalId=${sucursalId}`, {
+              cache: 'no-store',
+            });
+            const data = await parseApiResponse<{ data: { totalLibras: number } }>(response);
+            return [producto.id, data.data.totalLibras] as const;
+          } catch {
+            return [producto.id, null] as const;
+          }
+        }),
+      );
+      setStockByProducto(Object.fromEntries(entries));
+    },
+    [sucursalId],
+  );
 
   const fetchClients = useCallback(async () => {
     const response = await fetch('/api/clients', { cache: 'no-store' });
@@ -116,13 +141,13 @@ export default function SalesPanel() {
     try {
       setLoading(true);
       setError(null);
-      await Promise.all([fetchProductos(), fetchClients(), fetchLedger(), fetchTransactions()]);
+      await Promise.all([fetchProductos().then(fetchStock), fetchClients(), fetchLedger(), fetchTransactions()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error sincronizando ventas');
     } finally {
       setLoading(false);
     }
-  }, [fetchClients, fetchLedger, fetchProductos, fetchTransactions, sucursalId]);
+  }, [fetchClients, fetchLedger, fetchProductos, fetchStock, fetchTransactions, sucursalId]);
 
   useEffect(() => {
     void refresh();
@@ -400,6 +425,7 @@ export default function SalesPanel() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginTop: 10 }}>
             {productos.map((producto) => {
               const selected = itemProductoId === producto.id;
+              const stock = stockByProducto[producto.id];
               return (
                 <button
                   key={producto.id}
@@ -425,6 +451,16 @@ export default function SalesPanel() {
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
                     {producto.facturable ? 'Se factura' : 'No se factura'}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginTop: 4,
+                      color: stock !== undefined && stock !== null && stock <= 0 ? 'var(--danger)' : 'inherit',
+                    }}
+                  >
+                    {stock === undefined ? '…' : stock === null ? 'Stock: —' : `Stock: ${stock.toFixed(2)} lb`}
                   </div>
                 </button>
               );

@@ -245,7 +245,8 @@ export default function DashboardHome() {
             {ledger
               ? ledger.purchases.length + ledger.sales.length + ledger.expenses.length +
                 ledger.cashEntries.length +
-                ledger.cashWithdrawals.length
+                ledger.cashWithdrawals.length +
+                ledger.cashTransfers.length
               : 0}
           </div>
         </article>

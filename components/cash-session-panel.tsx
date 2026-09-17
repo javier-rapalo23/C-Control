@@ -44,6 +44,21 @@ export default function CashSessionPanel() {
   const [savingSalida, setSavingSalida] = useState(false);
   const [deletingSalidaId, setDeletingSalidaId] = useState<string | null>(null);
 
+  const [trasladoDestinoId, setTrasladoDestinoId] = useState('');
+  const [trasladoMonto, setTrasladoMonto] = useState('');
+  const [trasladoDescripcion, setTrasladoDescripcion] = useState('');
+  const [savingTraslado, setSavingTraslado] = useState(false);
+  const [deletingTrasladoId, setDeletingTrasladoId] = useState<string | null>(null);
+
+  const otrasBodegas = sucursales.filter((sucursal) => sucursal.id !== sucursalId);
+  // El destino nunca puede ser la bodega que envía: al cambiar de bodega arriba se
+  // corrige solo en vez de dejar un destino inválido seleccionado.
+  const destinoValido = otrasBodegas.some((sucursal) => sucursal.id === trasladoDestinoId);
+  const primerDestinoId = otrasBodegas[0]?.id ?? '';
+  useEffect(() => {
+    if (!destinoValido) setTrasladoDestinoId(primerDestinoId);
+  }, [destinoValido, primerDestinoId]);
+
   const fetchAll = useCallback(async () => {
     if (!sucursalId) return;
     try {
@@ -174,11 +189,54 @@ export default function CashSessionPanel() {
     }
   }
 
+  async function registrarTraslado(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      setSavingTraslado(true);
+      setError(null);
+      await fetch('/api/cash-transfers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          businessDate,
+          sucursalOrigenId: sucursalId,
+          sucursalDestinoId: trasladoDestinoId,
+          descripcion: trasladoDescripcion.trim() || undefined,
+          monto: Number(trasladoMonto),
+        }),
+      }).then(parseApiResponse);
+
+      setTrasladoMonto('');
+      setTrasladoDescripcion('');
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error registrando el traslado');
+    } finally {
+      setSavingTraslado(false);
+    }
+  }
+
+  async function eliminarTraslado(id: string) {
+    try {
+      setDeletingTrasladoId(id);
+      setError(null);
+      await fetch(`/api/cash-transfers/${id}`, { method: 'DELETE' }).then(parseApiResponse);
+      await fetchAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error eliminando el traslado');
+    } finally {
+      setDeletingTrasladoId(null);
+    }
+  }
+
   const saldoEsperado = ledger?.totals.saldoActual ?? 0;
   const cashEntries = ledger?.cashEntries ?? [];
   const totalIngresos = ledger?.totals.totalIngresos ?? 0;
   const cashWithdrawals = ledger?.cashWithdrawals ?? [];
   const totalSalidas = ledger?.totals.totalSalidas ?? 0;
+  const cashTransfers = ledger?.cashTransfers ?? [];
+  const totalTrasladosRecibidos = ledger?.totals.totalTrasladosRecibidos ?? 0;
+  const totalTrasladosEnviados = ledger?.totals.totalTrasladosEnviados ?? 0;
   const cajaCerrada = session?.estado === 'cerrada';
   // Se calcula en vivo para que el cajero vea el descuadre antes de confirmar.
   const diferenciaPrevista = montoContado === '' ? null : Number(montoContado) - saldoEsperado;
@@ -412,6 +470,129 @@ export default function CashSessionPanel() {
                   <strong>{money(totalSalidas)}</strong>
                 </td>
               </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="card" style={{ marginTop: 12 }}>
+        <h3>Traslado entre bodegas</h3>
+        <p style={{ color: 'var(--text-soft)' }}>
+          Efectivo que esta bodega le manda a otra. Resta del saldo de esta bodega y suma al de la que
+          lo recibe, en la misma fecha. Las cajas de las dos bodegas deben estar abiertas.
+        </p>
+
+        {otrasBodegas.length === 0 ? (
+          <p style={{ color: 'var(--text-soft)', marginTop: 8 }}>
+            No hay otra bodega activa a la que trasladar efectivo.
+          </p>
+        ) : (
+          <form onSubmit={(event) => void registrarTraslado(event)} className="row" style={{ marginTop: 8 }}>
+            <label style={{ gridColumn: 'span 4' }}>
+              Enviar a
+              <select value={trasladoDestinoId} onChange={(event) => setTrasladoDestinoId(event.target.value)}>
+                {otrasBodegas.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>
+                    {sucursal.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ gridColumn: 'span 3' }}>
+              Monto
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={trasladoMonto}
+                onChange={(event) => setTrasladoMonto(event.target.value)}
+                required
+              />
+            </label>
+            <label style={{ gridColumn: 'span 5' }}>
+              Concepto (opcional)
+              <input
+                value={trasladoDescripcion}
+                onChange={(event) => setTrasladoDescripcion(event.target.value)}
+                placeholder="Ej. Efectivo para compras de la semana"
+              />
+            </label>
+            <div style={{ gridColumn: 'span 12' }}>
+              <button
+                className="btn-primary"
+                type="submit"
+                disabled={savingTraslado || cajaCerrada || trasladoMonto === '' || !destinoValido}
+              >
+                {savingTraslado ? 'Guardando...' : 'Registrar traslado'}
+              </button>
+              {cajaCerrada ? (
+                <span style={{ marginLeft: 8, color: 'var(--text-soft)' }}>
+                  La caja de esta fecha está cerrada.
+                </span>
+              ) : null}
+            </div>
+          </form>
+        )}
+
+        <table className="table-like" style={{ marginTop: 12 }}>
+          <thead>
+            <tr>
+              <th>Movimiento</th>
+              <th>Concepto</th>
+              <th>Monto</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cashTransfers.map((transfer) => {
+              const enviado = transfer.sucursalOrigenId === sucursalId;
+              return (
+                <tr key={transfer.id} style={{ opacity: deletingTrasladoId === transfer.id ? 0.5 : 1 }}>
+                  <td>
+                    {enviado
+                      ? `Enviado a ${transfer.sucursalDestinoNombre}`
+                      : `Recibido de ${transfer.sucursalOrigenNombre}`}
+                  </td>
+                  <td>{transfer.descripcion ?? '—'}</td>
+                  <td style={{ color: enviado ? 'var(--danger)' : undefined }}>
+                    {enviado ? '−' : '+'} {money(transfer.monto)}
+                  </td>
+                  <td>
+                    <button
+                      className="btn-danger"
+                      type="button"
+                      disabled={deletingTrasladoId !== null || cajaCerrada}
+                      onClick={() => void eliminarTraslado(transfer.id)}
+                    >
+                      {deletingTrasladoId === transfer.id ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {cashTransfers.length === 0 ? (
+              <tr>
+                <td colSpan={4}>No hay traslados en esta fecha.</td>
+              </tr>
+            ) : (
+              <>
+                <tr>
+                  <td colSpan={2}>
+                    <strong>Total recibido</strong>
+                  </td>
+                  <td colSpan={2}>
+                    <strong>{money(totalTrasladosRecibidos)}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={2}>
+                    <strong>Total enviado</strong>
+                  </td>
+                  <td colSpan={2}>
+                    <strong>{money(totalTrasladosEnviados)}</strong>
+                  </td>
+                </tr>
+              </>
             )}
           </tbody>
         </table>
