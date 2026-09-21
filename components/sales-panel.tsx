@@ -86,13 +86,16 @@ export default function SalesPanel() {
     const response = await fetch('/api/productos', { cache: 'no-store' });
     const data = await parseApiResponse<ProductoDTO[]>(response);
     setProductos(data);
-
-    if (!itemProductoId && data.length > 0) {
-      setItemProductoId(data[0].id);
-      setItemTaraPorSaco(taraDelProducto(data[0]));
-    }
     return data;
-  }, [itemProductoId]);
+  }, []);
+
+  // La preselección va aparte: si `fetchProductos` dependiera del producto
+  // elegido, cada clic en la parrilla recargaba la pantalla entera (y el stock).
+  useEffect(() => {
+    if (itemProductoId || productos.length === 0) return;
+    setItemProductoId(productos[0].id);
+    setItemTaraPorSaco(taraDelProducto(productos[0]));
+  }, [productos, itemProductoId]);
 
   // Misma consulta que Inventario, para que las libras de la parrilla coincidan
   // con las que se ven allá.
@@ -120,11 +123,8 @@ export default function SalesPanel() {
     const response = await fetch('/api/clients', { cache: 'no-store' });
     const data = await parseApiResponse<ClientDTO[]>(response);
     setClients(data);
-
-    if (!selectedClientId && data.length > 0) {
-      setSelectedClientId(data[0].id);
-    }
-  }, [selectedClientId]);
+    setSelectedClientId((current) => current || data[0]?.id || '');
+  }, []);
 
   const fetchLedger = useCallback(async () => {
     const response = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });

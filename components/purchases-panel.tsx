@@ -91,22 +91,24 @@ export default function PurchasesPanel() {
     const response = await fetch('/api/productos', { cache: 'no-store' });
     const data = await parseApiResponse<ProductoDTO[]>(response);
     setProductos(data);
+  }, []);
 
-    if (!itemProductoId && data.length > 0) {
-      setItemProductoId(data[0].id);
-      setItemTaraPorSaco(data[0].taraPorSaco !== null && data[0].taraPorSaco !== undefined ? String(data[0].taraPorSaco) : '');
-    }
-  }, [itemProductoId]);
+  // La preselección va aparte: si `fetchProductos` dependiera del producto
+  // elegido, cada clic en la parrilla recargaba la pantalla entera.
+  useEffect(() => {
+    if (itemProductoId || productos.length === 0) return;
+    setItemProductoId(productos[0].id);
+    setItemTaraPorSaco(
+      productos[0].taraPorSaco !== null && productos[0].taraPorSaco !== undefined ? String(productos[0].taraPorSaco) : '',
+    );
+  }, [productos, itemProductoId]);
 
   const fetchClients = useCallback(async () => {
     const response = await fetch('/api/clients', { cache: 'no-store' });
     const data = await parseApiResponse<ClientDTO[]>(response);
     setClients(data);
-
-    if (!selectedClientId && data.length > 0) {
-      setSelectedClientId(data[0].id);
-    }
-  }, [selectedClientId]);
+    setSelectedClientId((current) => current || data[0]?.id || '');
+  }, []);
 
   const fetchLedger = useCallback(async () => {
     const response = await fetch(`/api/ledger?businessDate=${businessDate}&sucursalId=${sucursalId}`, { cache: 'no-store' });
