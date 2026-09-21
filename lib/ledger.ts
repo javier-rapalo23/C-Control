@@ -6,6 +6,7 @@ import type {
   CashTransferDTO,
   DailyBalanceDTO,
   ExpenseDTO,
+  GrindingServiceDTO,
   LedgerDTO,
   PurchaseDTO,
   SaleDTO,
@@ -184,6 +185,34 @@ export function mapCashEntry(entry: {
   };
 }
 
+export function mapGrindingService(service: {
+  id: string;
+  businessDate: Date;
+  sucursalId: string;
+  clientId: string;
+  libras: Prisma.Decimal;
+  monto: Prisma.Decimal;
+  notas: string | null;
+  registradoPor: string;
+  createdAt: Date;
+  updatedAt: Date;
+  client: { nombre: string };
+}): GrindingServiceDTO {
+  return {
+    id: service.id,
+    businessDate: toBusinessDateString(service.businessDate),
+    sucursalId: service.sucursalId,
+    clientId: service.clientId,
+    clientNombre: service.client.nombre,
+    libras: decimalToNumber(service.libras),
+    monto: decimalToNumber(service.monto),
+    notas: service.notas,
+    registradoPor: service.registradoPor,
+    createdAt: service.createdAt.toISOString(),
+    updatedAt: service.updatedAt.toISOString(),
+  };
+}
+
 // Las salidas tienen las mismas columnas que los ingresos; solo cambia el signo en el saldo.
 export const mapCashWithdrawal: typeof mapCashEntry = mapCashEntry;
 
@@ -244,6 +273,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     ventasAgg,
     gastosAgg,
     ingresosAgg,
+    molidoAgg,
     salidasAgg,
     trasladosRecibidosAgg,
     trasladosEnviadosAgg,
@@ -275,6 +305,10 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalId },
       _sum: { monto: true },
     }),
+    db.grindingService.aggregate({
+      where: { businessDate, sucursalId },
+      _sum: { monto: true },
+    }),
     db.cashWithdrawal.aggregate({
       where: { businessDate, sucursalId },
       _sum: { monto: true },
@@ -295,6 +329,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const totalVentas = decimalToNumber(ventasAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
+  const totalMolido = decimalToNumber(molidoAgg._sum.monto);
   const totalSalidas = decimalToNumber(salidasAgg._sum.monto);
   const totalTrasladosRecibidos = decimalToNumber(trasladosRecibidosAgg._sum.monto);
   const totalTrasladosEnviados = decimalToNumber(trasladosEnviadosAgg._sum.monto);
@@ -307,6 +342,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     saldoInicial +
     totalVentas +
     totalIngresos +
+    totalMolido +
     totalTrasladosRecibidos -
     totalComprasEfectivo -
     totalGastos -
@@ -328,6 +364,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalVentas,
       totalGastos,
       totalIngresos,
+      totalMolido,
       totalSalidas,
       totalTrasladosRecibidos,
       totalTrasladosEnviados,

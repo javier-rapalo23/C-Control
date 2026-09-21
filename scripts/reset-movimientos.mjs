@@ -62,6 +62,7 @@ async function main() {
     ['Sale', prisma.sale],
     ['SaleTransaction', prisma.saleTransaction],
     ['Expense', prisma.expense],
+    ['GrindingService', prisma.grindingService],
     ['CashEntry', prisma.cashEntry],
     ['CashWithdrawal', prisma.cashWithdrawal],
     ['CashTransfer', prisma.cashTransfer],

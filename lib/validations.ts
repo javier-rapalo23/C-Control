@@ -104,6 +104,20 @@ export const createCashEntrySchema = z.object({
 
 export const createCashWithdrawalSchema = createCashEntrySchema;
 
+/** Libras y monto se escriben a mano: el molido no tiene tarifa fija. */
+export const createGrindingServiceSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  clientId: z.string().min(1),
+  libras: z.number().positive(),
+  monto: z.number().positive(),
+  notas: z.string().trim().max(250).optional(),
+});
+
+export const updateGrindingServiceSchema = createGrindingServiceSchema
+  .pick({ clientId: true, libras: true, monto: true, notas: true })
+  .partial();
+
 export const createCashTransferSchema = z
   .object({
     businessDate: businessDateField,
@@ -117,13 +131,25 @@ export const createCashTransferSchema = z
     path: ['sucursalDestinoId'],
   });
 
+/**
+ * La venta se pesa como la compra: `pesoBruto` + sacos + tara, y el servidor
+ * calcula el neto. `libras` sigue aceptándose para quien ya enviaba el neto.
+ * Por libra, `porcentajeOro` es opcional y solo da los quintales oro de
+ * referencia; `precioPorQuintalOro` queda para las ventas que se cobran por oro.
+ */
 export const createSaleLineSchema = z
   .object({
     productoId: z.string().min(1),
-    libras: z.number().positive(),
+    libras: z.number().positive().optional(),
+    pesoBruto: z.number().positive().optional(),
+    numeroSacos: z.number().int().min(0).optional(),
+    taraPorSaco: z.number().min(0).optional(),
     precioPorLibra: z.number().positive().optional(),
     porcentajeOro: porcentajeOroSchema.optional(),
     precioPorQuintalOro: z.number().positive().optional(),
+  })
+  .refine((data) => data.libras !== undefined || data.pesoBruto !== undefined, {
+    message: 'Debe indicar libras o peso bruto',
   })
   .refine((data) => data.precioPorQuintalOro === undefined || data.porcentajeOro !== undefined, {
     message: 'porcentajeOro es requerido cuando se especifica precioPorQuintalOro',

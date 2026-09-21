@@ -98,6 +98,9 @@ export type SaleDTO = {
   productoId?: string | null;
   productoNombre?: string | null;
   precioPorLibra?: number | null;
+  pesoBruto?: number | null;
+  numeroSacos?: number | null;
+  taraPorSaco?: number | null;
   libras?: number | null;
   porcentajeOro?: number | null;
   quintalesOro?: number | null;
@@ -152,6 +155,20 @@ export type CashEntryDTO = {
   monto: number;
   registradoPor: string;
   createdAt: string;
+};
+
+export type GrindingServiceDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  clientId: string;
+  clientNombre: string;
+  libras: number;
+  monto: number;
+  notas: string | null;
+  registradoPor: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 /** Misma forma que `CashEntryDTO`; lo que cambia es el signo con el que entra al saldo. */
@@ -295,6 +312,8 @@ export type LedgerDTO = {
     totalVentas: number;
     totalGastos: number;
     totalIngresos: number;
+    /** Cobros del servicio de molido. Suma al saldo. */
+    totalMolido: number;
     /** Efectivo retirado de la caja sin ser compra ni gasto. Resta del saldo. */
     totalSalidas: number;
     /** Efectivo recibido de otras bodegas. Suma al saldo. */

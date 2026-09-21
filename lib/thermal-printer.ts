@@ -126,6 +126,8 @@ export type SummaryData = {
   totalGastos: number;
   /** Efectivo que entró a la caja sin ser una venta. */
   totalIngresos?: number;
+  /** Cobros del servicio de molido. */
+  totalMolido?: number;
   /** Efectivo que salió de la caja sin ser compra ni gasto. */
   totalSalidas?: number;
   /** Efectivo recibido de otras bodegas y enviado a ellas. */
@@ -186,6 +188,10 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
   const totalIngresos = data.totalIngresos ?? 0;
   if (totalIngresos > 0) {
     chunks.push(text(twoColumns('Ingresos efectivo:', `L ${totalIngresos.toFixed(2)}`)));
+  }
+  const totalMolido = data.totalMolido ?? 0;
+  if (totalMolido > 0) {
+    chunks.push(text(twoColumns('Molido:', `L ${totalMolido.toFixed(2)}`)));
   }
   chunks.push(text(twoColumns('Total Gastos:', `L ${data.totalGastos.toFixed(2)}`)));
   const totalSalidas = data.totalSalidas ?? 0;

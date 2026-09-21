@@ -34,6 +34,9 @@ function mapTransaction(transaction: {
     productoId: string | null;
     productoNombre: string | null;
     precioPorLibra: Prisma.Decimal | null;
+    pesoBruto: Prisma.Decimal | null;
+    numeroSacos: number | null;
+    taraPorSaco: Prisma.Decimal | null;
     libras: Prisma.Decimal | null;
     porcentajeOro: Prisma.Decimal | null;
     quintalesOro: Prisma.Decimal | null;
@@ -69,6 +72,9 @@ function mapTransaction(transaction: {
       productoId: item.productoId,
       productoNombre: item.productoNombre,
       precioPorLibra: item.precioPorLibra !== null ? Number(item.precioPorLibra) : null,
+      pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
+      numeroSacos: item.numeroSacos,
+      taraPorSaco: item.taraPorSaco !== null ? Number(item.taraPorSaco) : null,
       libras: item.libras !== null ? Number(item.libras) : null,
       porcentajeOro: item.porcentajeOro !== null ? Number(item.porcentajeOro) : null,
       quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
@@ -128,7 +134,25 @@ export async function POST(request: Request) {
             throw new Error(`Producto not found: ${item.productoId}`);
           }
 
-          const libras = new Prisma.Decimal(item.libras);
+          // Mismo pesaje que compras: con peso bruto, las libras son el neto.
+          let pesoBruto: Prisma.Decimal | null = null;
+          let numeroSacos: number | null = null;
+          let taraPorSaco: Prisma.Decimal | null = null;
+          let libras: Prisma.Decimal;
+
+          if (item.pesoBruto !== undefined) {
+            pesoBruto = new Prisma.Decimal(item.pesoBruto);
+            numeroSacos = item.numeroSacos ?? 0;
+            taraPorSaco = new Prisma.Decimal(item.taraPorSaco ?? Number(producto.taraPorSaco ?? 0));
+            libras = pesoBruto.sub(taraPorSaco.mul(numeroSacos));
+            if (libras.lte(0)) {
+              throw new Error('INVALID_NET_WEIGHT');
+            }
+          } else {
+            libras = new Prisma.Decimal(item.libras ?? 0);
+          }
+
+          const pesaje = { pesoBruto, numeroSacos, taraPorSaco };
 
           if (item.precioPorQuintalOro !== undefined) {
             // Modo Oro: la conversión es la misma que en compras (`lib/oro.ts`).
@@ -143,6 +167,7 @@ export async function POST(request: Request) {
               productoId: producto.id,
               productoNombre: producto.nombre,
               precioPorLibra: null,
+              ...pesaje,
               libras,
               porcentajeOro,
               quintalesOro,
@@ -156,15 +181,21 @@ export async function POST(request: Request) {
           const precioPorLibra = new Prisma.Decimal(item.precioPorLibra!);
           const monto = precioPorLibra.mul(libras);
 
+          // Por libra el rendimiento es opcional y no toca el monto: igual que en
+          // compras, los quintales oro quedan solo como referencia.
+          const porcentajeOro = item.porcentajeOro !== undefined ? new Prisma.Decimal(item.porcentajeOro) : null;
+          const quintalesOro = porcentajeOro !== null ? computeQuintalesOro(libras, porcentajeOro) : null;
+
           return {
             businessDate: parseBusinessDate(payload.businessDate),
             sucursalId,
             productoId: producto.id,
             productoNombre: producto.nombre,
             precioPorLibra,
+            ...pesaje,
             libras,
-            porcentajeOro: null,
-            quintalesOro: null,
+            porcentajeOro,
+            quintalesOro,
             precioPorQuintalOro: null,
             monto,
           };
@@ -197,6 +228,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === 'Client not found') {
       return failure('NOT_FOUND', error.message, 404);
+    }
+
+    if (error instanceof Error && error.message === 'INVALID_NET_WEIGHT') {
+      return failure('VALIDATION_ERROR', 'La tara no puede ser mayor o igual al peso bruto', 400);
     }
 
     if (error instanceof Error && error.message.startsWith('Producto not found:')) {

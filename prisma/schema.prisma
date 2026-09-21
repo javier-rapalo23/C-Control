@@ -32,6 +32,7 @@ model Sucursal {
   cashWithdrawals      CashWithdrawal[]
   cashTransfersOut     CashTransfer[]        @relation("CashTransferOrigen")
   cashTransfersIn      CashTransfer[]        @relation("CashTransferDestino")
+  grindingServices     GrindingService[]
   employees            Employee[]
 }
 
@@ -90,6 +91,7 @@ model Client {
   updatedAt            DateTime              @updatedAt
   purchaseTransactions PurchaseTransaction[]
   saleTransactions     SaleTransaction[]
+  grindingServices     GrindingService[]
   clientesOriginales   ClienteOriginal[]
 }
 
@@ -136,6 +138,31 @@ model PurchaseTransaction {
 ///
 /// No se registra como una venta negativa ni como un gasto en negativo porque
 /// ensuciaría los reportes de venta y de gasto con movimientos que no lo son.
+/// Servicio de molido: se muele café del cliente y se le cobra por las libras.
+///
+/// El monto se escribe a mano, igual que las libras: no hay tarifa fija, así que
+/// calcularlo obligaría a corregirlo en cada servicio. Es efectivo que entra a la
+/// caja y suma al saldo del día; no toca inventario porque el café es del cliente.
+model GrindingService {
+  id            String   @id @default(cuid())
+  businessDate  DateTime @db.Date
+  sucursalId    String
+  clientId      String
+  libras        Decimal  @db.Decimal(10, 2)
+  monto         Decimal  @db.Decimal(12, 2)
+  notas         String?
+  /// `userId` de quien lo registró, igual que en los ingresos de caja.
+  registradoPor String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  sucursal      Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  @@index([businessDate])
+  @@index([sucursalId])
+  @@index([clientId])
+}
+
 model CashEntry {
   id            String   @id @default(cuid())
   businessDate  DateTime @db.Date
@@ -246,6 +273,10 @@ model Sale {
   productoId          String?
   productoNombre      String?
   precioPorLibra      Decimal?         @db.Decimal(10, 2)
+  pesoBruto           Decimal?         @db.Decimal(10, 2)
+  numeroSacos         Int?
+  taraPorSaco         Decimal?         @db.Decimal(6, 2)
+  // Peso neto (pesoBruto − taraPorSaco × numeroSacos) cuando la venta se pesó.
   libras              Decimal?         @db.Decimal(10, 2)
   // porcentajeOro se guarda como porcentaje (53.0000), no como fracción -- distinto de Producto.factorConversionOro.
   porcentajeOro       Decimal?         @db.Decimal(6, 4)

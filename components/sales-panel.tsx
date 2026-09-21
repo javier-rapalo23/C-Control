@@ -5,36 +5,41 @@ import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
-import { isCafeCategoria } from '@/lib/producto-groups';
 import { previewQuintalesOro } from '@/lib/oro-preview';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 
-type CartItem =
-  | {
-      id: string;
-      mode: 'legacy';
-      productoId: string;
-      productoNombre: string;
-      libras: string;
-      precioPorLibra: string;
-    }
-  | {
-      id: string;
-      mode: 'oro';
-      productoId: string;
-      productoNombre: string;
-      libras: string;
-      porcentajeOro: string;
-      precioPorQuintalOro: string;
-    };
+type CartItem = {
+  id: string;
+  productoId: string;
+  productoNombre: string;
+  pesoBruto: string;
+  numeroSacos: string;
+  taraPorSaco: string;
+  precioPorLibra: string;
+  /** Rendimiento del lote en porcentaje; vacío si todavía no se conoce. */
+  porcentajeOro: string;
+};
 
-function computeOroDerived(item: { libras: string; porcentajeOro: string; precioPorQuintalOro: string }) {
-  const libras = Number(item.libras) || 0;
-  const precioPorQuintalOro = Number(item.precioPorQuintalOro) || 0;
-  const quintalesVendidas = libras / 100;
-  const quintalesOro = previewQuintalesOro(libras, Number(item.porcentajeOro) || 0);
-  const total = quintalesOro * precioPorQuintalOro;
-  return { quintalesVendidas, quintalesOro, total };
+/**
+ * Previsualización del carrito, igual que en compras. El servidor recalcula
+ * todo al guardar (`POST /api/sale-transactions`) y es el que manda.
+ *
+ * El monto es `(pesoBruto − tara × sacos) × precio`; los quintales oro son solo
+ * una cifra de referencia.
+ */
+function computeDerived(item: { pesoBruto: string; numeroSacos: string; taraPorSaco: string; precioPorLibra: string; porcentajeOro: string }) {
+  const pesoBruto = Number(item.pesoBruto) || 0;
+  const numeroSacos = Number(item.numeroSacos) || 0;
+  const taraPorSaco = Number(item.taraPorSaco) || 0;
+  const precioPorLibra = Number(item.precioPorLibra) || 0;
+  const pesoNeto = Math.max(0, pesoBruto - numeroSacos * taraPorSaco);
+  const quintalesOro = previewQuintalesOro(pesoNeto, Number(item.porcentajeOro) || 0);
+  const subtotal = pesoNeto * precioPorLibra;
+  return { pesoNeto, quintalesOro, subtotal };
+}
+
+function taraDelProducto(producto: ProductoDTO | undefined) {
+  return producto?.taraPorSaco !== null && producto?.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '';
 }
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -49,11 +54,6 @@ function todayDateString() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function decimalOrZero(input: string) {
-  const value = Number(input);
-  return Number.isFinite(value) ? value : 0;
 }
 
 export default function SalesPanel() {
@@ -74,10 +74,11 @@ export default function SalesPanel() {
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
-  const [itemLibras, setItemLibras] = useState('');
+  const [itemPesoBruto, setItemPesoBruto] = useState('');
+  const [itemNumeroSacos, setItemNumeroSacos] = useState('');
+  const [itemTaraPorSaco, setItemTaraPorSaco] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [itemPorcentajeOro, setItemPorcentajeOro] = useState('');
-  const [itemPrecioPorQuintalOro, setItemPrecioPorQuintalOro] = useState('');
 
   const fetchProductos = useCallback(async () => {
     const response = await fetch('/api/productos', { cache: 'no-store' });
@@ -86,6 +87,7 @@ export default function SalesPanel() {
 
     if (!itemProductoId && data.length > 0) {
       setItemProductoId(data[0].id);
+      setItemTaraPorSaco(taraDelProducto(data[0]));
     }
     return data;
   }, [itemProductoId]);
@@ -154,16 +156,30 @@ export default function SalesPanel() {
   }, [refresh]);
 
   const cartTotal = useMemo(
-    () =>
-      cart.reduce((sum, item) => {
-        if (item.mode === 'oro') return sum + computeOroDerived(item).total;
-        return sum + decimalOrZero(item.libras) * decimalOrZero(item.precioPorLibra);
-      }, 0),
+    () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
     [cart],
   );
 
-  const selectedProducto = useMemo(() => productos.find((entry) => entry.id === itemProductoId), [productos, itemProductoId]);
-  const isOroMode = selectedProducto ? isCafeCategoria(selectedProducto) : false;
+  const selectedClient = useMemo(
+    () => clients.find((client) => client.id === selectedClientId) ?? null,
+    [clients, selectedClientId],
+  );
+
+  // El cliente "general" agrupa ventas sueltas y no tiene estos datos; mostrar
+  // una lista de guiones solo ocuparía espacio, así que se omite lo que está vacío.
+  const selectedClientDatos = useMemo(() => {
+    if (!selectedClient) return [];
+
+    const nombreCompleto = [selectedClient.nombres, selectedClient.apellidos].filter(Boolean).join(' ');
+    return [
+      { label: 'Nombre completo', value: nombreCompleto || null },
+      { label: 'Clave IHCAFE', value: selectedClient.claveIhcafe ?? null },
+      { label: 'Finca', value: selectedClient.nombreFinca ?? null },
+      { label: 'RTN', value: selectedClient.rtn ?? null },
+      { label: 'Teléfono', value: selectedClient.telefono ?? null },
+      { label: 'Cuenta bancaria', value: selectedClient.cuentaBancaria ?? null },
+    ].filter((dato) => dato.value !== null && dato.value !== '');
+  }, [selectedClient]);
 
   function handleClientCreated(client: ClientDTO) {
     setClients((current) => [client, ...current]);
@@ -179,38 +195,16 @@ export default function SalesPanel() {
       return;
     }
 
-    if (isCafeCategoria(producto)) {
-      if (!itemPorcentajeOro || Number(itemPorcentajeOro) <= 0) {
-        setError('Indica el % Oro para este producto (o configúralo en Inventario)');
-        return;
-      }
-      if (!itemPrecioPorQuintalOro || Number(itemPrecioPorQuintalOro) <= 0) {
-        setError('Indica el precio por quintal Oro');
-        return;
-      }
-
-      setError(null);
-      setCart((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          mode: 'oro',
-          productoId: producto.id,
-          productoNombre: producto.nombre,
-          libras: itemLibras,
-          porcentajeOro: itemPorcentajeOro,
-          precioPorQuintalOro: itemPrecioPorQuintalOro,
-        },
-      ]);
-
-      setItemLibras('');
-      setItemPrecioPorQuintalOro('');
-      return;
-    }
-
     // El precio ya no sale del catálogo: si no se escribió, no hay de dónde sacarlo.
     if (!itemPrice || Number(itemPrice) <= 0) {
       setError('Escribe el precio por libra de esta venta');
+      return;
+    }
+
+    const taraPorSaco = itemTaraPorSaco || String(producto.taraPorSaco ?? 0);
+
+    if (computeDerived({ pesoBruto: itemPesoBruto, numeroSacos: itemNumeroSacos, taraPorSaco, precioPorLibra: itemPrice, porcentajeOro: '' }).pesoNeto <= 0) {
+      setError('La tara no puede ser mayor o igual al peso bruto');
       return;
     }
 
@@ -219,20 +213,24 @@ export default function SalesPanel() {
       ...current,
       {
         id: crypto.randomUUID(),
-        mode: 'legacy',
         productoId: producto.id,
         productoNombre: producto.nombre,
-        libras: itemLibras,
+        pesoBruto: itemPesoBruto,
+        numeroSacos: itemNumeroSacos || '0',
+        taraPorSaco,
         precioPorLibra: itemPrice,
+        porcentajeOro: itemPorcentajeOro,
       },
     ]);
 
-    // El precio se conserva entre líneas: dentro de una misma venta se repite.
-    setItemLibras('');
+    // El precio y el rendimiento se conservan: dentro de una misma venta se repiten.
+    setItemPesoBruto('');
+    setItemNumeroSacos('');
+    setItemTaraPorSaco(taraDelProducto(producto));
   }
 
-  function updateCartItem(id: string, patch: Partial<CartItem>) {
-    setCart((current) => current.map((item) => (item.id === id ? ({ ...item, ...patch } as CartItem) : item)));
+  function updateCartItem(id: string, field: 'pesoBruto' | 'numeroSacos' | 'precioPorLibra' | 'porcentajeOro', value: string) {
+    setCart((current) => current.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   }
 
   function removeCartItem(id: string) {
@@ -262,20 +260,14 @@ export default function SalesPanel() {
           businessDate,
           sucursalId,
           clientId: selectedClientId,
-          items: cart.map((item) =>
-            item.mode === 'oro'
-              ? {
-                  productoId: item.productoId,
-                  libras: Number(item.libras),
-                  porcentajeOro: Number(item.porcentajeOro),
-                  precioPorQuintalOro: Number(item.precioPorQuintalOro),
-                }
-              : {
-                  productoId: item.productoId,
-                  libras: Number(item.libras),
-                  precioPorLibra: Number(item.precioPorLibra),
-                },
-          ),
+          items: cart.map((item) => ({
+            productoId: item.productoId,
+            pesoBruto: Number(item.pesoBruto),
+            numeroSacos: Number(item.numeroSacos) || 0,
+            taraPorSaco: Number(item.taraPorSaco) || 0,
+            precioPorLibra: Number(item.precioPorLibra),
+            porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
+          })),
         }),
       }).then(parseApiResponse);
 
@@ -382,7 +374,7 @@ export default function SalesPanel() {
           <div className="value"> {productos.length}</div>
         </article>
 
-        <article className="card half">
+        <article className="card wide">
           <h3>Cliente</h3>
           <label style={{ marginTop: 8 }}>
             Cliente para la venta
@@ -409,6 +401,22 @@ export default function SalesPanel() {
               </button>
             </div>
           </label>
+
+          {/* El nombre solo no basta para confirmar a quién se le vende: hay
+              clientes homónimos, y lo que los distingue es la clave IHCAFE y el
+              RTN. Verlos antes de guardar evita atribuirle la venta a otro. */}
+          {selectedClientDatos.length > 0 ? (
+            // `row` es la rejilla de 12 columnas del resto de formularios: cada dato
+            // ocupa 6, así que quedan dos por fila y en móvil colapsa a una sola.
+            <dl className="row" style={{ margin: '10px 0 0', fontSize: 13 }}>
+              {selectedClientDatos.map((dato) => (
+                <div key={dato.label} style={{ gridColumn: 'span 6' }}>
+                  <dt style={{ color: 'var(--text-soft)' }}>{dato.label}</dt>
+                  <dd style={{ margin: 0, fontWeight: 500 }}>{dato.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </article>
 
         <ClientQuickCreateModal
@@ -431,10 +439,9 @@ export default function SalesPanel() {
                   key={producto.id}
                   type="button"
                   onClick={() => {
-                    // Nada se precarga: precio y rendimiento son del lote, no del producto.
+                    // Solo la tara sale del producto: precio y rendimiento son del lote.
                     setItemProductoId(producto.id);
-                    setItemPrecioPorQuintalOro('');
-                    setItemPorcentajeOro('');
+                    setItemTaraPorSaco(taraDelProducto(producto));
                   }}
                   style={{
                     padding: '12px 10px',
@@ -468,59 +475,55 @@ export default function SalesPanel() {
           </div>
 
           <form onSubmit={(event) => void addItemToCart(event)} className="row" style={{ marginTop: 14 }}>
-            {isOroMode ? (
-              <>
-                <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-                  Libras
-                  <input value={itemLibras} onChange={(event) => setItemLibras(event.target.value)} type="number" step="0.01" required />
-                </label>
-                <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-                  % Oro
-                  <input value={itemPorcentajeOro} onChange={(event) => setItemPorcentajeOro(event.target.value)} type="number" step="0.01" required />
-                </label>
-                <label className="stack-on-tablet" style={{ gridColumn: 'span 4' }}>
-                  Precio por quintal Oro
-                  <input
-                    value={itemPrecioPorQuintalOro}
-                    onChange={(event) => setItemPrecioPorQuintalOro(event.target.value)}
-                    type="number"
-                    step="0.01"
-                    required
-                  />
-                </label>
-                {(() => {
-                  const preview = computeOroDerived({
-                    libras: itemLibras,
-                    porcentajeOro: itemPorcentajeOro,
-                    precioPorQuintalOro: itemPrecioPorQuintalOro,
-                  });
-                  return (
-                    <div style={{ gridColumn: 'span 12', display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-soft)' }}>
-                      <span>
-                        Quintales vendidos: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesVendidas.toFixed(2)}</strong>
-                      </span>
-                      <span>
-                        Quintales Oro: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesOro.toFixed(2)}</strong>
-                      </span>
-                      <span>
-                        Total: <strong style={{ color: 'var(--text-main)' }}>L {preview.total.toFixed(2)}</strong>
-                      </span>
-                    </div>
-                  );
-                })()}
-              </>
-            ) : (
-              <>
-                <label style={{ gridColumn: 'span 6' }}>
-                  Libras
-                  <input value={itemLibras} onChange={(event) => setItemLibras(event.target.value)} type="number" step="0.01" required />
-                </label>
-                <label style={{ gridColumn: 'span 6' }}>
-                  Precio por libra
-                  <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
-                </label>
-              </>
-            )}
+            {/* Cuatro campos a 3 columnas cada uno, igual que en compras. La tara
+                por saco se toma del producto; aquí solo se escribe cuántos sacos. */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Peso bruto (lb)
+              <input value={itemPesoBruto} onChange={(event) => setItemPesoBruto(event.target.value)} type="number" step="0.01" required />
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Tara
+              <input value={itemNumeroSacos} onChange={(event) => setItemNumeroSacos(event.target.value)} type="number" step="1" min="0" />
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Precio por libra
+              <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
+            </label>
+            {/* El rendimiento no bloquea la venta: sin él la línea se guarda sin
+                quintales oro y el monto sale igual. */}
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Rendimiento (%)
+              <input
+                value={itemPorcentajeOro}
+                onChange={(event) => setItemPorcentajeOro(event.target.value)}
+                type="number"
+                step="0.01"
+                min="0"
+                max="99.99"
+              />
+            </label>
+            {(() => {
+              const preview = computeDerived({
+                pesoBruto: itemPesoBruto,
+                numeroSacos: itemNumeroSacos,
+                taraPorSaco: itemTaraPorSaco,
+                precioPorLibra: itemPrice,
+                porcentajeOro: itemPorcentajeOro,
+              });
+              return (
+                <div style={{ gridColumn: 'span 12', display: 'flex', gap: 20, fontSize: 13, color: 'var(--text-soft)' }}>
+                  <span>
+                    Peso neto: <strong style={{ color: 'var(--text-main)' }}>{preview.pesoNeto.toFixed(2)} lb</strong>
+                  </span>
+                  <span>
+                    Quintales oro: <strong style={{ color: 'var(--text-main)' }}>{preview.quintalesOro > 0 ? preview.quintalesOro.toFixed(2) : '—'}</strong>
+                  </span>
+                  <span>
+                    Subtotal: <strong style={{ color: 'var(--text-main)' }}>L {preview.subtotal.toFixed(2)}</strong>
+                  </span>
+                </div>
+              );
+            })()}
             <div style={{ gridColumn: 'span 12' }}>
               <button className="btn-primary" type="submit" disabled={!itemProductoId}>
                 Agregar al carrito
@@ -536,66 +539,7 @@ export default function SalesPanel() {
               <p style={{ color: 'var(--text-soft)', margin: 0 }}>Aún no agregaste items al carrito.</p>
             ) : (
               cart.map((item) => {
-                if (item.mode === 'oro') {
-                  const derived = computeOroDerived(item);
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 'var(--radius)',
-                        padding: '10px 12px',
-                        background: 'var(--surface-alt)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <strong style={{ fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.productoNombre}</strong>
-                        <button className="btn-danger" onClick={() => removeCartItem(item.id)} type="button" style={{ flexShrink: 0, padding: '4px 10px', fontSize: 12 }}>
-                          Eliminar
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        <label style={{ flex: '1 1 90px' }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Libras</span>
-                          <input
-                            value={item.libras}
-                            onChange={(event) => updateCartItem(item.id, { libras: event.target.value })}
-                            type="number"
-                            step="0.01"
-                          />
-                        </label>
-                        <label style={{ flex: '1 1 80px' }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>% Oro</span>
-                          <input
-                            value={item.porcentajeOro}
-                            onChange={(event) => updateCartItem(item.id, { porcentajeOro: event.target.value })}
-                            type="number"
-                            step="0.01"
-                          />
-                        </label>
-                        <label style={{ flex: '1 1 100px' }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Precio / qq oro</span>
-                          <input
-                            value={item.precioPorQuintalOro}
-                            onChange={(event) => updateCartItem(item.id, { precioPorQuintalOro: event.target.value })}
-                            type="number"
-                            step="0.01"
-                          />
-                        </label>
-                        <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Qq oro</div>
-                          <strong>{derived.quintalesOro.toFixed(2)}</strong>
-                        </div>
-                        <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Subtotal</div>
-                          <strong>L {derived.total.toFixed(2)}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const subtotal = decimalOrZero(item.libras) * decimalOrZero(item.precioPorLibra);
+                const derived = computeDerived(item);
                 return (
                   <div
                     key={item.id}
@@ -613,27 +557,56 @@ export default function SalesPanel() {
                       </button>
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <label style={{ flex: '1 1 100px' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Libras</span>
+                      <label style={{ flex: '1 1 90px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Peso bruto</span>
                         <input
-                          value={item.libras}
-                          onChange={(event) => updateCartItem(item.id, { libras: event.target.value })}
+                          value={item.pesoBruto}
+                          onChange={(event) => updateCartItem(item.id, 'pesoBruto', event.target.value)}
                           type="number"
                           step="0.01"
                         />
                       </label>
-                      <label style={{ flex: '1 1 100px' }}>
+                      <label style={{ flex: '1 1 80px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Sacos</span>
+                        <input
+                          value={item.numeroSacos}
+                          onChange={(event) => updateCartItem(item.id, 'numeroSacos', event.target.value)}
+                          type="number"
+                          step="1"
+                          min="0"
+                        />
+                      </label>
+                      <label style={{ flex: '1 1 90px' }}>
                         <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Precio / libra</span>
                         <input
                           value={item.precioPorLibra}
-                          onChange={(event) => updateCartItem(item.id, { precioPorLibra: event.target.value })}
+                          onChange={(event) => updateCartItem(item.id, 'precioPorLibra', event.target.value)}
                           type="number"
                           step="0.01"
                         />
                       </label>
+                      <label style={{ flex: '1 1 80px' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Rend. %</span>
+                        <input
+                          value={item.porcentajeOro}
+                          onChange={(event) => updateCartItem(item.id, 'porcentajeOro', event.target.value)}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="99.99"
+                        />
+                      </label>
+                      <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Peso neto</div>
+                        <strong>{derived.pesoNeto.toFixed(2)} lb</strong>
+                      </div>
+                      <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Qq oro</div>
+                        <strong>{derived.quintalesOro > 0 ? derived.quintalesOro.toFixed(2) : '—'}</strong>
+                      </div>
                       <div style={{ flex: '1 1 80px', alignSelf: 'flex-end', paddingBottom: 6 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Subtotal</div>
-                        <strong>L {subtotal.toFixed(2)}</strong>
+                        <strong>L {derived.subtotal.toFixed(2)}</strong>
                       </div>
                     </div>
                   </div>
@@ -690,9 +663,11 @@ export default function SalesPanel() {
                   <thead>
                     <tr>
                       <th>Producto</th>
-                      <th>Libras</th>
+                      <th>Peso bruto</th>
+                      <th>Sacos</th>
+                      <th>Peso neto</th>
                       <th>Precio</th>
-                      <th>% Oro / Qq oro</th>
+                      <th>Rend. / Qq oro</th>
                       <th>Subtotal</th>
                     </tr>
                   </thead>
@@ -700,6 +675,9 @@ export default function SalesPanel() {
                     {transaction.items.map((item) => (
                       <tr key={item.id}>
                         <td>{item.productoNombre}</td>
+                        {/* Las ventas anteriores al pesaje solo guardaron el neto. */}
+                        <td>{item.pesoBruto != null ? item.pesoBruto.toFixed(2) : '—'}</td>
+                        <td>{item.numeroSacos ?? '—'}</td>
                         <td>{(item.libras ?? 0).toFixed(2)}</td>
                         <td>
                           {item.precioPorQuintalOro != null
