@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ModuleAccessDTO, UserDTO } from '@/types/domain';
 import { ROLE_KEYS } from '@/lib/modules';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -141,7 +142,7 @@ export default function MaintenanceRolesPanel() {
           Elige qué roles pueden acceder a cada módulo. El rol <strong>admin</strong> siempre tiene acceso total y
           Mantenimiento siempre es exclusivo de admin, para evitar quedar bloqueado del sistema.
         </p>
-        {modulesError ? <p style={{ color: 'var(--danger)' }}>{modulesError}</p> : null}
+        <ErrorToast message={modulesError} onClose={() => setModulesError(null)} />
         {modulesSuccess ? <p style={{ color: 'var(--ok, green)' }}>Guardado correctamente.</p> : null}
 
         <table className="table-like">

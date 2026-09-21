@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
-import { PAYMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
+import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
@@ -103,6 +103,12 @@ export const createCashEntrySchema = z.object({
 });
 
 export const createCashWithdrawalSchema = createCashEntrySchema;
+
+/** Pago de una compra pendiente, asentado en la caja de `businessDate`. */
+export const payPendingPurchaseSchema = z.object({
+  businessDate: businessDateField,
+  metodoPago: z.enum(SETTLEMENT_METHOD_ENUM_VALUES),
+});
 
 /** Libras y monto se escriben a mano: el molido no tiene tarifa fija. */
 export const createGrindingServiceSchema = z.object({

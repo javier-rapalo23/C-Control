@@ -125,6 +125,7 @@ export async function buildSummaryForDate(businessDate: string, sucursalIdInput?
     totalGastos: ledger.totals.totalGastos,
     totalIngresos: ledger.totals.totalIngresos,
     totalMolido: ledger.totals.totalMolido,
+    totalPagosPendientes: ledger.totals.totalPagosPendientes,
     totalSalidas: ledger.totals.totalSalidas,
     totalTrasladosRecibidos: ledger.totals.totalTrasladosRecibidos,
     totalTrasladosEnviados: ledger.totals.totalTrasladosEnviados,

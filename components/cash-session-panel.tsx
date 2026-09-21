@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { CashSessionDTO, LedgerDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
+import PendingPaymentsSection from '@/components/pending-payments-section';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -262,9 +265,7 @@ export default function CashSessionPanel() {
         </div>
       </section>
 
-      {error ? (
-        <p style={{ color: 'var(--danger)', marginTop: 12 }}>{error}</p>
-      ) : null}
+      <ErrorToast message={error} onClose={() => setError(null)} />
 
       {!session ? (
         <section className="card" style={{ marginTop: 12 }}>
@@ -598,6 +599,13 @@ export default function CashSessionPanel() {
         </table>
       </section>
 
+      <PendingPaymentsSection
+        businessDate={businessDate}
+        sucursalId={sucursalId}
+        cajaCerrada={cajaCerrada}
+        onChanged={fetchAll}
+      />
+
       {session?.estado === 'abierta' ? (
         <section className="card" style={{ marginTop: 12 }}>
           <h3>Cerrar caja</h3>
@@ -724,7 +732,17 @@ export default function CashSessionPanel() {
         </section>
       ) : null}
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay
+        active={
+          loading ||
+          savingIngreso ||
+          savingSalida ||
+          savingTraslado ||
+          deletingIngresoId !== null ||
+          deletingSalidaId !== null ||
+          deletingTrasladoId !== null
+        }
+      />
     </>
   );
 }

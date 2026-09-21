@@ -6,6 +6,8 @@ import type { ApiResponse } from '@/types/api';
 import type { CompanySettingsDTO, LedgerDTO, ProductoDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import rControlLogo from '../app/icon.png';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 type DailyStockEntry = { businessDate: string; libras: number };
 type ProductoStockSummary = { productoId: string; productoNombre: string; totalLibras: number };
@@ -213,7 +215,7 @@ export default function DashboardHome() {
               <input type="date" value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} />
             </label>
           </div>
-          {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+          <ErrorToast message={error} onClose={() => setError(null)} />
         </article>
 
         <article className="card third kpi">
@@ -338,7 +340,7 @@ export default function DashboardHome() {
             </div>
           </div>
 
-          {stockError ? <p style={{ color: 'var(--danger)' }}>{stockError}</p> : null}
+          <ErrorToast message={stockError} onClose={() => setStockError(null)} />
           {stockResult ? (
             <div style={{ marginTop: 12 }}>
               {stockResult.data?.productoId ? (
@@ -370,7 +372,7 @@ export default function DashboardHome() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Cargando...</p> : null}
+      <LoadingOverlay active={loading} label="Cargando..." />
     </main>
   );
 }

@@ -85,10 +85,26 @@ export type PurchaseTransactionDTO = {
   /** Número del talonario físico, capturado a mano. Nulo si aún no se facturó. */
   numeroFactura: string | null;
   total: number;
+  /** Fecha de caja en que se pagó una compra pendiente; nulo si sigue pendiente. */
+  pagoFecha: string | null;
+  pagoMetodo: string | null;
   createdAt: string;
   updatedAt: string;
   client: ClientDTO;
   items: PurchaseTransactionItemDTO[];
+};
+
+/** Compra con pago pendiente, tal como se lista en Caja. */
+export type PendingPaymentDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  clientNombre: string;
+  numeroFactura: string | null;
+  total: number;
+  itemsCount: number;
+  pagoFecha: string | null;
+  pagoMetodo: string | null;
 };
 
 export type SaleDTO = {
@@ -314,6 +330,8 @@ export type LedgerDTO = {
     totalIngresos: number;
     /** Cobros del servicio de molido. Suma al saldo. */
     totalMolido: number;
+    /** Compras pendientes de otros días pagadas hoy en efectivo. Resta del saldo. */
+    totalPagosPendientes: number;
     /** Efectivo retirado de la caja sin ser compra ni gasto. Resta del saldo. */
     totalSalidas: number;
     /** Efectivo recibido de otras bodegas. Suma al saldo. */

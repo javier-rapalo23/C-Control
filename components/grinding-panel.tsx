@@ -6,6 +6,8 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, GrindingServiceDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -208,7 +210,7 @@ export default function GrindingPanel() {
               <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
             </label>
           </div>
-          {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+          <ErrorToast message={error} onClose={() => setError(null)} />
         </article>
         <article className="card half kpi">
           <div className="label">Cobrado por molido</div>
@@ -365,7 +367,7 @@ export default function GrindingPanel() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading || savingId !== null} />
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { EmployeeDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -156,7 +157,7 @@ export default function PersonnelEmployeesPanel() {
         <p style={{ color: 'var(--text-soft)', marginTop: -4 }}>
           Cada empleado pertenece a una sucursal, y la planilla se calcula y se paga por sucursal.
         </p>
-        {employeesError ? <p style={{ color: 'var(--danger)' }}>{employeesError}</p> : null}
+        <ErrorToast message={employeesError} onClose={() => setEmployeesError(null)} />
 
         <table className="table-like">
           <thead>

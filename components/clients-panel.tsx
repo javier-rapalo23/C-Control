@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, ClienteOriginalDTO } from '@/types/domain';
 import MaintenanceTabs from '@/components/maintenance-tabs';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -215,11 +217,7 @@ export default function ClientsPanel() {
       <MaintenanceTabs />
 
       <section className="card-grid">
-        {error ? (
-          <article className="card wide">
-            <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>
-          </article>
-        ) : null}
+        <ErrorToast message={error} onClose={() => setError(null)} />
 
         <article className="card wide">
           <h3>Clientes registrados</h3>
@@ -339,7 +337,7 @@ export default function ClientsPanel() {
                         <td colSpan={8} style={{ background: 'var(--surface-alt)' }}>
                           <div style={{ padding: '8px 4px' }}>
                             <strong style={{ fontSize: 13 }}>Productores originales de {client.nombre}</strong>
-                            {originalesError ? <p style={{ color: 'var(--danger)' }}>{originalesError}</p> : null}
+                            <ErrorToast message={originalesError} onClose={() => setOriginalesError(null)} />
 
                             <table className="table-like" style={{ marginTop: 8 }}>
                               <thead>
@@ -468,7 +466,7 @@ export default function ClientsPanel() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

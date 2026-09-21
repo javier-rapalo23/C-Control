@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ExpenseReportDTO, PurchaseReportDTO, SaleReportDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -150,7 +152,7 @@ export default function ReportsPanel() {
         </div>
       </section>
 
-      {error ? <p style={{ color: 'var(--danger)', marginTop: 12 }}>{error}</p> : null}
+      <ErrorToast message={error} onClose={() => setError(null)} />
 
       {tab === 'purchases' && report ? (
         <>
@@ -505,7 +507,7 @@ export default function ReportsPanel() {
         </>
       ) : null}
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

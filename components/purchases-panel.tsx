@@ -6,8 +6,16 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, PurchaseTransactionDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import { previewQuintalesOro } from '@/lib/oro-preview';
-import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHODS, paymentMethodLabel, type PaymentMethod } from '@/lib/payment-methods';
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHODS,
+  PENDING_PAYMENT_METHOD,
+  paymentMethodLabel,
+  type PaymentMethod,
+} from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 type CartItem = {
   id: string;
@@ -330,7 +338,7 @@ export default function PurchasesPanel() {
               <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
             </label>
           </div>
-          {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+          <ErrorToast message={error} onClose={() => setError(null)} />
         </article>
         {/* Solo lectura: el saldo inicial del día lo fija la apertura de caja, y
             editarlo desde aquí descuadraba el arqueo contra el efectivo contado. */}
@@ -640,7 +648,8 @@ export default function PurchasesPanel() {
           </div>
           <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 6 }}>
             Solo las compras en efectivo restan del saldo de caja: un depósito o un cheque quedan
-            registrados pero no sacan dinero de la gaveta.
+            registrados pero no sacan dinero de la gaveta. Una compra &quot;Pendiente de pago&quot; se paga
+            después desde Caja → Pagos pendientes, y resta del saldo del día en que se paga.
           </p>
         </article>
 
@@ -655,6 +664,11 @@ export default function PurchasesPanel() {
                     <strong>{transaction.client.nombre}</strong>
                     <div style={{ color: 'var(--text-soft)' }}>
                       {transaction.items.length} items · {paymentMethodLabel(transaction.metodoPago)}
+                      {transaction.metodoPago === PENDING_PAYMENT_METHOD
+                        ? transaction.pagoFecha
+                          ? ` · pagada el ${transaction.pagoFecha} (${paymentMethodLabel(transaction.pagoMetodo ?? '')})`
+                          : ' · sin pagar'
+                        : null}
                       {transaction.numeroFactura ? ` · Factura ${transaction.numeroFactura}` : ''}
                     </div>
                   </div>
@@ -718,7 +732,7 @@ export default function PurchasesPanel() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

@@ -7,6 +7,8 @@ import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/ty
 import { useSucursal } from '@/lib/use-sucursal';
 import { previewQuintalesOro } from '@/lib/oro-preview';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 type CartItem = {
   id: string;
@@ -354,7 +356,7 @@ export default function SalesPanel() {
               <input type="date" value={businessDate} onChange={(event) => setBusinessDate(event.target.value)} />
             </label>
           </div>
-          {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+          <ErrorToast message={error} onClose={() => setError(null)} />
         </article>
         <article className="card half kpi">
           <div className="label">Saldo actual</div>
@@ -700,7 +702,7 @@ export default function SalesPanel() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

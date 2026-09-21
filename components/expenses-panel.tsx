@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { BancoDTO, LedgerDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 import {
   DEFAULT_EXPENSE_CATEGORIA,
   MANUAL_EXPENSE_CATEGORIES,
@@ -193,7 +195,7 @@ export default function ExpensesPanel() {
 
       <section className="card" style={{ marginTop: 12 }}>
         <h3>Gastos del día</h3>
-        {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
+        <ErrorToast message={error} onClose={() => setError(null)} />
         <table className="table-like" style={{ marginTop: 8 }}>
           <thead>
             <tr>
@@ -221,7 +223,7 @@ export default function ExpensesPanel() {
         </table>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

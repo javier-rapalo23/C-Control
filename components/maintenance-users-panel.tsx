@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { UserDTO } from '@/types/domain';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -120,7 +121,7 @@ export default function MaintenanceUsersPanel() {
       <p style={{ color: 'var(--text-soft)', fontSize: 13, marginBottom: 12 }}>
         Los usuarios creados aquí se autentican desde la base de datos. Los de <code>RBAC_USERS_JSON</code> funcionan como respaldo solo si no existen aquí; desactivar un usuario de esta lista le quita el acceso aunque figure en esa variable.
       </p>
-      {usersError ? <p style={{ color: 'var(--danger)' }}>{usersError}</p> : null}
+      <ErrorToast message={usersError} onClose={() => setUsersError(null)} />
 
       <table className="table-like" style={{ marginBottom: 20 }}>
         <thead>

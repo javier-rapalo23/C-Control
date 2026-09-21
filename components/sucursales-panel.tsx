@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { SucursalDTO } from '@/types/domain';
 import MaintenanceTabs from '@/components/maintenance-tabs';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -97,11 +99,7 @@ export default function SucursalesPanel() {
       <MaintenanceTabs />
 
       <section className="card-grid">
-        {error ? (
-          <article className="card wide">
-            <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>
-          </article>
-        ) : null}
+        <ErrorToast message={error} onClose={() => setError(null)} />
 
         <article className="card wide">
           <h3>Sucursales registradas</h3>
@@ -198,7 +196,7 @@ export default function SucursalesPanel() {
         </article>
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }

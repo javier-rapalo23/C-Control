@@ -128,6 +128,8 @@ export type SummaryData = {
   totalIngresos?: number;
   /** Cobros del servicio de molido. */
   totalMolido?: number;
+  /** Compras pendientes de otros días pagadas hoy en efectivo. */
+  totalPagosPendientes?: number;
   /** Efectivo que salió de la caja sin ser compra ni gasto. */
   totalSalidas?: number;
   /** Efectivo recibido de otras bodegas y enviado a ellas. */
@@ -183,6 +185,10 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
   const comprasOtrosMedios = data.totalComprasOtrosMedios ?? 0;
   if (comprasOtrosMedios > 0) {
     chunks.push(text(twoColumns(' no efectivo:', `L ${comprasOtrosMedios.toFixed(2)}`)));
+  }
+  const pagosPendientes = data.totalPagosPendientes ?? 0;
+  if (pagosPendientes > 0) {
+    chunks.push(text(twoColumns('Pagos pendientes:', `L ${pagosPendientes.toFixed(2)}`)));
   }
   chunks.push(text(twoColumns('Total Ventas:', `L ${data.totalVentas.toFixed(2)}`)));
   const totalIngresos = data.totalIngresos ?? 0;

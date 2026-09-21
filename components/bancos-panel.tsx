@@ -5,6 +5,7 @@ import type { ApiResponse } from '@/types/api';
 import type { BancoDTO } from '@/types/domain';
 import MaintenanceTabs from '@/components/maintenance-tabs';
 import { BANK_LINKED_CATEGORIES } from '@/lib/expenses';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -98,11 +99,7 @@ export default function BancosPanel() {
       <MaintenanceTabs />
 
       <section className="card-grid">
-        {error ? (
-          <article className="card wide">
-            <p style={{ color: 'var(--danger)', margin: 0 }}>{error}</p>
-          </article>
-        ) : null}
+        <ErrorToast message={error} onClose={() => setError(null)} />
 
         <article className="card wide">
           <h3>Bancos registrados</h3>

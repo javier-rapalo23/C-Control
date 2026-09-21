@@ -274,6 +274,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     gastosAgg,
     ingresosAgg,
     molidoAgg,
+    pagosPendientesAgg,
     salidasAgg,
     trasladosRecibidosAgg,
     trasladosEnviadosAgg,
@@ -309,6 +310,12 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalId },
       _sum: { monto: true },
     }),
+    // Compras pendientes liquidadas hoy en efectivo: salen de la caja del día del
+    // pago, no del de la compra (que no las restó por no ser "efectivo").
+    db.purchaseTransaction.aggregate({
+      where: { pagoFecha: businessDate, sucursalId, pagoMetodo: CASH_PAYMENT_METHOD },
+      _sum: { total: true },
+    }),
     db.cashWithdrawal.aggregate({
       where: { businessDate, sucursalId },
       _sum: { monto: true },
@@ -330,6 +337,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
   const totalMolido = decimalToNumber(molidoAgg._sum.monto);
+  const totalPagosPendientes = decimalToNumber(pagosPendientesAgg._sum.total);
   const totalSalidas = decimalToNumber(salidasAgg._sum.monto);
   const totalTrasladosRecibidos = decimalToNumber(trasladosRecibidosAgg._sum.monto);
   const totalTrasladosEnviados = decimalToNumber(trasladosEnviadosAgg._sum.monto);
@@ -345,6 +353,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     totalMolido +
     totalTrasladosRecibidos -
     totalComprasEfectivo -
+    totalPagosPendientes -
     totalGastos -
     totalSalidas -
     totalTrasladosEnviados +
@@ -365,6 +374,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalGastos,
       totalIngresos,
       totalMolido,
+      totalPagosPendientes,
       totalSalidas,
       totalTrasladosRecibidos,
       totalTrasladosEnviados,

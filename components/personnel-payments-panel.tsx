@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { EmployeeDTO, EmployeePaymentDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -121,7 +122,7 @@ export default function PersonnelPaymentsPanel() {
           </label>
         </div>
 
-        {paymentsError ? <p style={{ color: 'var(--danger)' }}>{paymentsError}</p> : null}
+        <ErrorToast message={paymentsError} onClose={() => setPaymentsError(null)} />
         <form onSubmit={(e) => void registrarPago(e)} className="row" style={{ marginTop: 8 }}>
           <label style={{ gridColumn: 'span 8' }}>
             Empleado

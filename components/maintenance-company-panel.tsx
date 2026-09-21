@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { CompanySettingsDTO } from '@/types/domain';
+import ErrorToast from '@/components/error-toast';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -91,7 +92,7 @@ export default function MaintenanceCompanyPanel() {
       <p style={{ color: 'var(--text-soft)', fontSize: 13, marginBottom: 12 }}>
         Se usan en tickets, recibos y facturas.
       </p>
-      {companyError ? <p style={{ color: 'var(--danger)' }}>{companyError}</p> : null}
+      <ErrorToast message={companyError} onClose={() => setCompanyError(null)} />
       {companySuccess ? <p style={{ color: 'var(--ok, green)' }}>Guardado correctamente.</p> : null}
       <form onSubmit={(e) => void saveCompany(e)} className="row">
         <label style={{ gridColumn: 'span 12' }}>

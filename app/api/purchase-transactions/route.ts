@@ -16,6 +16,8 @@ function mapTransaction(transaction: {
   metodoPago: string;
   numeroFactura: string | null;
   total: Prisma.Decimal;
+  pagoFecha: Date | null;
+  pagoMetodo: string | null;
   createdAt: Date;
   updatedAt: Date;
   client: {
@@ -56,6 +58,8 @@ function mapTransaction(transaction: {
     metodoPago: transaction.metodoPago,
     numeroFactura: transaction.numeroFactura,
     total: Number(transaction.total),
+    pagoFecha: transaction.pagoFecha ? toBusinessDateString(transaction.pagoFecha) : null,
+    pagoMetodo: transaction.pagoMetodo,
     createdAt: transaction.createdAt.toISOString(),
     updatedAt: transaction.updatedAt.toISOString(),
     client: {

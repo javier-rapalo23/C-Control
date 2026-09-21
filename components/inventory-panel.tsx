@@ -6,6 +6,8 @@ import type { ApiResponse } from '@/types/api';
 import type { ProductoDTO, ProductoStockDTO } from '@/types/domain';
 import { COFFEE_TYPES, PRODUCTO_CATEGORIA_LABELS, type ProductoCategoria } from '@/lib/coffee-types';
 import { useSucursal } from '@/lib/use-sucursal';
+import ErrorToast from '@/components/error-toast';
+import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -161,7 +163,7 @@ export default function InventoryPanel() {
               ))}
             </select>
           </label>
-          {error ? <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p> : null}
+          <ErrorToast message={error} onClose={() => setError(null)} />
         </article>
 
         {/* Productos */}
@@ -171,7 +173,7 @@ export default function InventoryPanel() {
             El catálogo es fijo. El precio y el rendimiento no viven aquí: cambian por cliente y por
             día, y se escriben a mano en cada línea de Compras y Ventas.
           </p>
-          {productosError ? <p style={{ color: 'var(--danger)' }}>{productosError}</p> : null}
+          <ErrorToast message={productosError} onClose={() => setProductosError(null)} />
 
           <table className="table-like">
             <thead>
@@ -314,7 +316,7 @@ export default function InventoryPanel() {
         })}
       </section>
 
-      {loading ? <p style={{ color: 'var(--text-soft)', marginTop: 12 }}>Sincronizando...</p> : null}
+      <LoadingOverlay active={loading} />
     </main>
   );
 }
