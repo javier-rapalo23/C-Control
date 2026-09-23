@@ -1,8 +1,15 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { toBusinessDateString } from '@/lib/business-date';
 import { buildTicketBuffer, buildSummaryBuffer } from '@/lib/thermal-printer';
 import { decimalToNumber, getLedgerByDate, resolveSucursalId } from '@/lib/ledger';
 import { getCashSession } from '@/lib/cash-session';
+
+/** Tara total en libras. Null cuando la línea no se pesó (ventas y compras viejas). */
+function taraTotal(taraPorSaco: Prisma.Decimal | null, numeroSacos: number | null) {
+  if (taraPorSaco === null || numeroSacos === null) return null;
+  return Number(taraPorSaco) * numeroSacos;
+}
 
 export async function buildTicketForTransaction(transactionId: string) {
   const [transaction, company] = await Promise.all([
@@ -38,6 +45,7 @@ export async function buildTicketForTransaction(transactionId: string) {
       total: Number(item.total),
       pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
       numeroSacos: item.numeroSacos,
+      taraTotal: taraTotal(item.taraPorSaco, item.numeroSacos),
       quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
     })),
     total: Number(transaction.total),
@@ -78,6 +86,9 @@ export async function buildTicketForSaleTransaction(transactionId: string) {
       libras: item.libras !== null ? Number(item.libras) : 0,
       precioPorLibra: item.precioPorLibra !== null ? Number(item.precioPorLibra) : 0,
       total: Number(item.monto),
+      pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
+      numeroSacos: item.numeroSacos,
+      taraTotal: taraTotal(item.taraPorSaco, item.numeroSacos),
       porcentajeOro: item.porcentajeOro !== null ? Number(item.porcentajeOro) : null,
       quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
       precioPorQuintalOro: item.precioPorQuintalOro !== null ? Number(item.precioPorQuintalOro) : null,
@@ -120,7 +131,10 @@ export async function buildSummaryForDate(businessDate: string, sucursalIdInput?
     sucursalNombre: sucursal?.nombre,
     productos: Object.values(byProducto).sort((a, b) => b.total - a.total),
     totalCompras: ledger.totals.totalCompras,
-    totalComprasOtrosMedios: ledger.totals.totalComprasOtrosMedios,
+    totalComprasEfectivo: ledger.totals.totalComprasEfectivo,
+    totalComprasDeposito: ledger.totals.totalComprasDeposito,
+    totalComprasCheque: ledger.totals.totalComprasCheque,
+    totalComprasPendientes: ledger.totals.totalComprasPendientes,
     totalVentas: ledger.totals.totalVentas,
     totalGastos: ledger.totals.totalGastos,
     totalIngresos: ledger.totals.totalIngresos,

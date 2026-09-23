@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { CASH_PAYMENT_METHOD } from '@/lib/payment-methods';
+import { CASH_PAYMENT_METHOD, PENDING_PAYMENT_METHOD } from '@/lib/payment-methods';
 import type {
   CashEntryDTO,
   CashTransferDTO,
@@ -268,8 +268,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const balance = await ensureDailyBalance(db, businessDateInput, sucursalId);
 
   const [
-    comprasAgg,
-    comprasEfectivoAgg,
+    comprasPorMetodo,
     ventasAgg,
     gastosAgg,
     ingresosAgg,
@@ -279,19 +278,13 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     trasladosRecibidosAgg,
     trasladosEnviadosAgg,
   ] = await Promise.all([
-    db.purchase.aggregate({
+    // El método de pago vive en la transacción, no en la línea. Agrupar por él da
+    // en una sola consulta el total del día y su desglose: solo el efectivo sacó
+    // dinero de la gaveta; un depósito, un cheque o una compra pendiente existen
+    // para inventario y reportes, pero no restan del saldo.
+    db.purchaseTransaction.groupBy({
+      by: ['metodoPago'],
       where: { businessDate, sucursalId },
-      _sum: { total: true },
-    }),
-    // El método de pago vive en la transacción, no en la línea, así que se filtra
-    // por la relación. Una compra con cheque o depósito no sacó dinero de la
-    // gaveta: existe para inventario y reportes, pero no puede restar del saldo.
-    db.purchase.aggregate({
-      where: {
-        businessDate,
-        sucursalId,
-        purchaseTransaction: { metodoPago: CASH_PAYMENT_METHOD },
-      },
       _sum: { total: true },
     }),
     db.sale.aggregate({
@@ -330,8 +323,13 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     }),
   ]);
 
-  const totalCompras = decimalToNumber(comprasAgg._sum.total);
-  const totalComprasEfectivo = decimalToNumber(comprasEfectivoAgg._sum.total);
+  const porMetodo = (metodo: string) =>
+    decimalToNumber(comprasPorMetodo.find((grupo) => grupo.metodoPago === metodo)?._sum.total ?? null);
+  const totalCompras = comprasPorMetodo.reduce((suma, grupo) => suma + decimalToNumber(grupo._sum.total), 0);
+  const totalComprasEfectivo = porMetodo(CASH_PAYMENT_METHOD);
+  const totalComprasDeposito = porMetodo('deposito');
+  const totalComprasCheque = porMetodo('cheque');
+  const totalComprasPendientes = porMetodo(PENDING_PAYMENT_METHOD);
   const totalComprasOtrosMedios = Number((totalCompras - totalComprasEfectivo).toFixed(2));
   const totalVentas = decimalToNumber(ventasAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
@@ -369,6 +367,9 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     totals: {
       totalCompras,
       totalComprasEfectivo,
+      totalComprasDeposito,
+      totalComprasCheque,
+      totalComprasPendientes,
       totalComprasOtrosMedios,
       totalVentas,
       totalGastos,

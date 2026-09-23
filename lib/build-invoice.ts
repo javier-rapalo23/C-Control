@@ -161,9 +161,9 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
   const lineas: InvoiceLinea[] = transaction.items.map((item) => ({
     // Una venta puede no tener producto: la línea libre solo lleva descripción y monto.
     productoNombre: item.productoNombre ?? 'Venta',
-    pesoBruto: null,
-    numeroSacos: null,
-    taraPorSaco: null,
+    pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
+    numeroSacos: item.numeroSacos,
+    taraPorSaco: item.taraPorSaco !== null ? Number(item.taraPorSaco) : null,
     libras: item.libras !== null ? Number(item.libras) : 0,
     porcentajeOro: item.porcentajeOro !== null ? Number(item.porcentajeOro) : null,
     quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,

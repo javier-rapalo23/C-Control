@@ -323,6 +323,10 @@ export type LedgerDTO = {
     totalCompras: number;
     /** La parte de `totalCompras` pagada en efectivo: la única que resta del saldo. */
     totalComprasEfectivo: number;
+    totalComprasDeposito: number;
+    totalComprasCheque: number;
+    /** Compras del día registradas como "Pendiente de pago", se hayan pagado ya o no. */
+    totalComprasPendientes: number;
     /** Compras pagadas con depósito o cheque, que no tocan la caja. */
     totalComprasOtrosMedios: number;
     totalVentas: number;

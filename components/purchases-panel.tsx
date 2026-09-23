@@ -362,7 +362,8 @@ export default function PurchasesPanel() {
               parece no cuadrar contra las compras del dia. */}
           {ledger && ledger.totals.totalComprasOtrosMedios !== 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
-              L {ledger.totals.totalComprasOtrosMedios.toFixed(2)} con deposito o cheque (no restan de caja)
+              L {ledger.totals.totalComprasOtrosMedios.toFixed(2)} con deposito, cheque o pendientes de pago (no
+              restan de caja)
             </div>
           ) : null}
         </article>

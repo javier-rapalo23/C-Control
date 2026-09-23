@@ -55,6 +55,8 @@ export type TicketData = {
     total: number;
     pesoBruto?: number | null;
     numeroSacos?: number | null;
+    /** Tara total en libras (tara por saco × sacos), ya calculada. */
+    taraTotal?: number | null;
     quintalesOro?: number | null;
     porcentajeOro?: number | null;
     precioPorQuintalOro?: number | null;
@@ -93,11 +95,20 @@ export function buildTicketBuffer(data: TicketData): Buffer {
 
     const detail = `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`;
     chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
-    if (item.pesoBruto || item.numeroSacos || item.quintalesOro) {
+    // El pesaje va debajo del neto para que el productor pueda rehacer la cuenta:
+    // bruto menos tara es lo que se le paga.
+    if (item.pesoBruto || item.taraTotal || item.numeroSacos || item.quintalesOro) {
       const bruto = item.pesoBruto ? `Bruto ${item.pesoBruto.toFixed(2)}lb` : '';
-      const sacos = item.numeroSacos ? `${item.numeroSacos} sacos` : '';
+      const tara = item.taraTotal
+        ? `Tara ${item.taraTotal.toFixed(2)}lb${item.numeroSacos ? ` (${item.numeroSacos} sacos)` : ''}`
+        : item.numeroSacos
+          ? `${item.numeroSacos} sacos`
+          : '';
       const oro = item.quintalesOro ? `Qq oro ${item.quintalesOro.toFixed(2)}` : '';
-      chunks.push(text([bruto, sacos, oro].filter(Boolean).join('  ')));
+      // Una sola línea de 32 caracteres no aguanta las tres cosas juntas.
+      for (const linea of [[bruto, tara].filter(Boolean).join('  '), oro].filter(Boolean)) {
+        chunks.push(text(linea));
+      }
     }
   }
 
@@ -120,8 +131,11 @@ export type SummaryData = {
   sucursalNombre?: string;
   productos: Array<{ productoNombre: string; libras: number; total: number }>;
   totalCompras: number;
-  /** Parte de `totalCompras` pagada con depósito o cheque, que no salió de la caja. */
-  totalComprasOtrosMedios?: number;
+  /** Desglose de `totalCompras` por forma de pago. Cada renglón sale solo si hay monto. */
+  totalComprasEfectivo?: number;
+  totalComprasDeposito?: number;
+  totalComprasCheque?: number;
+  totalComprasPendientes?: number;
   totalVentas: number;
   totalGastos: number;
   /** Efectivo que entró a la caja sin ser una venta. */
@@ -180,15 +194,23 @@ export function buildSummaryBuffer(data: SummaryData): Buffer {
 
   chunks.push(text(dash));
   chunks.push(text(twoColumns('Total Compras:', `L ${data.totalCompras.toFixed(2)}`)));
-  // Solo se imprimen si existen: un día sin estos movimientos sale igual que antes,
-  // y cuando los hay el ticket muestra por qué el saldo no cuadra con las compras.
-  const comprasOtrosMedios = data.totalComprasOtrosMedios ?? 0;
-  if (comprasOtrosMedios > 0) {
-    chunks.push(text(twoColumns(' no efectivo:', `L ${comprasOtrosMedios.toFixed(2)}`)));
+  // Desglose por forma de pago: cada renglón solo si hay monto, para que un día
+  // que se pagó todo en efectivo salga igual de corto que antes. Así se ve por qué
+  // el saldo no cuadra con el total de compras.
+  const desgloseCompras: Array<[string, number]> = [
+    [' efectivo:', data.totalComprasEfectivo ?? 0],
+    [' deposito:', data.totalComprasDeposito ?? 0],
+    [' cheque:', data.totalComprasCheque ?? 0],
+    [' pendientes:', data.totalComprasPendientes ?? 0],
+  ];
+  for (const [etiqueta, monto] of desgloseCompras) {
+    if (monto > 0) chunks.push(text(twoColumns(etiqueta, `L ${monto.toFixed(2)}`)));
   }
+  // Compras pendientes de días anteriores liquidadas hoy en efectivo: no están en
+  // el total de compras de hoy, pero sí salieron de esta caja.
   const pagosPendientes = data.totalPagosPendientes ?? 0;
   if (pagosPendientes > 0) {
-    chunks.push(text(twoColumns('Pagos pendientes:', `L ${pagosPendientes.toFixed(2)}`)));
+    chunks.push(text(twoColumns('Pago de pendientes:', `L ${pagosPendientes.toFixed(2)}`)));
   }
   chunks.push(text(twoColumns('Total Ventas:', `L ${data.totalVentas.toFixed(2)}`)));
   const totalIngresos = data.totalIngresos ?? 0;

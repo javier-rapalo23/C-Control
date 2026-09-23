@@ -174,12 +174,20 @@ function FilaVenta({ linea }: { linea: InvoiceLinea }) {
         ? `${lempiras(linea.precioPorLibra)} / lb`
         : '—';
 
+  // Las ventas anteriores al pesaje solo guardaron el neto: esas columnas salen
+  // con guion en vez de inventar un bruto.
+  const taraTotal =
+    linea.taraPorSaco !== null && linea.numeroSacos !== null ? linea.taraPorSaco * linea.numeroSacos : null;
+
   return (
     <tr>
       <td>
         {linea.productoNombre}
         {linea.descripcion ? <div className="invoice-linea-desc">{linea.descripcion}</div> : null}
       </td>
+      <td>{linea.pesoBruto !== null ? numero(linea.pesoBruto) : '—'}</td>
+      <td>{linea.numeroSacos ?? '—'}</td>
+      <td>{taraTotal !== null ? numero(taraTotal) : '—'}</td>
       <td>{linea.libras > 0 ? numero(linea.libras) : '—'}</td>
       <td>{linea.porcentajeOro !== null ? `${numero(linea.porcentajeOro)} %` : '—'}</td>
       <td>{linea.quintalesOro !== null ? numero(linea.quintalesOro) : '—'}</td>
@@ -263,7 +271,10 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
             ) : (
               <tr>
                 <th>Concepto</th>
-                <th>Libras</th>
+                <th>Bruto (lb)</th>
+                <th>Sacos</th>
+                <th>Tara (lb)</th>
+                <th>Neto (lb)</th>
                 <th>Rend.</th>
                 <th>QQ oro</th>
                 <th>Precio</th>
@@ -290,6 +301,7 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
             ) : (
               <tr>
                 <td>Totales</td>
+                <td colSpan={3} />
                 <td>{data.totalLibras > 0 ? numero(data.totalLibras) : '—'}</td>
                 <td />
                 <td>{data.totalQuintalesOro !== null ? numero(data.totalQuintalesOro) : '—'}</td>

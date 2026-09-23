@@ -51,13 +51,14 @@ Bloques funcionales:
 |---|---|---|
 | Dashboard | `/` | Resumen del día: saldo inicial, totales, movimientos recientes, agrupación por producto. |
 | Compras | `/purchases` | Compras por cliente con carrito multi-producto, peso bruto/tara/sacos, impresión de ticket. |
-| Ventas | `/sales` | Ventas por cliente, con modo de conversión a **quintales oro** para productos de café. |
+| Ventas | `/sales` | Ventas por cliente con carrito, peso bruto/tara/sacos y rendimiento por línea. |
+| Molido | `/molido` | Servicio de molido sobre café del cliente: libras molidas y monto cobrado. |
 | Gastos | `/expenses` | Registro de gastos por categoría. |
 | Inventario | `/inventory` | Stock neto por producto (compras − ventas) y cargas/descargas de producto. |
 | Clientes | `/clients` | Catálogo de clientes, datos IHCAFE y "clientes originales" asociados. |
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
 | Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
-| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos, salidas y traslados de efectivo entre bodegas. |
+| Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos, salidas, traslados entre bodegas y pago de compras pendientes. |
 | Reportes | `/reports` | Compras, ventas y gastos por rango, agrupados por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
@@ -65,8 +66,9 @@ Bloques funcionales:
 **Ecuación central del negocio:**
 
 ```
-saldoActual = saldoInicial + totalVentas + totalIngresos + totalTrasladosRecibidos
-            − totalComprasEfectivo − totalGastos − totalSalidas − totalTrasladosEnviados + ajusteCaja
+saldoActual = saldoInicial + totalVentas + totalIngresos + totalMolido + totalTrasladosRecibidos
+            − totalComprasEfectivo − totalPagosPendientes − totalGastos − totalSalidas
+            − totalTrasladosEnviados + ajusteCaja
 ```
 
 evaluada por `(businessDate, sucursalId)`. `ajusteCaja` vale 0 salvo que la caja del día se haya
@@ -165,7 +167,7 @@ Los helpers viven en `lib/api-response.ts`:
 ```
 c-control/
 ├── app/
-│   ├── api/                  # 49 route handlers REST
+│   ├── api/                  # route handlers REST
 │   │   ├── auth/             # login · logout · me
 │   │   ├── clients/          # clientes y clientes originales (IHCAFE)
 │   │   ├── employees/        # empleados · asistencia · adelantos · pagos
@@ -176,6 +178,8 @@ c-control/
 │   │   ├── productos/        # catálogo y stock
 │   │   ├── purchases/ purchase-transactions/
 │   │   ├── sales/ sale-transactions/
+│   │   ├── grinding-services/ # servicio de molido
+│   │   ├── pending-payments/ # pago de compras pendientes desde caja
 │   │   ├── cash-sessions/    # apertura, cierre y reapertura de caja
 │   │   ├── reports/          # reportes de compras por rango
 │   │   ├── settings/         # empresa · usuarios · module-access
@@ -187,7 +191,7 @@ c-control/
 ├── lib/                      # dominio, validaciones, hooks y utilidades
 ├── prisma/
 │   ├── schema.prisma
-│   └── migrations/           # 23 migraciones SQL versionadas
+│   └── migrations/           # 32 migraciones SQL versionadas
 ├── tests/api/                # pruebas Jest de route handlers
 ├── types/                    # DTOs de dominio y envolturas de API
 ├── docs/api-contract.md      # contrato para la app móvil
@@ -211,9 +215,11 @@ erDiagram
   Sucursal ||--o{ Sale : ""
   Sucursal ||--o{ Expense : ""
   Sucursal ||--o{ ProductoCarga : ""
+  Sucursal ||--o{ GrindingService : ""
 
   Client ||--o{ PurchaseTransaction : ""
   Client ||--o{ SaleTransaction : ""
+  Client ||--o{ GrindingService : ""
   Client ||--o{ ClienteOriginal : ""
 
   Producto ||--o{ Purchase : ""
@@ -272,16 +278,26 @@ Cabecera + líneas de una compra por cliente. La cabecera lleva `metodoPago` y `
 número del talonario físico, capturado a mano (§19.3)—. Cada `Purchase` guarda, además del resultado
 (`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`,
 `porcentajeOro` y `quintalesOro`.
+
+La cabecera lleva además la **liquidación de una compra pendiente** (§6.13): `pagoFecha?`,
+`pagoMetodo?`, `pagoRegistradoPor?` y `pagadoEn?`. Están nulos mientras la compra siga sin pagarse,
+y solo se llenan cuando `metodoPago = "pendiente"`.
 `Purchase.purchaseTransactionId` y `Sale.saleTransactionId` son **obligatorios**: toda compra y
 toda venta pertenece a una transacción, y por tanto tiene cliente.
 
 #### `SaleTransaction` / `Sale`
 
-Cabecera + líneas de venta. `Sale` soporta dos formas:
+Cabecera + líneas de venta. `Sale` soporta tres formas:
 
 - **Venta simple/libre**: solo `descripcion` + `monto` (sin producto).
-- **Venta por producto**: `productoId`, `libras`, y `precioPorLibra` *o* el trío oro
-  (`porcentajeOro`, `quintalesOro`, `precioPorQuintalOro`).
+- **Venta pesada** (la que produce hoy el panel de Ventas): `productoId`, el pesaje
+  (`pesoBruto`, `numeroSacos`, `taraPorSaco`), el neto resultante en `libras`, `precioPorLibra` y,
+  opcionalmente, `porcentajeOro` con sus `quintalesOro` de referencia (§6.5).
+- **Venta por quintal oro** (histórica): `libras` y el trío oro (`porcentajeOro`, `quintalesOro`,
+  `precioPorQuintalOro`). La API la sigue aceptando; el panel ya no la genera.
+
+> `Sale.libras` guarda el **peso neto**. En las ventas anteriores al pesaje, `pesoBruto`,
+> `numeroSacos` y `taraPorSaco` están nulos y solo existe ese neto.
 
 > `porcentajeOro` se guarda como **porcentaje** (`53.0000`), no como fracción, y en
 > `Sale` y `Purchase` significa exactamente lo mismo. La columna es `Decimal(6, 4)`, así que el
@@ -328,6 +344,16 @@ ingreso suma al saldo y la salida resta.
 
 Son tablas propias y no un `Expense` o una `Sale` con signo para no ensuciar los reportes de gasto
 y de venta con dinero que solo cambió de lugar. Ambas respetan el bloqueo de caja cerrada.
+
+#### `GrindingService`
+
+Servicio de molido: se muele café **del cliente** y se le cobra por las libras (`clientId`,
+`libras`, `monto`, `notas?`, `registradoPor`, por fecha y sucursal). El cobro suma al saldo del día,
+como una venta.
+
+`monto` se escribe a mano y no se deriva de `libras`: no hay tarifa fija, así que calcularlo
+obligaría a corregirlo en cada servicio. Los dos campos quedan editables después de guardar,
+mientras la caja de esa fecha siga abierta. **No toca inventario**: el café no es del negocio.
 
 #### `CashTransfer`
 
@@ -396,11 +422,20 @@ parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánt
 | Función | Comportamiento |
 |---|---|
 | `ensureDailyBalance(db, fecha, sucursalId)` | `upsert` del `DailyBalance`; si no existe lo crea con saldos en 0. |
-| `recalculateDailyBalance(...)` | Agrega `SUM(Purchase.total)` (y la parte en efectivo), `SUM(Sale.monto)`, `SUM(Expense.monto)`, `SUM(CashEntry.monto)`, `SUM(CashWithdrawal.monto)` y `SUM(CashTransfer.monto)` como destino y como origen del día/sucursal, y reescribe `saldoActual = saldoInicial + ventas + ingresos + traslados recibidos − compras en efectivo − gastos − salidas − traslados enviados + ajusteCaja`. |
+| `recalculateDailyBalance(...)` | Agrupa las compras del día por forma de pago (`groupBy metodoPago` sobre `PurchaseTransaction`) y agrega `SUM(Sale.monto)`, `SUM(Expense.monto)`, `SUM(CashEntry.monto)`, `SUM(GrindingService.monto)`, `SUM(CashWithdrawal.monto)`, los pagos de compras pendientes liquidados ese día en efectivo y `SUM(CashTransfer.monto)` como destino y como origen. Reescribe `saldoActual = saldoInicial + ventas + ingresos + molido + traslados recibidos − compras en efectivo − pagos de pendientes − gastos − salidas − traslados enviados + ajusteCaja`. |
 | `getLedgerByDate(...)` | Asegura + recalcula + devuelve el `LedgerDTO` con listas de compras, ventas, gastos, ingresos (`cashEntries`), salidas (`cashWithdrawals`) y traslados donde la bodega es origen o destino (`cashTransfers`), ordenadas por `createdAt desc`. |
 
 **Invariante:** toda ruta que cree o elimine compras, ventas o gastos llama a `recalculateDailyBalance`
 **dentro de la misma transacción Prisma**. El saldo nunca se ajusta por deltas, siempre se recalcula desde cero.
+
+`totals` devuelve el desglose de compras por forma de pago —`totalComprasEfectivo`,
+`totalComprasDeposito`, `totalComprasCheque`, `totalComprasPendientes`— y `totalComprasOtrosMedios`
+como la suma de todo lo que **no** fue efectivo. Solo el efectivo resta del saldo.
+
+> El recálculo son una docena de consultas seguidas dentro de una transacción interactiva, que en
+> Prisma van una tras otra por la misma conexión. Contra una base remota eso pasaba de los 5 s por
+> defecto y se perdía la operación entera, así que `lib/prisma.ts` sube el límite a 20 s
+> (`transactionOptions`). Juntarlas en una sola consulta sigue pendiente (§17).
 
 > Los pagos y adelantos de personal **sí** afectan el balance: entran como `Expense` de categoría
 > `Planilla` (§18.0). El `ajusteCaja` no lo escribe ninguna ruta de movimientos, solo el cierre de
@@ -438,30 +473,36 @@ rendimiento a veces se conoce después del pesaje, y no puede bloquear el pago a
 no pasa por el oro. Los quintales oro son **solo una cifra de referencia** para la facturación de
 fin de temporada (§19.4) — no entran en ningún saldo, arqueo ni cierre.
 
-### 6.5 Ventas — conversión a quintales oro
+### 6.5 Ventas — pesaje con tara y quintales oro
 
-En `POST /api/sale-transactions`, cada línea toma una de dos rutas:
+**La venta se captura como la compra** (§6.4): peso bruto, número de sacos, precio por libra y
+rendimiento opcional. En `POST /api/sale-transactions`, por cada línea:
 
-**Modo oro** (cuando llega `precioPorQuintalOro`; entonces `porcentajeOro` es obligatorio):
+```
+si se envía pesoBruto:
+    taraTotal = (taraPorSaco ?? producto.taraPorSaco ?? 0) × (numeroSacos ?? 0)
+    libras    = pesoBruto − taraTotal          ← peso neto; si sale ≤ 0 se rechaza la línea
+si no:
+    libras    = libras (enviadas directamente)
+
+monto        = precioPorLibra × libras
+quintalesOro = computeQuintalesOro(libras, porcentajeOro)   si hay porcentajeOro; si no, null
+```
+
+Igual que en compras, `precioPorLibra` es obligatorio y `porcentajeOro` no: sin él la venta se
+guarda sin quintales oro y el monto sale igual, porque **no pasa por el oro**.
+
+**Modo por quintal oro (histórico).** Cuando la línea trae `precioPorQuintalOro` —y entonces
+`porcentajeOro` es obligatorio—, el monto sí sale del oro:
 
 ```
 quintalesOro = computeQuintalesOro(libras, porcentajeOro)
 monto        = quintalesOro × precioPorQuintalOro
 ```
 
-**Modo por libra** (resto de casos):
-
-```
-monto = precioPorLibra × libras
-```
-
-`precioPorLibra` es obligatorio fuera del modo oro, por la misma razón que en compras: el catálogo
-ya no guarda precio.
-
-El modo oro se habilita en la UI para cualquier producto con categoría (`isCafeCategoria`, chequeo
-estricto por el campo, sin inferencia por nombre). Incluye `otros` —requema, verde, guacuco,
-repaso—: esos tipos no se facturan, pero el rendimiento se captura y se guarda igual. Lo que decide
-qué entra en la facturación es `esCategoriaFacturable`, al armar el reporte de temporada.
+La API lo sigue aceptando para no romper clientes ni el histórico, pero **el panel de Ventas ya no
+lo genera**: se decidió cobrar toda venta por peso neto × precio por libra, como la compra. Las
+ventas viejas conservan su `precioPorQuintalOro` y así se imprimen.
 
 #### La conversión a oro
 
@@ -635,9 +676,43 @@ rehace el saldo.
 La confirmación usa `timeout: 30 s` en la transacción: son muchas escrituras secuenciales y con los
 5 s por defecto de Prisma una planilla de varios empleados sobre una base remota aborta a medias.
 
----
+### 6.12 Molido — servicio sobre café del cliente
 
-## 7. Contrato de la API REST
+Módulo `grinding` (`/molido`). Se registra el cliente, las **libras molidas** y el **monto cobrado**;
+los dos se escriben a mano y los dos quedan editables después de guardar (`PATCH`), mientras la caja
+de esa fecha siga abierta.
+
+El monto no se deriva de las libras a propósito: no hay tarifa fija, y una tarifa calculada habría
+que corregirla en cada servicio. El panel muestra el precio por libra resultante, pero solo como
+información.
+
+El cobro **suma al saldo del día** (`totalMolido`), igual que una venta, y exige caja abierta. No
+mueve inventario: el café es del cliente, entra y sale del local sin pertenecer al negocio.
+
+### 6.13 Pagos pendientes — comprar hoy y pagar otro día
+
+`metodoPago = "pendiente"` en una compra significa que el café ya se recibió pero todavía no se
+paga. Esa compra **no resta de la caja del día en que se registró**: existe para inventario y
+reportes, como un depósito o un cheque.
+
+El pago se asienta después desde **Caja → Pagos pendientes** (`POST /api/pending-payments/:id`), en
+la fecha de la caja que se esté viendo, eligiendo con qué se pagó:
+
+| Forma del pago | Efecto |
+|---|---|
+| Efectivo | Resta del saldo del **día del pago** (`totalPagosPendientes`), no del día de la compra. |
+| Depósito, cheque | Queda registrado el pago, pero no sale dinero de la gaveta. |
+
+Reglas:
+
+- El pago **no puede ser anterior** a la fecha de la compra.
+- Pagar o deshacer exige la caja de esa fecha abierta; deshacer (`DELETE`) es de **admin**, como toda
+  eliminación (§8.3).
+- Borrar una compra ya pagada recalcula **las dos** fechas —compra y pago— y exige ambas cajas
+  abiertas.
+
+La liquidación vive en columnas de `PurchaseTransaction` y no en una tabla de abonos: **el pago es
+total, no hay abonos parciales**. Soportarlos exigiría una tabla propia (§17).
 
 Base: `/api`. Todas las respuestas usan `ApiResponse<T>`.
 
@@ -674,11 +749,13 @@ Los clientes no web envían `Authorization: Bearer <token>` con el token devuelt
 | GET | `/api/ledger` | Query `businessDate?` (por defecto hoy en Tegucigalpa), `sucursalId?`. Devuelve `LedgerDTO`. |
 | POST | `/api/ledger/initial-balance` | **admin.** `{ businessDate, sucursalId?, saldoInicial }`. |
 | DELETE | `/api/purchases/:id` | Borra una línea; recalcula el total de su transacción y el balance. |
-| GET / POST | `/api/purchase-transactions` | Compra por cliente con `items[]`. GET filtra por `businessDate` y `sucursalId`. |
-| DELETE | `/api/purchase-transactions/:id` | Borra cabecera + items (cascade) y recalcula. |
+| GET / POST | `/api/purchase-transactions` | Compra por cliente con `items[]`. GET filtra por `businessDate` y `sucursalId`. `metodoPago` acepta `pendiente` (§6.13). |
+| DELETE | `/api/purchase-transactions/:id` | Borra cabecera + items (cascade) y recalcula; si la compra estaba pagada, recalcula también la fecha del pago. |
 | DELETE | `/api/sales/:id` | Borra una línea; recalcula el total de su transacción y el balance. |
-| GET / POST | `/api/sale-transactions` | Venta por cliente con `items[]` (modo libra u oro). |
+| GET / POST | `/api/sale-transactions` | Venta por cliente con `items[]`: pesaje (`pesoBruto`, `numeroSacos`, `taraPorSaco`) o `libras` directas; modo por libra o, para clientes antiguos, por quintal oro (§6.5). |
 | DELETE | `/api/sale-transactions/:id` | |
+| GET / POST | `/api/grinding-services` | Servicio de molido (§6.12). POST `{ businessDate, clientId, libras, monto, notas?, sucursalId? }`; GET por `businessDate` y `sucursalId`. |
+| PATCH / DELETE | `/api/grinding-services/:id` | PATCH corrige `libras`, `monto`, `clientId` o `notas`. DELETE es **admin**. |
 | POST | `/api/expenses` | `{ businessDate, categoria, descripcion, monto, sucursalId? }`. |
 | DELETE | `/api/expenses/:id` | **409 `CONFLICT`** si el gasto lo generó un pago o anticipo de personal. |
 
@@ -698,6 +775,9 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | DELETE | `/api/cash-withdrawals/:id` | **admin.** |
 | GET / POST | `/api/cash-transfers` | Traslados entre bodegas. POST `{ businessDate, sucursalOrigenId, sucursalDestinoId, monto, descripcion? }`; 400 si origen = destino o alguna bodega no existe o está inactiva. GET devuelve los traslados donde `sucursalId` es origen o destino, por `businessDate` o `from`/`to`. |
 | DELETE | `/api/cash-transfers/:id` | **admin.** Revierte el traslado en las dos bodegas. |
+| GET | `/api/pending-payments` | Query `sucursalId?`, `businessDate?`. Devuelve `{ pendientes, pagados }`: las compras sin pagar de cualquier fecha y las pagadas en esa fecha (§6.13). |
+| POST | `/api/pending-payments/:id` | `{ businessDate, metodoPago }` (efectivo, depósito o cheque). 409 si ya se pagó o si la compra no es pendiente; 400 si la fecha es anterior a la compra. |
+| DELETE | `/api/pending-payments/:id` | **admin.** Deshace el pago: la compra vuelve a quedar pendiente. |
 
 Ingresos, salidas y traslados devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada;
 en un traslado basta con que esté cerrada la del origen o la del destino.
@@ -888,6 +968,7 @@ En éxito, el middleware añade `x-auth-user-id` y `x-auth-role` a la respuesta.
 | `dashboard` | editor, viewer | — |
 | `purchases` | editor, viewer, comprador | — |
 | `sales` | editor, viewer, comprador | — |
+| `grinding` | editor, viewer, comprador | — |
 | `expenses` | editor, viewer, comprador | — |
 | `inventory` | editor, viewer | — |
 | `personnel` | — | — |
@@ -1000,8 +1081,11 @@ servidor autorizó la navegación.
 
 | Panel | Líneas | Contenido |
 |---|---|---|
-| `sales-panel.tsx` | 692 | Ventas por cliente, carrito, modo oro, ticket y factura A4. |
-| `purchases-panel.tsx` | 723 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, número de factura, ticket y factura A4. |
+| `sales-panel.tsx` | ~700 | Ventas por cliente, carrito, pesaje bruto/tara/sacos y rendimiento por línea, ticket y factura A4. |
+| `purchases-panel.tsx` | ~730 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, forma de pago (incluida "Pendiente de pago"), número de factura, ticket y factura A4. |
+| `grinding-panel.tsx` | ~330 | Servicio de molido: registro y corrección de libras y monto (§6.12). |
+| `cash-session-panel.tsx` | ~740 | Apertura y cierre de caja, ingresos, salidas y traslados. |
+| `pending-payments-section.tsx` | ~220 | Sección de Caja: compras pendientes, pago y deshacer (§6.13). |
 | `invoice-a4.tsx` | 317 | Hoja de factura A4 con su CSS de impresión (§10.2). Se renderiza en el servidor. |
 | `invoice-toolbar.tsx` | 22 | Botón de imprimir de la página de factura; el CSS de impresión lo oculta. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
@@ -1012,6 +1096,8 @@ servidor autorizó la navegación.
 | `sucursales-panel.tsx` | 208 | Sucursales. |
 | `expenses-panel.tsx` | 171 | Gastos. |
 | `client-quick-create-modal.tsx` | 167 | Alta rápida de cliente desde compras/ventas. |
+| `error-toast.tsx` | 62 | Aviso de error flotante, compartido por todos los paneles (§9.5). |
+| `loading-overlay.tsx` | 44 | Indicador de actividad a pantalla completa (§9.5). |
 
 Los layouts de `/personnel` y `/maintenance` son server components: aplican `requireModuleAccess`
 y renderizan pestañas
@@ -1023,6 +1109,24 @@ y renderizan pestañas
 |---|---|---|
 | `useSucursal()` | `lib/use-sucursal.ts` | Carga sucursales, filtra activas, persiste la selección en `localStorage` (`rcontrol_sucursal_id`) y cae a la principal si la guardada ya no existe. |
 | `requireModuleAccess()` | `lib/require-module-access.ts` | **No es un hook**: se llama desde el server component de cada página o layout de módulo y redirige si el rol no tiene permiso. |
+
+### 9.5 Errores y actividad
+
+Dos componentes que usan todos los paneles, ambos montados con `createPortal` sobre `document.body`
+para que ningún contenedor los recorte:
+
+- **`ErrorToast`** — aviso rojo fijo arriba a la derecha. Antes cada panel pintaba un párrafo dentro
+  de una tarjeta, que quedaba fuera de la vista si el error llegaba después de hacer scroll —al
+  guardar un carrito, por ejemplo— y el usuario creía que se había guardado. Se cierra solo a los
+  8 s, salvo con el mouse encima; varios avisos a la vez se apilan en un contenedor común.
+- **`LoadingOverlay`** — indicador de actividad sobre toda la pantalla. Aparece solo si la operación
+  pasa de 200 ms, para no parpadear, y **bloquea los clics**: contra la base remota una operación
+  tarda segundos y volver a pulsar "Guardar" duplicaba el registro. Queda por debajo del aviso de
+  error, para que un fallo siga visible.
+
+> Si el indicador aparece al elegir un producto o un cliente, es un error: significa que la
+> selección está recargando datos. Pasaba en Compras y Ventas porque `fetchProductos` dependía del
+> producto elegido; la preselección se hace ahora en un efecto aparte.
 
 ---
 
@@ -1049,8 +1153,16 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
 
 - `buildTicketBuffer(data)` — comprobante de compra/venta. Si la línea trae `quintalesOro` +
   `precioPorQuintalOro`, imprime el detalle en formato oro; en caso contrario, `lb × precio`.
-- `buildSummaryBuffer(data)` — resumen del día con totales y cierre de caja. El campo opcional
-  `arqueo` decide qué se imprime:
+  Debajo del neto imprime el **pesaje** —`Bruto 250.00lb`, `Tara 5.00lb (2 sacos)`— y, en otra
+  línea, los quintales oro si los hay: en 32 columnas las tres cosas no caben juntas. Cada dato sale
+  solo si existe, así que una venta vieja sin pesaje se imprime como antes. Vale para compras y
+  para ventas, que desde el pesaje (§6.5) guardan los mismos datos.
+- `buildSummaryBuffer(data)` — resumen del día con totales y cierre de caja. Bajo `Total Compras`
+  imprime el **desglose por forma de pago** —efectivo, depósito, cheque, pendientes—, y cada
+  renglón **solo si tiene monto**: un día pagado todo en efectivo sale tan corto como antes. Aparte
+  va `Pago de pendientes`, que son compras de días anteriores liquidadas hoy en efectivo: no están
+  en el total de compras de hoy, pero sí salieron de esta caja. El campo opcional `arqueo` decide
+  qué más se imprime:
   - **Caja cerrada** → bloque `ARQUEO DE CAJA` con apertura, saldo esperado, efectivo contado,
     la diferencia y quién abrió y cerró; el total se rotula `CIERRE DE CAJA` porque ya es un
     conteo real. La diferencia se imprime **nombrada** (`FALTA` / `SOBRA` / `cuadra`): en papel el
@@ -1119,6 +1231,10 @@ capaz de imprimirlo, para resolver algo que el sistema operativo ya resuelve.
 documentos no cargan lo mismo: en 32 columnas solo cabe el resultado, y en A4 sí entra la
 trazabilidad del pesaje (bruto, sacos, tara, rendimiento, quintales oro) que es justo lo que el
 productor revisa cuando le liquidan—. Devuelve datos y no un buffer: en A4 maqueta el navegador.
+
+Las dos hojas —compra y venta— llevan las mismas columnas de pesaje: **Bruto, Sacos, Tara, Neto**,
+rendimiento, quintales oro, precio y valor. La de venta las ganó cuando la venta pasó a pesarse
+(§6.5); en las ventas anteriores esas celdas salen con guion, sin inventar un bruto.
 
 `components/invoice-a4.tsx` es la hoja. Su CSS de impresión **oculta todo el documento y vuelve a
 mostrar solo la factura**, en vez de enumerar las clases del encabezado y el menú: así un cambio en
@@ -1198,7 +1314,7 @@ pnpm dev                    # http://localhost:3000
 
 ## 13. Migraciones de base de datos
 
-23 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
+32 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
 
 | Migración | Cambio |
 |---|---|
@@ -1231,8 +1347,13 @@ pnpm dev                    # http://localhost:3000
 | `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` (§19.3) y los campos de factura autorizada en `CompanySettings`, inactivos hasta que se llene el CAI (§10.2). |
 | `20260916000000_add_cash_withdrawals` | `CashWithdrawal`: salidas de efectivo que restan del saldo sin ser gasto. |
 | `20260917000000_add_cash_transfers` | `CashTransfer`: traslados de efectivo entre bodegas, con `CHECK` de origen distinto a destino. |
+| `20260920000000_add_sale_peso_bruto` | `Sale.pesoBruto`, `numeroSacos` y `taraPorSaco`: la venta se pesa como la compra (§6.5). Opcionales, porque las ventas anteriores solo guardaron el neto. |
+| `20260920010000_add_grinding_services` | `GrindingService`: servicio de molido (§6.12). |
+| `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
+
+> El conteo del encabezado quedó desactualizado hace tiempo: hoy son **32** migraciones.
 
 > ⚠️ La migración `20260823000000` se escribió **a mano** con `ALTER TABLE ... RENAME COLUMN`.
 > `prisma migrate diff` genera por defecto un `DROP COLUMN "salario"` seguido de un `ADD COLUMN
@@ -1295,6 +1416,12 @@ Cobertura actual (9 suites, 73 pruebas):
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
 `Request` estándar. La cobertura sigue siendo baja: no hay pruebas de los cálculos de balance,
 tara ni conversión a oro, que son la lógica de mayor riesgo.
+
+> ⚠️ **Hoy la suite no corre.** Los 15 suites fallan antes de ejecutar una sola prueba con
+> `TypeError: this._moduleMocker.clearMocksOnScope is not a function`. Es un desajuste de versiones
+> en `node_modules`: `jest` quedó en 30.4.2 y `jest-runtime`/`jest-cli` en 30.3.0. Se arregla
+> reinstalando dependencias para alinear el árbol. Mientras tanto, lo único que verifica el
+> repositorio es `tsc --noEmit`, `next lint` y `prisma validate`.
 
 ---
 
@@ -1400,6 +1527,17 @@ Puntos a tener presentes al trabajar sobre el código:
     cerrado la categoría siempre viene puesta, así que ya no hay nombre que adivinar.
 15. **No hay cuenta corriente por sucursal.** Los traslados de efectivo entre bodegas ya existen
     (`CashTransfer`), pero falta el reporte acumulado por temporada. Ver §19.1.
+16. **La suite de pruebas no arranca** por un desajuste de versiones de Jest en `node_modules`
+    (§14). Todo lo agregado desde entonces —pesaje en ventas, molido, pagos pendientes— se escribió
+    sin red de pruebas.
+17. **El recálculo del balance son ~12 consultas seguidas** dentro de una transacción interactiva
+    (§6.2). Subir el límite a 20 s evita perder operaciones, pero no las hace rápidas: contra la base
+    remota una compra tarda segundos. La solución de fondo es agrupar esos totales en una sola
+    consulta.
+18. **Los pagos pendientes no admiten abonos parciales** (§6.13). Una compra se paga completa o
+    sigue pendiente. Para abonos haría falta una tabla de pagos, no columnas en la cabecera.
+19. **Molido no está en Reportes** (§6.10): el cobro entra al saldo del día, pero no hay acumulado
+    por rango como el de compras, ventas y gastos.
 
 ---
 
