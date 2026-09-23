@@ -476,6 +476,41 @@ export type ExpenseReportDTO = {
   porBanco: ExpenseReportGroupDTO[];
 };
 
+export type GrindingReportGroupDTO = {
+  /** Nombre del cliente. */
+  nombre: string;
+  libras: number;
+  total: number;
+  numeroServicios: number;
+  /** Porcentaje del total del período; ya redondeado. */
+  porcentaje: number;
+};
+
+export type GrindingReportPeriodDTO = {
+  inicio: string;
+  fin: string;
+  label: string;
+  libras: number;
+  total: number;
+  numeroServicios: number;
+};
+
+export type GrindingReportDTO = {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week';
+  sucursalId: string | null;
+  totals: {
+    libras: number;
+    total: number;
+    numeroServicios: number;
+    /** Lo cobrado por libra en el período. 0 si no se molió nada. */
+    promedioPorLibra: number;
+  };
+  periods: GrindingReportPeriodDTO[];
+  porCliente: GrindingReportGroupDTO[];
+};
+
 export type PayrollLineDTO = {
   employeeId: string;
   employeeNombre: string;

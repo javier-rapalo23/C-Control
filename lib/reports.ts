@@ -12,6 +12,9 @@ import type {
   ExpenseReportDTO,
   ExpenseReportGroupDTO,
   ExpenseReportPeriodDTO,
+  GrindingReportDTO,
+  GrindingReportGroupDTO,
+  GrindingReportPeriodDTO,
   PurchaseReportBreakdownDTO,
   PurchaseReportDTO,
   PurchaseReportPeriodDTO,
@@ -303,6 +306,120 @@ export async function getSaleReport(
     periods,
     porProducto: toSaleBreakdown(byProducto),
     porCliente: toSaleBreakdown(byCliente),
+  };
+}
+
+type GrindingAccumulator = {
+  libras: number;
+  total: number;
+  numeroServicios: number;
+};
+
+const emptyGrindingAccumulator = (): GrindingAccumulator => ({ libras: 0, total: 0, numeroServicios: 0 });
+
+function accumulateGrinding(target: GrindingAccumulator, libras: number, monto: number): void {
+  target.libras += libras;
+  target.total += monto;
+  target.numeroServicios += 1;
+}
+
+/**
+ * Reporte del servicio de molido por rango, agrupado por día o por semana.
+ *
+ * Lleva libras además de lempiras porque el molido se cobra a criterio, sin tarifa
+ * fija (§6.12): sin las libras no se puede ver a cómo salió la libra ni comparar
+ * un período con otro.
+ */
+export async function getGrindingReport(
+  db: DbClient,
+  input: { from: string; to: string; groupBy: PurchaseReportGroupBy; sucursalId?: string | null },
+): Promise<GrindingReportDTO> {
+  const { from, to, groupBy } = input;
+  if (from > to) {
+    throw new Error('El rango de fechas está invertido: "from" debe ser anterior o igual a "to".');
+  }
+
+  const services = await db.grindingService.findMany({
+    where: {
+      businessDate: { gte: parseBusinessDate(from), lte: parseBusinessDate(to) },
+      ...(input.sucursalId ? { sucursalId: input.sucursalId } : {}),
+    },
+    select: {
+      businessDate: true,
+      libras: true,
+      monto: true,
+      client: { select: { nombre: true } },
+    },
+  });
+
+  const byDate = new Map<string, GrindingAccumulator>();
+  const byCliente = new Map<string, GrindingAccumulator>();
+  const totals = emptyGrindingAccumulator();
+
+  for (const service of services) {
+    const date = toBusinessDateString(service.businessDate);
+    const libras = decimalToNumber(service.libras);
+    const monto = decimalToNumber(service.monto);
+
+    if (!byDate.has(date)) byDate.set(date, emptyGrindingAccumulator());
+    accumulateGrinding(byDate.get(date)!, libras, monto);
+    accumulateGrinding(totals, libras, monto);
+
+    const nombre = service.client.nombre;
+    if (!byCliente.has(nombre)) byCliente.set(nombre, emptyGrindingAccumulator());
+    accumulateGrinding(byCliente.get(nombre)!, libras, monto);
+  }
+
+  // Como en los demás reportes, los períodos salen del calendario y no de los datos:
+  // un día sin molidos aparece en cero en vez de desaparecer.
+  const ranges =
+    groupBy === 'week'
+      ? eachBusinessWeek(from, to)
+      : eachBusinessDate(from, to).map((date) => ({ inicio: date, fin: date }));
+
+  const periods: GrindingReportPeriodDTO[] = ranges.map((range) => {
+    const acc = emptyGrindingAccumulator();
+    for (const date of eachBusinessDate(range.inicio, range.fin)) {
+      const dayTotals = byDate.get(date);
+      if (!dayTotals) continue;
+      acc.libras += dayTotals.libras;
+      acc.total += dayTotals.total;
+      acc.numeroServicios += dayTotals.numeroServicios;
+    }
+
+    return {
+      inicio: range.inicio,
+      fin: range.fin,
+      label: groupBy === 'week' ? formatBusinessRange(range.inicio, range.fin) : range.inicio,
+      libras: round(acc.libras),
+      total: round(acc.total),
+      numeroServicios: acc.numeroServicios,
+    };
+  });
+
+  const porCliente: GrindingReportGroupDTO[] = [...byCliente.entries()]
+    .map(([nombre, acc]) => ({
+      nombre,
+      libras: round(acc.libras),
+      total: round(acc.total),
+      numeroServicios: acc.numeroServicios,
+      porcentaje: totals.total > 0 ? round((acc.total / totals.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    from,
+    to,
+    groupBy,
+    sucursalId: input.sucursalId ?? null,
+    totals: {
+      libras: round(totals.libras),
+      total: round(totals.total),
+      numeroServicios: totals.numeroServicios,
+      promedioPorLibra: totals.libras > 0 ? round(totals.total / totals.libras, 4) : 0,
+    },
+    periods,
+    porCliente,
   };
 }
 

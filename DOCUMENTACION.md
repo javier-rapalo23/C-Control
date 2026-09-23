@@ -59,7 +59,7 @@ Bloques funcionales:
 | Sucursales | `/sucursales` | Alta/edición de sucursales, marca de principal y activo. |
 | Personal | `/personnel` | Empleados, asistencia, adelantos, pagos y planilla semanal calculada. |
 | Caja | `/cash` | Apertura y cierre del efectivo del día, con arqueo contra el saldo esperado; ingresos, salidas, traslados entre bodegas y pago de compras pendientes. |
-| Reportes | `/reports` | Compras, ventas y gastos por rango, agrupados por día o por semana. |
+| Reportes | `/reports` | Compras, ventas, molido y gastos por rango, agrupados por día o por semana. |
 | Mantenimiento | `/maintenance` | Datos de empresa/impresora, usuarios del sistema, roles y permisos por módulo. |
 | Login | `/login` | Autenticación por usuario/contraseña. |
 
@@ -621,10 +621,10 @@ producto, no de efectivo.
 
 ### 6.10 Reportes por rango
 
-`lib/reports.ts` expone tres reportes con la misma forma —rango `from`/`to` y `groupBy=day|week`—
-que el panel `/reports` presenta en pestañas: **compras**, **ventas** y **gastos**.
+`lib/reports.ts` expone cuatro reportes con la misma forma —rango `from`/`to` y `groupBy=day|week`—
+que el panel `/reports` presenta en pestañas: **compras**, **ventas**, **molido** y **gastos**.
 
-Dos reglas comunes a los tres:
+Dos reglas comunes a todos:
 
 - Los períodos se generan **desde el calendario, no desde los datos**: un día o una semana sin
   movimientos aparece en cero en vez de desaparecer del reporte.
@@ -640,6 +640,11 @@ venta sin producto se agrupa bajo **"Sin producto"** en vez de descartarse, para
 cuadre con el total. Añade `promedioPorQuintalOro` —el total entre los quintales oro— porque el
 café se vende por quintal oro y es el precio que interesa comparar entre semanas; vale 0 si no
 hubo ventas en oro.
+
+**Molido** (`getGrindingReport`) — libras molidas, lempiras cobrados y número de servicios, con
+desglose por cliente y `promedioPorLibra`. Lleva las libras además del dinero porque el molido se
+cobra a criterio, sin tarifa fija (§6.12): sin ellas no hay forma de ver a cómo salió la libra ni de
+comparar un período con otro.
 
 **Gastos** (`getExpenseReport`) — total y número de gastos, con desglose por categoría y, dentro de
 las categorías que llevan banco ("Pago banco" y "Pago tarjeta"), por banco.
@@ -688,6 +693,8 @@ información.
 
 El cobro **suma al saldo del día** (`totalMolido`), igual que una venta, y exige caja abierta. No
 mueve inventario: el café es del cliente, entra y sale del local sin pertenecer al negocio.
+
+Los acumulados por rango están en Reportes → Molido (§6.10).
 
 ### 6.13 Pagos pendientes — comprar hoy y pagar otro día
 
@@ -788,6 +795,7 @@ en un traslado basta con que esté cerrada la del origen o la del destino.
 |---|---|---|
 | GET | `/api/reports/purchases` | `?from&to&groupBy=day\|week&sucursalId`. Sin rango, la semana en curso. |
 | GET | `/api/reports/sales` | Mismos parámetros. Añade `promedioPorQuintalOro` a los totales. |
+| GET | `/api/reports/grinding` | Mismos parámetros. Libras, lempiras y servicios de molido, con desglose por cliente y `promedioPorLibra` (§6.12). |
 | GET | `/api/reports/expenses` | Mismos parámetros. Desglosa por categoría y por banco. |
 
 ### Personal — **todas requieren rol `admin`**
@@ -1536,8 +1544,11 @@ Puntos a tener presentes al trabajar sobre el código:
     consulta.
 18. **Los pagos pendientes no admiten abonos parciales** (§6.13). Una compra se paga completa o
     sigue pendiente. Para abonos haría falta una tabla de pagos, no columnas en la cabecera.
-19. **Molido no está en Reportes** (§6.10): el cobro entra al saldo del día, pero no hay acumulado
-    por rango como el de compras, ventas y gastos.
+19. ~~**Molido no está en Reportes.**~~ **Resuelto**: `getGrindingReport` y la pestaña Molido del
+    panel `/reports` (§6.10), con desglose por cliente y promedio por libra.
+20. **El pago a cortadores no se descuenta en las compras a fincas.** Hoy la compra paga el total
+    del pesaje al dueño de la finca. Falta decidir si se descuenta dentro de la compra o si se
+    registra como gasto aparte; las dos opciones y lo que las diferencia están en §19.5.
 
 ---
 
@@ -1689,7 +1700,32 @@ de compras actual agrupa por rango con desglose por cliente (§6.10), que no es 
 necesita el detalle línea por línea de un productor concreto, en el formato con el que él está
 acostumbrado a que le liquiden.
 
-### 19.5 Lo que sigue abierto
+### 19.5 Pago de cortadores en compras a fincas — **pendiente, sin decidir**
+
+Cuando el cliente es una **finca**, parte de lo que se le paga por el café no es suyo: corresponde
+a los **cortadores**, y hay que descontarlo de la compra. Hoy eso no existe en el sistema: la compra
+paga el total del pesaje al dueño de la finca.
+
+Hay dos formas de resolverlo, y **la decisión está abierta**:
+
+| Opción | Cómo se vería | Qué implica |
+|---|---|---|
+| **Descuento en la compra** | Un monto de cortadores por transacción; el productor cobra el neto. | La compra deja de ser "libras × precio": aparece un total bruto y un neto pagado. Toca el recálculo del saldo, el ticket y la factura A4, porque lo que sale de la caja ya no es el total de la compra. |
+| **Gasto aparte** | La compra se registra completa y el pago a cortadores entra como `Expense`. | No toca el modelo de compras: el efectivo cuadra igual, porque compra y gasto restan los dos del saldo. Pero se pierde el vínculo con la compra que lo originó, y el costo real de ese café queda repartido en dos módulos. |
+
+Lo que decide entre las dos es **si el negocio necesita ver el costo por compra o solo que la caja
+cuadre**. Si alguna vez hay que responder "cuánto costó realmente este lote", el descuento en la
+compra es el único camino; si basta con controlar el efectivo, el gasto alcanza y es mucho más
+barato.
+
+Dato que falta para decidir: si un pago a cortadores corresponde siempre a **una** compra o si se
+paga por jornada, cubriendo varias. En el segundo caso el descuento por transacción no representa
+la realidad y el gasto es la opción correcta.
+
+Relacionado: el cliente de tipo finca ya se distingue por `Client.nombreFinca`, pero no hay una
+marca de "es finca" que active un comportamiento distinto.
+
+### 19.6 Lo que sigue abierto
 
 - **Abono en ventas.** El libro anota el abono que hace el cliente; `SaleTransaction` solo guarda
   `total`, sin saldo pendiente. Falta decidir si la venta pasa a tener estado de cobro —lo que

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { ExpenseReportDTO, PurchaseReportDTO, SaleReportDTO } from '@/types/domain';
+import type { ExpenseReportDTO, GrindingReportDTO, PurchaseReportDTO, SaleReportDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
@@ -44,9 +44,10 @@ export default function ReportsPanel() {
   const [from, setFrom] = useState(startOfWeek(today));
   const [to, setTo] = useState(addDays(startOfWeek(today), 6));
   const [groupBy, setGroupBy] = useState<'day' | 'week'>('day');
-  const [tab, setTab] = useState<'purchases' | 'sales' | 'expenses'>('purchases');
+  const [tab, setTab] = useState<'purchases' | 'sales' | 'grinding' | 'expenses'>('purchases');
   const [report, setReport] = useState<PurchaseReportDTO | null>(null);
   const [saleReport, setSaleReport] = useState<SaleReportDTO | null>(null);
+  const [grindingReport, setGrindingReport] = useState<GrindingReportDTO | null>(null);
   const [expenseReport, setExpenseReport] = useState<ExpenseReportDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,12 +59,14 @@ export default function ReportsPanel() {
     try {
       setLoading(true);
       const params = new URLSearchParams({ from, to, groupBy, sucursalId });
-      // La pestaña coincide con el segmento de la ruta: purchases | sales | expenses.
-      const data = await parseApiResponse<PurchaseReportDTO | SaleReportDTO | ExpenseReportDTO>(
+      // La pestaña coincide con el segmento de la ruta: purchases | sales | grinding | expenses.
+      const data = await parseApiResponse<PurchaseReportDTO | SaleReportDTO | GrindingReportDTO | ExpenseReportDTO>(
         await fetch(`/api/reports/${tab}?${params}`, { cache: 'no-store' }),
       );
       if (tab === 'expenses') {
         setExpenseReport(data as ExpenseReportDTO);
+      } else if (tab === 'grinding') {
+        setGrindingReport(data as GrindingReportDTO);
       } else if (tab === 'sales') {
         setSaleReport(data as SaleReportDTO);
       } else {
@@ -111,6 +114,9 @@ export default function ReportsPanel() {
         </button>
         <button type="button" className={tab === 'sales' ? 'active' : ''} onClick={() => setTab('sales')}>
           Ventas
+        </button>
+        <button type="button" className={tab === 'grinding' ? 'active' : ''} onClick={() => setTab('grinding')}>
+          Molido
         </button>
         <button type="button" className={tab === 'expenses' ? 'active' : ''} onClick={() => setTab('expenses')}>
           Gastos
@@ -402,6 +408,98 @@ export default function ReportsPanel() {
                     </td>
                   </tr>
                 ) : null}
+              </tbody>
+            </table>
+          </section>
+        </>
+      ) : null}
+
+      {tab === 'grinding' && grindingReport ? (
+        <>
+          <section className="card" style={{ marginTop: 12 }}>
+            <h3>Totales del período</h3>
+            <table className="table-like" style={{ marginTop: 8 }}>
+              <tbody>
+                <tr>
+                  <td>Total cobrado</td>
+                  <td>
+                    <strong>{money(grindingReport.totals.total)}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Libras molidas</td>
+                  <td>{grindingReport.totals.libras.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td>Servicios</td>
+                  <td>{grindingReport.totals.numeroServicios}</td>
+                </tr>
+                <tr>
+                  {/* El molido se cobra a criterio, sin tarifa: este promedio es la
+                      única forma de comparar un período con otro. */}
+                  <td>Promedio por libra</td>
+                  <td>{money(grindingReport.totals.promedioPorLibra)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section className="card" style={{ marginTop: 12 }}>
+            <h3>Por cliente</h3>
+            <table className="table-like" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Libras</th>
+                  <th>Total</th>
+                  <th>%</th>
+                  <th>Servicios</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grindingReport.porCliente.map((row) => (
+                  <tr key={row.nombre}>
+                    <td>{row.nombre}</td>
+                    <td>{row.libras.toFixed(2)}</td>
+                    <td>{money(row.total)}</td>
+                    <td>{row.porcentaje.toFixed(1)}%</td>
+                    <td>{row.numeroServicios}</td>
+                  </tr>
+                ))}
+                {grindingReport.porCliente.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ color: 'var(--text-soft)' }}>
+                      Sin molidos en el período.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="card" style={{ marginTop: 12 }}>
+            <h3>{groupBy === 'week' ? 'Por semana' : 'Por día'}</h3>
+            <table className="table-like" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Período</th>
+                  <th>Libras</th>
+                  <th>Total</th>
+                  <th>Servicios</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grindingReport.periods.map((period) => (
+                  <tr
+                    key={period.inicio}
+                    style={period.numeroServicios === 0 ? { color: 'var(--text-soft)' } : undefined}
+                  >
+                    <td>{period.label}</td>
+                    <td>{period.libras.toFixed(2)}</td>
+                    <td>{money(period.total)}</td>
+                    <td>{period.numeroServicios}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </section>
