@@ -33,6 +33,7 @@ function compra(overrides: Record<string, unknown> = {}) {
     businessDate: new Date('2026-09-14T00:00:00.000Z'),
     metodoPago: 'efectivo',
     numeroFactura: '00123',
+    numeroInterno: 123,
     total: 25014,
     sucursal: { nombre: 'Bodega San Juan' },
     client: {
@@ -78,6 +79,7 @@ describe('buildInvoiceForPurchase', () => {
     expect(data).not.toBeNull();
     expect(data!.kind).toBe('compra');
     expect(data!.numeroFactura).toBe('00123');
+    expect(data!.numeroInterno).toBe('C-000123');
     expect(data!.businessDate).toBe('2026-09-14');
     expect(data!.metodoPago).toBe('Efectivo');
     expect(data!.cliente.nombreFinca).toBe('El Rosal');
@@ -99,6 +101,17 @@ describe('buildInvoiceForPurchase', () => {
 
     expect(data!.totalQuintalesOro).toBeNull();
     expect(data!.totalLibras).toBe(1137);
+  });
+
+  // El talonario puede venir vacío; el correlativo interno nunca, porque es lo que
+  // casa la copia del cliente con la del control interno.
+  it('conserva el correlativo interno aunque no se haya capturado el talonario', async () => {
+    mocked.purchaseTransaction.findUnique.mockResolvedValue(compra({ numeroFactura: null }));
+
+    const data = await buildInvoiceForPurchase('pt_1');
+
+    expect(data!.numeroFactura).toBeNull();
+    expect(data!.numeroInterno).toBe('C-000123');
   });
 
   it('no arma bloque fiscal mientras el CAI esté vacío', async () => {
@@ -139,6 +152,7 @@ describe('buildInvoiceForSale', () => {
     mocked.saleTransaction.findUnique.mockResolvedValue({
       id: 'st_1',
       businessDate: new Date('2026-09-14T00:00:00.000Z'),
+      numeroInterno: 45,
       total: 34560,
       sucursal: { nombre: 'Bodega San Juan' },
       client: { nombre: 'Exportadora', rtn: null, telefono: null, direccion: null, claveIhcafe: null, nombreFinca: null },
@@ -164,6 +178,8 @@ describe('buildInvoiceForSale', () => {
     expect(data!.totalQuintalesOro).toBe(10.8);
     // §19.3 decidió el folio manual solo para compras.
     expect(data!.numeroFactura).toBeNull();
+    // Serie propia: una venta no puede quedar con el prefijo de una compra.
+    expect(data!.numeroInterno).toBe('V-000045');
     expect(data!.metodoPago).toBeNull();
   });
 
@@ -171,6 +187,7 @@ describe('buildInvoiceForSale', () => {
     mocked.saleTransaction.findUnique.mockResolvedValue({
       id: 'st_2',
       businessDate: new Date('2026-09-14T00:00:00.000Z'),
+      numeroInterno: 46,
       total: 500,
       sucursal: { nombre: 'Bodega San Juan' },
       client: { nombre: 'General', rtn: null, telefono: null, direccion: null, claveIhcafe: null, nombreFinca: null },

@@ -274,8 +274,9 @@ apellidos, clave IHCAFE) que respaldan a un cliente.
 
 #### `PurchaseTransaction` / `Purchase`
 
-Cabecera + líneas de una compra por cliente. La cabecera lleva `metodoPago` y `numeroFactura?` —el
-número del talonario físico, capturado a mano (§19.3)—. Cada `Purchase` guarda, además del resultado
+Cabecera + líneas de una compra por cliente. La cabecera lleva `metodoPago`, `numeroFactura?` —el
+número del talonario físico, capturado a mano (§19.3)— y `numeroInterno` —el correlativo que asigna
+la base y que la factura imprime como `C-000123` (§10.2)—. Cada `Purchase` guarda, además del resultado
 (`libras`, `total`), la trazabilidad del pesaje: `pesoBruto`, `numeroSacos`, `taraPorSaco`,
 `porcentajeOro` y `quintalesOro`.
 
@@ -1094,7 +1095,7 @@ servidor autorizó la navegación.
 | `grinding-panel.tsx` | ~330 | Servicio de molido: registro y corrección de libras y monto (§6.12). |
 | `cash-session-panel.tsx` | ~740 | Apertura y cierre de caja, ingresos, salidas y traslados. |
 | `pending-payments-section.tsx` | ~220 | Sección de Caja: compras pendientes, pago y deshacer (§6.13). |
-| `invoice-a4.tsx` | 317 | Hoja de factura A4 con su CSS de impresión (§10.2). Se renderiza en el servidor. |
+| `invoice-a4.tsx` | ~420 | Hoja de factura A4 con su CSS de impresión, en dos copias (§10.2). Se renderiza en el servidor. |
 | `invoice-toolbar.tsx` | 22 | Botón de imprimir de la página de factura; el CSS de impresión lo oculta. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
 | `dashboard-home.tsx` | 382 | Resumen diario y agrupación por producto. |
@@ -1150,6 +1151,7 @@ impresora por una vía distinta, porque el problema es distinto.
 | Camino | `PrintJob` → agente local → TCP 9100 | Diálogo de impresión del navegador |
 | Formato | Buffer binario armado en el servidor | HTML maquetado con `@page { size: A4 }` |
 | Contenido | Solo el resultado: libras, precio, total | Trazabilidad completa del pesaje y firmas |
+| Copias | Dos tiras con corte propio | Dos hojas A4 |
 | Requiere | IP de impresora + agente corriendo | Nada |
 
 ### 10.1 Ticket térmico
@@ -1165,6 +1167,16 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
   línea, los quintales oro si los hay: en 32 columnas las tres cosas no caben juntas. Cada dato sale
   solo si existe, así que una venta vieja sin pesaje se imprime como antes. Vale para compras y
   para ventas, que desde el pesaje (§6.5) guardan los mismos datos.
+
+  Imprime **dos copias**, igual que la factura A4 (§10.2): rotuladas `*** CLIENTE ***` y
+  `*** CONTROL INTERNO ***` bajo el título, con el correlativo interno (`No. C-000123`) debajo. El
+  rótulo va arriba porque en 32 columnas no se puede poner al margen, y es lo que distingue las dos
+  tiras cuando ya están cortadas.
+
+  Las dos van en **un solo `PrintJob`**, cada una con su `GS V` al final: como dos trabajos podían
+  quedar separados en la cola, o fallar uno, la copia del control interno podía no salir nunca. El
+  `numeroInterno` es opcional en `TicketData`: sin él se omite el renglón y las copias siguen
+  siendo dos.
 - `buildSummaryBuffer(data)` — resumen del día con totales y cierre de caja. Bajo `Total Compras`
   imprime el **desglose por forma de pago** —efectivo, depósito, cheque, pendientes—, y cada
   renglón **solo si tiene monto**: un día pagado todo en efectivo sale tan corto como antes. Aparte
@@ -1258,14 +1270,41 @@ valor**. Mientras esté vacío sale como comprobante interno, que es lo que corr
 negocio facture con talonario físico. Activar la facturación autorizada es llenar esos campos en
 Mantenimiento → Empresa; no hay que tocar código.
 
-Lo que **no** incluye es el correlativo automático dentro del rango autorizado: eso exige tabla de
-correlativos y control de concurrencia (§19.3), y hoy el número lo pone a mano quien factura.
+Lo que **no** incluye es el correlativo dentro del rango autorizado por el SAR: ese número es fiscal
+y debe salir del rango declarado en el CAI. El correlativo interno del sistema (`C-000123`) no lo
+sustituye, y hoy el número del talonario lo pone a mano quien factura (§19.3).
 
 #### Numeración
 
-El folio sale de `PurchaseTransaction.numeroFactura`, capturado a mano en la cabecera de la compra
-(§19.3). **Las ventas no llevan folio**: §19.3 lo decidió solo para compras, y la factura de venta
-se identifica por fecha y cliente hasta que se active el CAI.
+Cada comprobante lleva **dos números distintos**, y conviene no confundirlos:
+
+| Número | Origen | Cuándo falta |
+|---|---|---|
+| **Correlativo interno** (`C-000123` / `V-000123`) | Lo asigna la base con una secuencia (`PurchaseTransaction.numeroInterno`, `SaleTransaction.numeroInterno`). Serie propia por tipo. | Nunca: toda transacción lo tiene desde que se guarda. |
+| **Factura No.** | `PurchaseTransaction.numeroFactura`, el talonario físico capturado a mano (§19.3). | Cuando no se facturó en el momento del pesaje. Solo compras. |
+
+El correlativo es **interno**, no el del rango autorizado por el SAR: sirve para identificar el
+comprobante y para casar la copia del cliente con la del control interno, y por eso se imprime
+siempre y va primero en la cabecera. Se eligió una serie por tipo (`C-` y `V-`) para que un número
+suelto no se pueda leer como el del otro documento.
+
+**Lo asigna la secuencia de la base, no la aplicación.** Dos transacciones guardadas al mismo tiempo
+no pueden recibir el mismo número, que es exactamente lo que habría que resolver a mano con un
+`MAX(numeroInterno) + 1`. Las transacciones ya registradas se numeraron en su orden de creación al
+aplicar la migración.
+
+#### Dos copias
+
+La página imprime **dos hojas en un solo trabajo**: `Original — Cliente` y `Copia — Control
+interno`. Es el mismo documento con distinto rótulo, arriba a la derecha y con recuadro, porque es
+lo primero que se busca al tener las dos hojas en la mano.
+
+Van en hojas separadas —y no dos mitades de una A4— para que las dos queden a tamaño completo, con
+su espacio de firmas y con el detalle del pesaje legible.
+
+En el CSS de impresión, el que se saca del flujo es el **contenedor** `.invoice-copias` y no cada
+hoja: posicionando cada `.invoice-sheet` por separado, las dos caían una encima de la otra. El salto
+entre copias es un `break-before: page` sobre la segunda hoja.
 
 ---
 
@@ -1358,6 +1397,7 @@ pnpm dev                    # http://localhost:3000
 | `20260920000000_add_sale_peso_bruto` | `Sale.pesoBruto`, `numeroSacos` y `taraPorSaco`: la venta se pesa como la compra (§6.5). Opcionales, porque las ventas anteriores solo guardaron el neto. |
 | `20260920010000_add_grinding_services` | `GrindingService`: servicio de molido (§6.12). |
 | `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
+| `20260925000000_add_numero_interno` | `PurchaseTransaction.numeroInterno` y `SaleTransaction.numeroInterno`: correlativo interno por secuencia, con backfill en orden de creación (§10.2). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1418,8 +1458,12 @@ Cobertura actual (9 suites, 73 pruebas):
   real cuando está cerrada, estimado cuando está abierta o no existe, y el nombre del signo de la
   diferencia.
 
+- `tests/lib/ticket-copias.test.ts` — que el comprobante térmico salga en dos copias (`CLIENTE` y
+  `CONTROL INTERNO`) dentro del mismo buffer, con el mismo correlativo interno y **un corte `GS V`
+  por copia**: sin el segundo corte las dos salen pegadas en una sola tira.
+
 `payroll` y `reports` usan un doble de Prisma para fijar las reglas de dinero sin base de datos;
-`summary-ticket` inspecciona el buffer ESC/POS como texto.
+`summary-ticket` y `ticket-copias` inspeccionan el buffer ESC/POS como texto.
 
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
 `Request` estándar. La cobertura sigue siendo baja: no hay pruebas de los cálculos de balance,
@@ -1680,7 +1724,7 @@ de precio en Compras y Ventas pasó a ser obligatoria. El pago al productor es, 
 total = (pesoBruto − taraPorSaco × numeroSacos) × precioPorLibra
 ```
 
-### 19.3 Número de factura capturado a mano — **implementado**
+### 19.3 Número de factura capturado a mano, más correlativo interno — **implementado**
 
 El número que aparece en las planillas es el del talonario físico, no uno que deba generar el
 sistema. Se agregó como campo de texto opcional **en la cabecera de la transacción**
@@ -1691,6 +1735,13 @@ control de concurrencia para reproducir un número que ya viene impreso en papel
 
 Es opcional a propósito: no siempre se factura en el momento del pesaje, y el productor no puede
 quedarse esperando por el papel para cobrar.
+
+**Después se agregó, aparte, el correlativo interno** (`numeroInterno`, §10.2). No contradice lo
+anterior: no pretende reproducir el número del talonario ni el del rango autorizado, sino identificar
+el comprobante que imprime el sistema —y casar la copia del cliente con la del control interno—
+cuando el talonario todavía no existe. Lo que se descartó, y sigue descartado, es generar el
+correlativo **fiscal**. La concurrencia no obligó a una tabla de correlativos: la resuelve una
+secuencia de Postgres.
 
 ### 19.4 Hoja de facturación por productor — **pendiente**
 

@@ -53,9 +53,21 @@ export type InvoiceLinea = {
   total: number;
 };
 
+/**
+ * Correlativo interno ya formateado. Serie propia por tipo: `C-` para compras y
+ * `V-` para ventas, para que un número no se pueda leer como el del otro
+ * documento. El relleno a seis dígitos es cosmético; el número es el entero.
+ */
+export function formatNumeroInterno(kind: 'compra' | 'venta', numeroInterno: number): string {
+  return `${kind === 'compra' ? 'C' : 'V'}-${String(numeroInterno).padStart(6, '0')}`;
+}
+
 export type InvoiceData = {
   kind: 'compra' | 'venta';
   titulo: string;
+  /** Correlativo interno del sistema (`C-000123`). Siempre presente. */
+  numeroInterno: string;
+  /** Número del talonario físico. Null cuando no se capturó. */
   numeroFactura: string | null;
   businessDate: string;
   sucursalNombre: string;
@@ -63,6 +75,14 @@ export type InvoiceData = {
   empresa: InvoiceEmpresa;
   cliente: InvoiceCliente;
   lineas: InvoiceLinea[];
+  /** Suma de las líneas, sin ajustes. En ventas coincide con `total`. */
+  subtotal: number;
+  /** Ajustes al pie de una compra; 0 cuando no hubo. Ver §6.4. */
+  bono: number;
+  bonoMotivo: string | null;
+  descuento: number;
+  descuentoMotivo: string | null;
+  /** Lo que se paga o se cobra: `subtotal + bono − descuento`. */
   total: number;
   /** Totales de pie. Se omiten los que no aplican a la transacción. */
   totalLibras: number;
@@ -132,6 +152,7 @@ export async function buildInvoiceForPurchase(transactionId: string): Promise<In
   return {
     kind: 'compra',
     titulo: 'Comprobante de Compra',
+    numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
     numeroFactura: transaction.numeroFactura,
     businessDate: toBusinessDateString(transaction.businessDate),
     sucursalNombre: transaction.sucursal.nombre,
@@ -146,6 +167,11 @@ export async function buildInvoiceForPurchase(transactionId: string): Promise<In
       nombreFinca: transaction.client.nombreFinca,
     },
     lineas,
+    subtotal: lineas.reduce((suma, linea) => suma + linea.total, 0),
+    bono: Number(transaction.bono),
+    bonoMotivo: transaction.bonoMotivo,
+    descuento: Number(transaction.descuento),
+    descuentoMotivo: transaction.descuentoMotivo,
     total: Number(transaction.total),
     ...sumar(lineas),
   };
@@ -176,6 +202,7 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
   return {
     kind: 'venta',
     titulo: 'Comprobante de Venta',
+    numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
     // Las ventas no llevan número de talonario: §19.3 lo decidió solo para compras.
     numeroFactura: null,
     businessDate: toBusinessDateString(transaction.businessDate),
@@ -191,6 +218,12 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
       nombreFinca: transaction.client.nombreFinca,
     },
     lineas,
+    // Las ventas no llevan ajustes al pie: el bono y el descuento son de la compra.
+    subtotal: Number(transaction.total),
+    bono: 0,
+    bonoMotivo: null,
+    descuento: 0,
+    descuentoMotivo: null,
     total: Number(transaction.total),
     ...sumar(lineas),
   };

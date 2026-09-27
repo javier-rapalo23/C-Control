@@ -92,6 +92,12 @@ export const createPurchaseTransactionSchema = z.object({
   // Número del talonario físico; opcional porque no siempre se factura en el
   // momento del pesaje y el productor no puede quedarse esperando por el papel.
   numeroFactura: z.string().trim().min(1).max(40).optional(),
+  // Ajustes al pie: el bono suma y el descuento resta sobre la suma de las líneas.
+  // Se envían en positivo; el signo lo pone el servidor, no quien llama.
+  bono: z.number().min(0).optional(),
+  bonoMotivo: z.string().trim().min(1).max(120).optional(),
+  descuento: z.number().min(0).optional(),
+  descuentoMotivo: z.string().trim().min(1).max(120).optional(),
   items: z.array(createPurchaseLineSchema).min(1),
 });
 

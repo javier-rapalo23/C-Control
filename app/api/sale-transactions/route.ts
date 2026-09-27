@@ -6,12 +6,14 @@ import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 import { computeQuintalesOro } from '@/lib/oro';
+import { formatNumeroInterno } from '@/lib/build-invoice';
 
 function mapTransaction(transaction: {
   id: string;
   businessDate: Date;
   sucursalId: string;
   clientId: string;
+  numeroInterno: number;
   total: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
@@ -52,6 +54,7 @@ function mapTransaction(transaction: {
     businessDate: toBusinessDateString(transaction.businessDate),
     sucursalId: transaction.sucursalId,
     clientId: transaction.clientId,
+    numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
     total: Number(transaction.total),
     createdAt: transaction.createdAt.toISOString(),
     updatedAt: transaction.updatedAt.toISOString(),

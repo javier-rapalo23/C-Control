@@ -30,6 +30,7 @@ const CLIENTE = {
 const COMPRA: InvoiceData = {
   kind: 'compra',
   titulo: 'Comprobante de Compra',
+  numeroInterno: 'C-000123',
   numeroFactura: '00123',
   businessDate: '2026-09-14',
   sucursalNombre: 'Bodega San Juan',
@@ -51,6 +52,11 @@ const COMPRA: InvoiceData = {
       total: 25014,
     },
   ],
+  subtotal: 25014,
+  bono: 0,
+  bonoMotivo: null,
+  descuento: 0,
+  descuentoMotivo: null,
   total: 25014,
   totalLibras: 1137,
   totalQuintalesOro: 4.91,
@@ -131,6 +137,7 @@ describe('InvoiceA4 — venta', () => {
   const VENTA: InvoiceData = {
     kind: 'venta',
     titulo: 'Comprobante de Venta',
+    numeroInterno: 'V-000045',
     numeroFactura: null,
     businessDate: '2026-09-14',
     sucursalNombre: 'Bodega San Juan',
@@ -152,6 +159,11 @@ describe('InvoiceA4 — venta', () => {
         total: 34560,
       },
     ],
+    subtotal: 34560,
+    bono: 0,
+    bonoMotivo: null,
+    descuento: 0,
+    descuentoMotivo: null,
     total: 34560,
     totalLibras: 2500,
     totalQuintalesOro: 10.8,
@@ -172,7 +184,64 @@ describe('InvoiceA4 — venta', () => {
   it('el pie de la tabla cuadra en columnas con el encabezado', () => {
     const encabezado = anchoDeFilas(html, 'th')[0];
     const pies = anchoDeFilas(html, 'td').filter((ancho) => ancho !== 0);
-    expect(encabezado).toBe(6);
+    // Desde que la venta se pesa, lleva las mismas columnas que la compra.
+    expect(encabezado).toBe(9);
     for (const ancho of pies) expect(ancho).toBe(encabezado);
+  });
+});
+
+describe('InvoiceA4 — copias', () => {
+  const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
+
+  /** Hojas que se imprimen: una por copia. */
+  const hojas = html.match(/class="invoice-sheet"/g) ?? [];
+
+  it('imprime dos hojas, una por copia', () => {
+    expect(hojas).toHaveLength(2);
+  });
+
+  it('rotula una copia para el cliente y la otra para el control interno', () => {
+    expect(html).toContain('Original — Cliente');
+    expect(html).toContain('Copia — Control interno');
+  });
+
+  it('las dos copias llevan el mismo correlativo interno', () => {
+    expect(html.match(/C-000123/g)).toHaveLength(2);
+  });
+
+  it('el correlativo interno se imprime aunque no haya folio de talonario', () => {
+    const sinFolio = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, numeroFactura: null }} />);
+    expect(sinFolio).not.toContain('Factura No.');
+    expect(sinFolio.match(/C-000123/g)).toHaveLength(2);
+  });
+});
+
+describe('InvoiceA4 — bono y descuento', () => {
+  it('no imprime el bloque de ajustes cuando no hay ninguno', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
+    expect(html).not.toContain('Subtotal café');
+    expect(html).not.toContain('Descuento');
+  });
+
+  it('imprime subtotal, bono y descuento con su motivo, y el total ya ajustado', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceA4
+        data={{
+          ...COMPRA,
+          subtotal: 25014,
+          bono: 500,
+          bonoMotivo: 'Premio por calidad',
+          descuento: 3000,
+          descuentoMotivo: 'Pago de cortadores',
+          total: 22514,
+        }}
+      />,
+    );
+
+    expect(html).toContain('Subtotal café');
+    expect(html).toContain('Premio por calidad');
+    expect(html).toContain('Pago de cortadores');
+    // El total a pagar es el ajustado, no la suma de las líneas.
+    expect(html).toContain('22,514.00');
   });
 });

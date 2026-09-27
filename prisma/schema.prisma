@@ -121,6 +121,21 @@ model PurchaseTransaction {
   /// línea: una factura ampara la compra completa a un productor, y por línea dos
   /// renglones de la misma compra podrían declarar facturas distintas.
   numeroFactura String?
+  /// Correlativo interno del comprobante, distinto de `numeroFactura` (que es el
+  /// talonario físico y puede venir vacío). Lo asigna la base con una secuencia, no
+  /// la aplicación: dos compras guardadas a la vez no pueden recibir el mismo
+  /// número. Se imprime como `C-000123` en las dos copias de la factura.
+  numeroInterno Int       @unique @default(autoincrement())
+  /// Ajustes al pie de la factura. `bono` suma (premio por calidad, precio
+  /// convenido) y `descuento` resta (pago a cortadores, adelantos ya entregados).
+  /// El motivo se imprime al lado del monto: un descuento sin explicación es lo que
+  /// el productor reclama.
+  bono             Decimal @default(0) @db.Decimal(12, 2)
+  bonoMotivo       String?
+  descuento        Decimal @default(0) @db.Decimal(12, 2)
+  descuentoMotivo  String?
+  /// **Lo que se le paga al productor**: suma de las líneas + bono − descuento.
+  /// Es lo que sale de la caja; el costo del café en sí es la suma de `items`.
   total        Decimal    @db.Decimal(12, 2)
   /// Liquidación de una compra con `metodoPago = "pendiente"`: la fecha de caja en
   /// que se pagó y con qué. Nulos mientras siga pendiente. Si se pagó en efectivo,
@@ -309,6 +324,9 @@ model SaleTransaction {
   businessDate DateTime @db.Date
   sucursalId   String
   clientId     String
+  /// Correlativo interno del comprobante, en serie propia: se imprime `V-000123`
+  /// para no confundirlo con el `C-000123` de una compra. Lo asigna la base.
+  numeroInterno Int     @unique @default(autoincrement())
   total        Decimal  @db.Decimal(12, 2)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

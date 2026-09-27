@@ -633,7 +633,9 @@ export default function SalesPanel() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
                     <strong>{transaction.client.nombre}</strong>
-                    <div style={{ color: 'var(--text-soft)' }}>{transaction.items.length} items</div>
+                    <div style={{ color: 'var(--text-soft)' }}>
+                      {transaction.numeroInterno} · {transaction.items.length} items
+                    </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>

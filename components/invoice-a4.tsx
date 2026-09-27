@@ -9,9 +9,13 @@ import type { InvoiceData, InvoiceLinea } from '@/lib/build-invoice';
  * maqueta HTML y se deja que el navegador lo mande a la impresora que el usuario
  * ya tiene configurada. No hace falta agente ni IP.
  *
- * El CSS de impresión oculta *todo* el documento y vuelve a mostrar solo la hoja,
+ * El CSS de impresión oculta *todo* el documento y vuelve a mostrar solo las hojas,
  * en vez de enumerar las clases del encabezado y el menú de la aplicación: así un
  * cambio en la navegación no reaparece dentro de la factura.
+ *
+ * Se imprimen **dos copias** en un solo trabajo: la del cliente y la del control
+ * interno. Son el mismo documento con distinto rótulo, y van en hojas separadas
+ * para que las dos queden a tamaño completo y con su espacio de firmas.
  */
 
 const CSS = `
@@ -42,6 +46,21 @@ const CSS = `
 .invoice-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .invoice-empresa-nombre { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
 .invoice-empresa-dato { margin: 0; font-size: 9pt; color: #444; }
+
+/* Rótulo de la copia. Es lo primero que se busca al tener las dos hojas en la
+   mano, así que va arriba del título y con recuadro. */
+.invoice-copia {
+  display: inline-block;
+  border: 1.5px solid #111;
+  border-radius: 3px;
+  padding: 2px 7px;
+  margin-bottom: 6px;
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.invoice-copia-interno { background: #111; color: #fff; }
 
 .invoice-meta { text-align: right; min-width: 52mm; margin: 0; }
 .invoice-titulo { font-size: 12pt; font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -98,25 +117,41 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
 .invoice-total-label { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.4px; }
 .invoice-total strong { font-size: 15pt; }
 
+/* Ajustes al pie (bono y descuento). Alineados con el total para que se lean
+   como la cuenta que llevan al total, no como notas sueltas. */
+.invoice-ajustes { margin-top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 9.5pt; }
+.invoice-ajuste { display: flex; gap: 16px; align-items: baseline; }
+.invoice-ajuste-label { color: #444; }
+.invoice-ajuste-monto { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+.invoice-ajuste-motivo { font-size: 8.5pt; color: #666; font-style: italic; }
+
 .invoice-pie { margin-top: 10px; font-size: 9.5pt; }
 
 .invoice-firmas { margin-top: 26mm; display: flex; justify-content: space-between; gap: 30px; }
 .invoice-firma { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 9pt; color: #444; }
 
 @media print {
-  body * { visibility: hidden !important; }
-  .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
+  /* Se oculta todo y se vuelve a mostrar solo el camino hasta las hojas, en vez de
+     enumerar las clases del encabezado y el menú: así un cambio en la navegación no
+     reaparece dentro de una factura ya impresa.
+     Se usa display:none y no visibility:hidden porque lo oculto no debe reservar
+     espacio, y así las hojas se quedan en el flujo normal: sacándolas con position
+     absolute, el salto de página entre copias deja de ser confiable. */
+  body > *,
+  .app-shell > *,
+  .app-main > * { display: none !important; }
+  body > .app-shell,
+  .app-shell > .app-main,
+  .app-main > .invoice-copias { display: block !important; }
   .invoice-sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
     width: 100%;
     max-width: none;
     margin: 0;
     padding: 0;
     box-shadow: none;
   }
-  .invoice-toolbar { display: none !important; }
+  /* Cada copia en su propia hoja. */
+  .invoice-sheet + .invoice-sheet { break-before: page; }
   /* Una compra larga puede pasar de página; el encabezado de la tabla se repite. */
   table.invoice-lineas thead { display: table-header-group; }
   table.invoice-lineas tr { break-inside: avoid; }
@@ -197,13 +232,17 @@ function FilaVenta({ linea }: { linea: InvoiceLinea }) {
   );
 }
 
-export default function InvoiceA4({ data }: { data: InvoiceData }) {
+/** Las dos copias que se imprimen del mismo comprobante. */
+const COPIAS = [
+  { id: 'cliente', rotulo: 'Original — Cliente' },
+  { id: 'interno', rotulo: 'Copia — Control interno' },
+] as const;
+
+function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[number] }) {
   const esCompra = data.kind === 'compra';
   const { empresa, cliente, lineas } = data;
 
   return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <article className="invoice-sheet">
         <header className="invoice-top">
           <div>
@@ -215,7 +254,16 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
           </div>
 
           <dl className="invoice-meta">
+            <p className={`invoice-copia${copia.id === 'interno' ? ' invoice-copia-interno' : ''}`}>
+              {copia.rotulo}
+            </p>
             <p className="invoice-titulo">{data.titulo}</p>
+            {/* El correlativo interno va primero y siempre: el del talonario puede
+                venir vacío, y es este el que casa las dos copias. */}
+            <div className="invoice-meta-fila invoice-folio">
+              <dt>No.</dt>
+              <dd>{data.numeroInterno}</dd>
+            </div>
             {data.numeroFactura ? (
               <div className="invoice-meta-fila invoice-folio">
                 <dt>Factura No.</dt>
@@ -296,7 +344,9 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
                 <td />
                 <td>{data.totalQuintalesOro !== null ? numero(data.totalQuintalesOro) : '—'}</td>
                 <td />
-                <td>{lempiras(data.total)}</td>
+                {/* La columna suma las líneas, no lo que se paga: el bono y el
+                    descuento van al pie, o esta fila no cuadraría con sus valores. */}
+                <td>{lempiras(data.subtotal)}</td>
               </tr>
             ) : (
               <tr>
@@ -306,11 +356,41 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
                 <td />
                 <td>{data.totalQuintalesOro !== null ? numero(data.totalQuintalesOro) : '—'}</td>
                 <td />
-                <td>{lempiras(data.total)}</td>
+                <td>{lempiras(data.subtotal)}</td>
               </tr>
             )}
           </tfoot>
         </table>
+
+        {/* Sin ajustes, el pie queda igual que antes: solo el total. Con ellos se
+            imprime de dónde sale, que es lo que el productor revisa. */}
+        {data.bono > 0 || data.descuento > 0 ? (
+          <div className="invoice-ajustes">
+            <div className="invoice-ajuste">
+              <span className="invoice-ajuste-label">Subtotal café</span>
+              <span className="invoice-ajuste-monto">{lempiras(data.subtotal)}</span>
+            </div>
+            {data.bono > 0 ? (
+              <div className="invoice-ajuste">
+                <span className="invoice-ajuste-label">
+                  Bono {data.bonoMotivo ? <span className="invoice-ajuste-motivo">({data.bonoMotivo})</span> : null}
+                </span>
+                <span className="invoice-ajuste-monto">+ {lempiras(data.bono)}</span>
+              </div>
+            ) : null}
+            {data.descuento > 0 ? (
+              <div className="invoice-ajuste">
+                <span className="invoice-ajuste-label">
+                  Descuento{' '}
+                  {data.descuentoMotivo ? (
+                    <span className="invoice-ajuste-motivo">({data.descuentoMotivo})</span>
+                  ) : null}
+                </span>
+                <span className="invoice-ajuste-monto">− {lempiras(data.descuento)}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="invoice-total">
           <span className="invoice-total-label">{esCompra ? 'Total a pagar' : 'Total'}</span>
@@ -324,6 +404,18 @@ export default function InvoiceA4({ data }: { data: InvoiceData }) {
           <div className="invoice-firma">Recibí conforme</div>
         </div>
       </article>
+  );
+}
+
+export default function InvoiceA4({ data }: { data: InvoiceData }) {
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <div className="invoice-copias">
+        {COPIAS.map((copia) => (
+          <Hoja key={copia.id} data={data} copia={copia} />
+        ))}
+      </div>
     </>
   );
 }

@@ -84,6 +84,16 @@ export type PurchaseTransactionDTO = {
   metodoPago: string;
   /** Número del talonario físico, capturado a mano. Nulo si aún no se facturó. */
   numeroFactura: string | null;
+  /** Correlativo interno ya formateado (`C-000123`). Lo asigna la base. */
+  numeroInterno: string;
+  /** Suma de las líneas: el café por su cuenta, sin ajustes. */
+  subtotal: number;
+  /** Ajustes al pie: el bono suma y el descuento resta. Cero si no hubo. */
+  bono: number;
+  bonoMotivo: string | null;
+  descuento: number;
+  descuentoMotivo: string | null;
+  /** Lo que se le paga al productor: `subtotal + bono − descuento`. */
   total: number;
   /** Fecha de caja en que se pagó una compra pendiente; nulo si sigue pendiente. */
   pagoFecha: string | null;
@@ -134,6 +144,8 @@ export type SaleTransactionDTO = {
   businessDate: string;
   sucursalId: string;
   clientId: string;
+  /** Correlativo interno ya formateado (`V-000123`). Lo asigna la base. */
+  numeroInterno: string;
   total: number;
   createdAt: string;
   updatedAt: string;

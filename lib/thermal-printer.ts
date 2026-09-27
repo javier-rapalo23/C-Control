@@ -61,15 +61,36 @@ export type TicketData = {
     porcentajeOro?: number | null;
     precioPorQuintalOro?: number | null;
   }>;
+  /** Suma de las líneas. Solo se imprime si hay bono o descuento que explicar. */
+  subtotal?: number;
+  bono?: number;
+  bonoMotivo?: string | null;
+  descuento?: number;
+  descuentoMotivo?: string | null;
   total: number;
   title?: string;
+  /** Correlativo interno ya formateado (`C-000123`). Ver `lib/build-invoice.ts`. */
+  numeroInterno?: string;
 };
 
-export function buildTicketBuffer(data: TicketData): Buffer {
+/**
+ * Las dos copias que salen de la térmica, igual que en la factura A4: la que se
+ * entrega y la que se archiva. Van en el mismo trabajo, cada una con su corte,
+ * porque dos trabajos podían quedar separados en la cola y salir uno sin el otro.
+ */
+const TICKET_COPIAS = ['Cliente', 'Control interno'] as const;
+
+function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number]): Buffer[] {
   const dash = '-'.repeat(LINE_WIDTH);
   const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'C-CONTROL'), bold(false)];
 
   chunks.push(text(data.title ?? 'Comprobante de Compra'));
+  // El rótulo va arriba: con el ticket en la mano es lo que dice cuál de las dos
+  // copias es, y en 32 columnas no se puede poner al margen.
+  chunks.push(bold(true));
+  chunks.push(text(`*** ${copia.toUpperCase()} ***`));
+  if (data.numeroInterno) chunks.push(text(`No. ${data.numeroInterno}`));
+  chunks.push(bold(false));
   if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));
   if (data.company.telefono) chunks.push(text(`Tel: ${data.company.telefono}`));
   if (data.company.direccion) chunks.push(text(data.company.direccion));
@@ -113,6 +134,24 @@ export function buildTicketBuffer(data: TicketData): Buffer {
   }
 
   chunks.push(text(dash));
+
+  // Sin ajustes el pie queda igual que siempre: una sola línea de total. Con ellos
+  // se imprime de dónde sale el total, porque es lo primero que se reclama.
+  const bono = data.bono ?? 0;
+  const descuento = data.descuento ?? 0;
+  if (bono > 0 || descuento > 0) {
+    const subtotal = data.subtotal ?? data.items.reduce((suma, item) => suma + item.total, 0);
+    chunks.push(text(twoColumns('Subtotal:', `L ${subtotal.toFixed(2)}`)));
+    if (bono > 0) {
+      chunks.push(text(twoColumns('Bono:', `+L ${bono.toFixed(2)}`)));
+      if (data.bonoMotivo) chunks.push(text(` ${data.bonoMotivo}`));
+    }
+    if (descuento > 0) {
+      chunks.push(text(twoColumns('Descuento:', `-L ${descuento.toFixed(2)}`)));
+      if (data.descuentoMotivo) chunks.push(text(` ${data.descuentoMotivo}`));
+    }
+  }
+
   chunks.push(bold(true));
   chunks.push(text(padLeft(`TOTAL: L ${data.total.toFixed(2)}`, LINE_WIDTH)));
   chunks.push(bold(false));
@@ -122,7 +161,11 @@ export function buildTicketBuffer(data: TicketData): Buffer {
   chunks.push(raw('\n\n\n'));
   chunks.push(cut());
 
-  return Buffer.concat(chunks);
+  return chunks;
+}
+
+export function buildTicketBuffer(data: TicketData): Buffer {
+  return Buffer.concat(TICKET_COPIAS.flatMap((copia) => ticketCopyChunks(data, copia)));
 }
 
 export type SummaryData = {

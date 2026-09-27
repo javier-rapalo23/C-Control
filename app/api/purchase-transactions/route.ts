@@ -7,6 +7,7 @@ import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
 import { computeQuintalesOro } from '@/lib/oro';
 import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
+import { formatNumeroInterno } from '@/lib/build-invoice';
 
 function mapTransaction(transaction: {
   id: string;
@@ -15,6 +16,11 @@ function mapTransaction(transaction: {
   clientId: string;
   metodoPago: string;
   numeroFactura: string | null;
+  numeroInterno: number;
+  bono: Prisma.Decimal;
+  bonoMotivo: string | null;
+  descuento: Prisma.Decimal;
+  descuentoMotivo: string | null;
   total: Prisma.Decimal;
   pagoFecha: Date | null;
   pagoMetodo: string | null;
@@ -57,6 +63,13 @@ function mapTransaction(transaction: {
     clientId: transaction.clientId,
     metodoPago: transaction.metodoPago,
     numeroFactura: transaction.numeroFactura,
+    numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
+    // El subtotal no se guarda: es la suma de las líneas, que ya viajan en la respuesta.
+    subtotal: transaction.items.reduce((suma, item) => suma + Number(item.total), 0),
+    bono: Number(transaction.bono),
+    bonoMotivo: transaction.bonoMotivo,
+    descuento: Number(transaction.descuento),
+    descuentoMotivo: transaction.descuentoMotivo,
     total: Number(transaction.total),
     pagoFecha: transaction.pagoFecha ? toBusinessDateString(transaction.pagoFecha) : null,
     pagoMetodo: transaction.pagoMetodo,
@@ -181,7 +194,16 @@ export async function POST(request: Request) {
         }),
       );
 
-      const total = items.reduce((accumulator, item) => accumulator.add(item.total), new Prisma.Decimal(0));
+      // El café por su cuenta: es lo que reportan compras por producto y por cliente.
+      const subtotal = items.reduce((accumulator, item) => accumulator.add(item.total), new Prisma.Decimal(0));
+      const bono = new Prisma.Decimal(payload.bono ?? 0);
+      const descuento = new Prisma.Decimal(payload.descuento ?? 0);
+      // Lo que se le paga al productor, y por tanto lo que sale de la caja.
+      const total = subtotal.add(bono).sub(descuento);
+
+      if (total.isNegative()) {
+        throw new Error('NEGATIVE_TOTAL');
+      }
 
       const createdTransaction = await tx.purchaseTransaction.create({
         data: {
@@ -190,6 +212,10 @@ export async function POST(request: Request) {
           clientId: client.id,
           metodoPago: payload.metodoPago ?? DEFAULT_PAYMENT_METHOD,
           numeroFactura: payload.numeroFactura ?? null,
+          bono,
+          bonoMotivo: payload.bonoMotivo ?? null,
+          descuento,
+          descuentoMotivo: payload.descuentoMotivo ?? null,
           total,
           items: {
             create: items,
@@ -209,6 +235,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === 'Client not found') {
       return failure('NOT_FOUND', error.message, 404);
+    }
+
+    if (error instanceof Error && error.message === 'NEGATIVE_TOTAL') {
+      return failure('VALIDATION_ERROR', 'El descuento no puede ser mayor que el café más el bono', 400);
     }
 
     if (error instanceof Error && error.message.startsWith('Producto not found:')) {

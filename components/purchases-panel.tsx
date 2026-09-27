@@ -78,6 +78,10 @@ export default function PurchasesPanel() {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
   const [numeroFactura, setNumeroFactura] = useState('');
+  const [bono, setBono] = useState('');
+  const [bonoMotivo, setBonoMotivo] = useState('');
+  const [descuento, setDescuento] = useState('');
+  const [descuentoMotivo, setDescuentoMotivo] = useState('');
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
@@ -145,6 +149,12 @@ export default function PurchasesPanel() {
     () => cart.reduce((sum, item) => sum + computeDerived(item).subtotal, 0),
     [cart],
   );
+
+  // El servidor recalcula el total al guardar; esto solo tiene que coincidir con él
+  // a la vista de quien paga.
+  const bonoNumero = Math.max(0, Number(bono) || 0);
+  const descuentoNumero = Math.max(0, Number(descuento) || 0);
+  const totalAPagar = cartTotal + bonoNumero - descuentoNumero;
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) ?? null,
@@ -232,6 +242,11 @@ export default function PurchasesPanel() {
       return;
     }
 
+    if (totalAPagar < 0) {
+      setError('El descuento no puede ser mayor que el café más el bono');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -244,6 +259,10 @@ export default function PurchasesPanel() {
           clientId: selectedClientId,
           metodoPago,
           numeroFactura: numeroFactura.trim() || undefined,
+          bono: bonoNumero > 0 ? bonoNumero : undefined,
+          bonoMotivo: bonoNumero > 0 ? bonoMotivo.trim() || undefined : undefined,
+          descuento: descuentoNumero > 0 ? descuentoNumero : undefined,
+          descuentoMotivo: descuentoNumero > 0 ? descuentoMotivo.trim() || undefined : undefined,
           items: cart.map((item) => ({
             productoId: item.productoId,
             pesoBruto: Number(item.pesoBruto),
@@ -258,6 +277,10 @@ export default function PurchasesPanel() {
       setCart([]);
       setMetodoPago(DEFAULT_PAYMENT_METHOD);
       setNumeroFactura('');
+      setBono('');
+      setBonoMotivo('');
+      setDescuento('');
+      setDescuentoMotivo('');
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
@@ -621,8 +644,48 @@ export default function PurchasesPanel() {
               })
             )}
           </div>
+          {/* Ajustes al pie de la factura: el bono suma y el descuento resta sobre el
+              café. El descuento es donde entra el pago a los cortadores de una finca. */}
+          <div className="row" style={{ marginTop: 12 }}>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Bono (L)
+              <input value={bono} onChange={(event) => setBono(event.target.value)} type="number" step="0.01" min="0" placeholder="0.00" />
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Motivo del bono
+              <input value={bonoMotivo} onChange={(event) => setBonoMotivo(event.target.value)} placeholder="opcional" maxLength={120} />
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Descuento (L)
+              <input
+                value={descuento}
+                onChange={(event) => setDescuento(event.target.value)}
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+              />
+            </label>
+            <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
+              Motivo del descuento
+              <input
+                value={descuentoMotivo}
+                onChange={(event) => setDescuentoMotivo(event.target.value)}
+                placeholder="Ej. pago de cortadores"
+                maxLength={120}
+              />
+            </label>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
-            <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
+            <div>
+              <div style={{ color: 'var(--text-soft)', fontSize: 13 }}>
+                Café: L {cartTotal.toFixed(2)}
+                {bonoNumero > 0 ? ` · bono +L ${bonoNumero.toFixed(2)}` : ''}
+                {descuentoNumero > 0 ? ` · descuento −L ${descuentoNumero.toFixed(2)}` : ''}
+              </div>
+              <strong>Total a pagar: L {totalAPagar.toFixed(2)}</strong>
+            </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
               {/* Del talonario físico: el sistema no lo genera (§19.3). */}
               <label style={{ minWidth: 140 }}>
@@ -666,7 +729,8 @@ export default function PurchasesPanel() {
                   <div>
                     <strong>{transaction.client.nombre}</strong>
                     <div style={{ color: 'var(--text-soft)' }}>
-                      {transaction.items.length} items · {paymentMethodLabel(transaction.metodoPago)}
+                      {transaction.numeroInterno} · {transaction.items.length} items ·{' '}
+                      {paymentMethodLabel(transaction.metodoPago)}
                       {transaction.metodoPago === PENDING_PAYMENT_METHOD
                         ? transaction.pagoFecha
                           ? ` · pagada el ${transaction.pagoFecha} (${paymentMethodLabel(transaction.pagoMetodo ?? '')})`
@@ -674,6 +738,19 @@ export default function PurchasesPanel() {
                         : null}
                       {transaction.numeroFactura ? ` · Factura ${transaction.numeroFactura}` : ''}
                     </div>
+                    {/* Solo aparece si hubo ajustes: así se ve por qué el total no es
+                        la suma de las líneas. */}
+                    {transaction.bono > 0 || transaction.descuento > 0 ? (
+                      <div style={{ color: 'var(--text-soft)', fontSize: 12 }}>
+                        Café L {transaction.subtotal.toFixed(2)}
+                        {transaction.bono > 0
+                          ? ` · bono +L ${transaction.bono.toFixed(2)}${transaction.bonoMotivo ? ` (${transaction.bonoMotivo})` : ''}`
+                          : ''}
+                        {transaction.descuento > 0
+                          ? ` · descuento −L ${transaction.descuento.toFixed(2)}${transaction.descuentoMotivo ? ` (${transaction.descuentoMotivo})` : ''}`
+                          : ''}
+                      </div>
+                    ) : null}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>

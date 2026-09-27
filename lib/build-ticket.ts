@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { toBusinessDateString } from '@/lib/business-date';
 import { buildTicketBuffer, buildSummaryBuffer } from '@/lib/thermal-printer';
 import { decimalToNumber, getLedgerByDate, resolveSucursalId } from '@/lib/ledger';
+import { formatNumeroInterno } from '@/lib/build-invoice';
 import { getCashSession } from '@/lib/cash-session';
 
 /** Tara total en libras. Null cuando la línea no se pesó (ventas y compras viejas). */
@@ -38,6 +39,7 @@ export async function buildTicketForTransaction(transactionId: string) {
     businessDate: toBusinessDateString(transaction.businessDate),
     sucursalNombre: transaction.sucursal.nombre,
     clientNombre: transaction.client.nombre,
+    numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
     items: transaction.items.map((item) => ({
       productoNombre: item.productoNombre,
       libras: Number(item.libras),
@@ -48,6 +50,10 @@ export async function buildTicketForTransaction(transactionId: string) {
       taraTotal: taraTotal(item.taraPorSaco, item.numeroSacos),
       quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
     })),
+    bono: Number(transaction.bono),
+    bonoMotivo: transaction.bonoMotivo,
+    descuento: Number(transaction.descuento),
+    descuentoMotivo: transaction.descuentoMotivo,
     total: Number(transaction.total),
   });
 
@@ -81,6 +87,7 @@ export async function buildTicketForSaleTransaction(transactionId: string) {
     businessDate: toBusinessDateString(transaction.businessDate),
     sucursalNombre: transaction.sucursal.nombre,
     clientNombre: transaction.client.nombre,
+    numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
     items: transaction.items.map((item) => ({
       productoNombre: item.productoNombre ?? '',
       libras: item.libras !== null ? Number(item.libras) : 0,
