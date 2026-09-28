@@ -71,6 +71,11 @@ export type TicketData = {
   title?: string;
   /** Correlativo interno ya formateado (`C-000123`). Ver `lib/build-invoice.ts`. */
   numeroInterno?: string;
+  /**
+   * Compra o venta. La compra **no imprime el conteo de sacos**, igual que su
+   * factura A4: la tara ya dice lo que se descuenta. En la venta sí sale.
+   */
+  kind?: 'compra' | 'venta';
 };
 
 /**
@@ -119,10 +124,11 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
     // El pesaje va debajo del neto para que el productor pueda rehacer la cuenta:
     // bruto menos tara es lo que se le paga.
     if (item.pesoBruto || item.taraTotal || item.numeroSacos || item.quintalesOro) {
+      const conSacos = data.kind !== 'compra';
       const bruto = item.pesoBruto ? `Bruto ${item.pesoBruto.toFixed(2)}lb` : '';
       const tara = item.taraTotal
-        ? `Tara ${item.taraTotal.toFixed(2)}lb${item.numeroSacos ? ` (${item.numeroSacos} sacos)` : ''}`
-        : item.numeroSacos
+        ? `Tara ${item.taraTotal.toFixed(2)}lb${conSacos && item.numeroSacos ? ` (${item.numeroSacos} sacos)` : ''}`
+        : conSacos && item.numeroSacos
           ? `${item.numeroSacos} sacos`
           : '';
       const oro = item.quintalesOro ? `Qq oro ${item.quintalesOro.toFixed(2)}` : '';

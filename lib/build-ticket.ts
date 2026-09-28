@@ -40,6 +40,7 @@ export async function buildTicketForTransaction(transactionId: string) {
     sucursalNombre: transaction.sucursal.nombre,
     clientNombre: transaction.client.nombre,
     numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
+    kind: 'compra',
     items: transaction.items.map((item) => ({
       productoNombre: item.productoNombre,
       libras: Number(item.libras),
@@ -88,6 +89,7 @@ export async function buildTicketForSaleTransaction(transactionId: string) {
     sucursalNombre: transaction.sucursal.nombre,
     clientNombre: transaction.client.nombre,
     numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
+    kind: 'venta',
     items: transaction.items.map((item) => ({
       productoNombre: item.productoNombre ?? '',
       libras: item.libras !== null ? Number(item.libras) : 0,

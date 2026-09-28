@@ -93,6 +93,17 @@ describe('InvoiceA4 — compra', () => {
     expect(html).toContain('63.00');
   });
 
+  // El productor recibe la cuenta de lo que se le paga: la tara ya dice cuánto se
+  // descuenta del bruto, y el rendimiento es una estimación del beneficio.
+  it('no imprime el conteo de sacos ni el rendimiento', () => {
+    expect(html).not.toContain('Sacos');
+    expect(html).not.toContain('Rend.');
+    // El 54 % del rendimiento tampoco puede salir en ninguna celda.
+    expect(html).not.toContain('54.00 %');
+    // Los quintales oro sí: es la cifra con la que el productor compara.
+    expect(html).toContain('4.91');
+  });
+
   it('rotula al cliente como productor y muestra finca y clave IHCAFE', () => {
     expect(html).toContain('Productor');
     expect(html).toContain('El Rosal');
@@ -102,7 +113,8 @@ describe('InvoiceA4 — compra', () => {
   it('el pie de la tabla cuadra en columnas con el encabezado', () => {
     const encabezado = anchoDeFilas(html, 'th')[0];
     const pies = anchoDeFilas(html, 'td').filter((ancho) => ancho !== 0);
-    expect(encabezado).toBe(9);
+    // Siete desde que se quitaron Sacos y Rend.
+    expect(encabezado).toBe(7);
     for (const ancho of pies) expect(ancho).toBe(encabezado);
   });
 
@@ -179,6 +191,13 @@ describe('InvoiceA4 — venta', () => {
   it('rotula al cliente como cliente y omite la forma de pago', () => {
     expect(html).toContain('Cliente');
     expect(html).not.toContain('Forma de pago');
+  });
+
+  // Lo que se quitó es de la compra: la venta es a un comprador que sí revisa el
+  // detalle del lote.
+  it('conserva sacos y rendimiento, que la compra ya no imprime', () => {
+    expect(html).toContain('Sacos');
+    expect(html).toContain('Rend.');
   });
 
   it('el pie de la tabla cuadra en columnas con el encabezado', () => {

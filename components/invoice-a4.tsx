@@ -180,6 +180,14 @@ function Campo({ etiqueta, valor }: { etiqueta: string; valor: string | null }) 
   );
 }
 
+/**
+ * La compra **no imprime el conteo de sacos ni el rendimiento**: la tara ya explica
+ * lo que se descuenta del bruto, y el rendimiento es una estimación del beneficio
+ * que no forma parte de lo que se le liquida al productor. Los dos datos se siguen
+ * capturando y guardando; lo que cambió es el papel.
+ *
+ * Los quintales oro sí salen: es la cifra con la que el productor compara.
+ */
 function FilaCompra({ linea }: { linea: InvoiceLinea }) {
   const taraTotal =
     linea.taraPorSaco !== null && linea.numeroSacos !== null ? linea.taraPorSaco * linea.numeroSacos : null;
@@ -188,10 +196,8 @@ function FilaCompra({ linea }: { linea: InvoiceLinea }) {
     <tr>
       <td>{linea.productoNombre}</td>
       <td>{linea.pesoBruto !== null ? numero(linea.pesoBruto) : '—'}</td>
-      <td>{linea.numeroSacos ?? '—'}</td>
       <td>{taraTotal !== null ? numero(taraTotal) : '—'}</td>
       <td>{numero(linea.libras)}</td>
-      <td>{linea.porcentajeOro !== null ? `${numero(linea.porcentajeOro)} %` : '—'}</td>
       <td>{linea.quintalesOro !== null ? numero(linea.quintalesOro) : '—'}</td>
       <td>{linea.precioPorLibra !== null ? lempiras(linea.precioPorLibra) : '—'}</td>
       <td>{lempiras(linea.total)}</td>
@@ -308,10 +314,8 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
               <tr>
                 <th>Tipo de café</th>
                 <th>Bruto (lb)</th>
-                <th>Sacos</th>
                 <th>Tara (lb)</th>
                 <th>Neto (lb)</th>
-                <th>Rend.</th>
                 <th>QQ oro</th>
                 <th>Precio / lb</th>
                 <th>Valor</th>
@@ -339,9 +343,9 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
             {esCompra ? (
               <tr>
                 <td>Totales</td>
-                <td colSpan={3} />
+                {/* Bruto y tara no se totalizan: lo que se paga es el neto. */}
+                <td colSpan={2} />
                 <td>{numero(data.totalLibras)}</td>
-                <td />
                 <td>{data.totalQuintalesOro !== null ? numero(data.totalQuintalesOro) : '—'}</td>
                 <td />
                 {/* La columna suma las líneas, no lo que se paga: el bono y el

@@ -142,7 +142,8 @@ Lo que **no** se resuelve llenándolos es el correlativo fiscal (§7).
 | Identificación | Rótulo de la copia, título, `No.` interno, `Factura No.`, fecha, sucursal | El interno va primero y siempre |
 | Bloque fiscal | CAI, rango autorizado, fecha límite | Solo con CAI configurado |
 | Cliente | Nombre, finca, clave IHCAFE, RTN, teléfono, dirección | Cada dato sale solo si existe. Se rotula **Productor** en compras y **Cliente** en ventas |
-| Líneas | Tipo de café, bruto, sacos, tara, neto, rendimiento, quintales oro, precio, valor | Lo que no se pesó sale con guion, no con cero |
+| Líneas (compra) | Tipo de café, bruto, tara, neto, quintales oro, precio, valor | **Sin sacos ni rendimiento**: la tara ya explica el descuento y el rendimiento es una estimación del beneficio |
+| Líneas (venta) | Concepto, bruto, sacos, tara, neto, rendimiento, quintales oro, precio, valor | Detalle completo; lo revisa un comprador. Lo que no se pesó sale con guion, no con cero |
 | Ajustes al pie | Subtotal café, bono (+) y descuento (−) con su motivo | **Solo en compras**, y solo si hubo alguno |
 | Total | `Total a pagar` en compras, `Total` en ventas | Es el ajustado: subtotal + bono − descuento |
 | Forma de pago | Efectivo, depósito, cheque, pendiente | **Solo en compras** |

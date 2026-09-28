@@ -41,6 +41,19 @@ describe('buildTicketBuffer — copias', () => {
     expect(ocurrencias(texto, CORTE.toString('latin1'))).toBe(2);
   });
 
+  // Mismo criterio que la factura A4: en la compra la tara ya explica el descuento.
+  it('no imprime el conteo de sacos en una compra, y sí en una venta', () => {
+    const pesaje = { pesoBruto: 1200, numeroSacos: 4, taraTotal: 63 };
+    const linea = { ...DATOS.items[0], ...pesaje };
+
+    const compra = buildTicketBuffer({ ...DATOS, kind: 'compra', items: [linea] }).toString('latin1');
+    expect(compra).toContain('Tara 63.00lb');
+    expect(compra).not.toContain('sacos');
+
+    const venta = buildTicketBuffer({ ...DATOS, kind: 'venta', items: [linea] }).toString('latin1');
+    expect(venta).toContain('Tara 63.00lb (4 sacos)');
+  });
+
   it('omite el renglón del correlativo cuando no se le pasa', () => {
     const sinNumero = buildTicketBuffer({ ...DATOS, numeroInterno: undefined }).toString('latin1');
     expect(sinNumero).not.toContain('No. ');

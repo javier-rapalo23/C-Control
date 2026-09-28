@@ -1172,8 +1172,10 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
   `precioPorQuintalOro`, imprime el detalle en formato oro; en caso contrario, `lb × precio`.
   Debajo del neto imprime el **pesaje** —`Bruto 250.00lb`, `Tara 5.00lb (2 sacos)`— y, en otra
   línea, los quintales oro si los hay: en 32 columnas las tres cosas no caben juntas. Cada dato sale
-  solo si existe, así que una venta vieja sin pesaje se imprime como antes. Vale para compras y
-  para ventas, que desde el pesaje (§6.5) guardan los mismos datos.
+  solo si existe, así que una venta vieja sin pesaje se imprime como antes.
+
+  El campo `kind` distingue compra de venta: **en la compra no se imprime el conteo de sacos**, igual
+  que en su factura A4 (§10.2). Es el único dato que cambia entre las dos.
 
   Imprime **dos copias**, igual que la factura A4 (§10.2): rotuladas `*** CLIENTE ***` y
   `*** CONTROL INTERNO ***` bajo el título, con el correlativo interno (`No. C-000123`) debajo. El
@@ -1259,9 +1261,20 @@ documentos no cargan lo mismo: en 32 columnas solo cabe el resultado, y en A4 s�
 trazabilidad del pesaje (bruto, sacos, tara, rendimiento, quintales oro) que es justo lo que el
 productor revisa cuando le liquidan—. Devuelve datos y no un buffer: en A4 maqueta el navegador.
 
-Las dos hojas —compra y venta— llevan las mismas columnas de pesaje: **Bruto, Sacos, Tara, Neto**,
-rendimiento, quintales oro, precio y valor. La de venta las ganó cuando la venta pasó a pesarse
-(§6.5); en las ventas anteriores esas celdas salen con guion, sin inventar un bruto.
+**Las columnas no son las mismas en las dos hojas**, y la diferencia es deliberada:
+
+| | Compra | Venta |
+| --- | --- | --- |
+| Columnas | Tipo, **Bruto, Tara, Neto**, QQ oro, precio, valor | Concepto, **Bruto, Sacos, Tara, Neto**, Rend., QQ oro, precio, valor |
+
+La compra **no imprime el conteo de sacos ni el rendimiento** (decisión del 27/09/2026): la tara ya
+dice cuánto se descuenta del bruto, y el rendimiento es una estimación del beneficio que no forma
+parte de lo que se le liquida al productor. Los dos datos se siguen **capturando y guardando**; lo
+que cambió es el papel. Los quintales oro sí salen: es la cifra con la que el productor compara.
+
+La venta conserva el detalle completo —lo revisa un comprador, no el productor—. Esas columnas las
+ganó cuando la venta pasó a pesarse (§6.5); en las ventas anteriores salen con guion, sin inventar
+un bruto.
 
 `components/invoice-a4.tsx` es la hoja. Su CSS de impresión **oculta todo el documento y vuelve a
 mostrar solo la factura**, en vez de enumerar las clases del encabezado y el menú: así un cambio en
