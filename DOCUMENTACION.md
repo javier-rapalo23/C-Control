@@ -833,7 +833,7 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 | Método | Ruta | Notas |
 |---|---|---|
 | POST | `/api/print/ticket` | `{ transactionId, kind?: 'purchase' \| 'sale' }` → encola `PrintJob`. |
-| — | `/print/compra/:id`, `/print/venta/:id` | **Páginas**, no API: factura A4 para el diálogo del navegador (§10.2). |
+| — | `/print/compra/:id`, `/print/venta/:id`, `/print/molido/:id` | **Páginas**, no API: factura A4 para el diálogo del navegador (§10.2). Imprimen el documento fiscal si ya se emitió (§10.3). |
 | GET | `/api/print/ticket/data` | Devuelve `payloadB64` sin encolar (impresión directa desde el cliente). |
 | POST | `/api/print/summary` | `{ businessDate, sucursalId? }` → encola el resumen del día. |
 | GET | `/api/print/summary/data` | `payloadB64` del resumen. |
@@ -1148,16 +1148,20 @@ para que ningún contenedor los recorte:
 
 ## 10. Impresión
 
-Hay **dos caminos, y no compiten**: el ticket térmico es el comprobante rápido del mostrador y la
-factura A4 es el documento que se le entrega al productor o al cliente. Cada uno llega a su
-impresora por una vía distinta, porque el problema es distinto.
+Son **dos formatos del mismo documento**, no dos documentos: el ticket de 80 mm y la hoja A4 llevan
+el mismo número fiscal, el mismo CAI y el mismo desglose (§10.3). Lo que cambia es el papel y el
+camino hacia la impresora, porque ahí el problema sí es distinto.
+
+Cuál se usa por omisión se configura en **Mantenimiento → Facturación**; en cada compra, venta o
+molido el botón principal imprime en ese formato y el de al lado en el otro, para un caso suelto.
 
 | | Ticket térmico | Factura A4 |
 | --- | --- | --- |
 | Destino | ESC/POS de red, 32 columnas | Cualquier impresora del sistema operativo |
 | Camino | `PrintJob` → agente local → TCP 9100 | Diálogo de impresión del navegador |
 | Formato | Buffer binario armado en el servidor | HTML maquetado con `@page { size: A4 }` |
-| Contenido | Solo el resultado: libras, precio, total | Trazabilidad completa del pesaje y firmas |
+| Contenido | El resultado: libras, precio, total, pesaje resumido | Trazabilidad completa del pesaje y firmas |
+| Datos fiscales | Los mismos: número, CAI, rango, fecha límite, desglose | Los mismos |
 | Copias | Dos tiras con corte propio | Dos hojas A4 |
 | Requiere | IP de impresora + agente corriendo | Nada |
 
@@ -1176,6 +1180,14 @@ Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por d
 
   El campo `kind` distingue compra de venta: **en la compra no se imprime el conteo de sacos**, igual
   que en su factura A4 (§10.2). Es el único dato que cambia entre las dos.
+
+  **Con documento fiscal emitido el ticket imprime lo mismo que la hoja**: tipo de documento, número
+  fiscal, correlativo interno rotulado, CAI, rango —partido en dos líneas, que en 32 columnas no cabe
+  de otra forma—, fecha límite, las dos fechas, el desglose de totales y `*** ANULADO ***` con su
+  motivo. Sin documento, encabeza `COMPROBANTE INTERNO / No es documento fiscal`.
+
+  Los datos salen del **mismo `InvoiceData`** que la hoja A4 (`ticketDataFromInvoice`), así que los dos
+  formatos no pueden discrepar: si hay documento, los dos leen su snapshot.
 
   Imprime **dos copias**, igual que la factura A4 (§10.2): rotuladas `*** CLIENTE ***` y
   `*** CONTROL INTERNO ***` bajo el título, con el correlativo interno (`No. C-000123`) debajo. El
@@ -1398,8 +1410,43 @@ los valores por defecto de Prisma, la cola que forma el bloqueo se abortaría al
 Mantenimiento → Roles (§8.5). El botón no se esconde a quien no tiene permiso: el control es el 403
 del servidor, y esconderlo haría creer que la función no existe.
 
-**Todavía no:** la impresión desde el snapshot, el rótulo `ANULADO` en la hoja y el documento del
-molido —la API ya lo emite, pero no hay pantalla porque tampoco hay impresión—.
+#### Impresión
+
+Las páginas de factura reciben el id de la **transacción**, como siempre, y deciden solas qué imprimir
+(`buildInvoiceForOrigen`): con documento fiscal emitido imprimen su **snapshot**; sin documento, los
+datos vivos. Así los enlaces de siempre siguen valiendo y la hoja pasa a ser fiscal en cuanto se emite.
+
+| Estado | Qué sale en la hoja |
+| --- | --- |
+| Sin documento | `Comprobante interno — no es documento fiscal`, y el correlativo interno como número |
+| Emitido | El número fiscal encabeza, el interno queda rotulado debajo, el bloque del CAI con el que se emitió, **las dos fechas** (emisión y operación) y el desglose de totales |
+| Anulado | Todo lo anterior más un recuadro `ANULADO` con el motivo |
+
+`/print/molido/:id` es la hoja del servicio de molido, con **tabla propia** —concepto, libras molidas,
+valor—: no hay pesaje ni rendimiento que mostrar, y columnas vacías harían dudar de si falta un dato.
+Es también el único documento con ISV impreso.
+
+**Reimprimir no vuelve a consultar nada.** El snapshot lleva empresa, cliente, líneas, totales y CAI tal
+como estaban al emitir; si mañana cambia el nombre del negocio, el documento sigue diciendo lo que
+decía. Lo único que se lee vivo es el estado —para el rótulo `ANULADO`— y el motivo de la anulación, que
+por definición se escribe después.
+
+#### Formatos de impresión
+
+**El ticket de 80 mm y la hoja A4 son el mismo documento fiscal**, no dos documentos: mismo número,
+mismo CAI, mismo desglose. Emitir no depende del formato, y cambiar de formato no emite nada nuevo.
+
+- El formato de siempre se configura en **Mantenimiento → Facturación**
+  (`CompanySettings.formatoImpresionDefault`, catálogo en `lib/print-formats.ts`).
+- En cada fila, **Imprimir factura** usa ese formato y el botón de al lado el otro. Los dos pasan por
+  `usePrintInvoice`: A4 abre la pestaña, 80 mm encola el `PrintJob` y espera al agente.
+- **Cada impresión de un documento emitido queda en bitácora** (`reimpresion`, con el formato). Un
+  número emitido no se reasigna nunca, así que lo único auditable es cuántas veces se imprimió y cómo.
+
+Que los dos formatos sean el mismo documento tiene una consecuencia que conviene tener presente: si se
+imprimen los dos, en la mano quedan **dos papeles con el mismo número**. Es una reimpresión, no dos
+documentos; ambos dicen `Original — Cliente` / `Copia — Control interno` según la copia, no según el
+formato.
 
 ---
 
@@ -1494,6 +1541,7 @@ pnpm dev                    # http://localhost:3000
 | `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
 | `20260925000000_add_numero_interno` | `PurchaseTransaction.numeroInterno` y `SaleTransaction.numeroInterno`: correlativo interno por secuencia, con backfill en orden de creación (§10.2). |
 | `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Aditiva; todavía no emite nada. Lleva un índice parcial y varios `CHECK` escritos a mano. |
+| `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault`: con qué formato se imprime la factura por omisión (§10.3). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 

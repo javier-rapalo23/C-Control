@@ -460,6 +460,38 @@ export async function anularDocumentoFiscal(
   });
 }
 
+/**
+ * Anota en bitácora que un documento se imprimió, con el formato usado.
+ *
+ * Un número emitido nunca se reasigna, así que lo único auditable de una impresión es
+ * cuántas veces salió y en qué formato. No falla la impresión si esto falla: dejar sin
+ * imprimir una factura por no poder escribir la bitácora sería peor.
+ */
+export async function registrarImpresion(
+  prisma: PrismaClient,
+  input: { fiscalDocumentId: string; usuario: string; formato: string },
+): Promise<void> {
+  try {
+    const documento = await prisma.fiscalDocument.findUnique({
+      where: { id: input.fiscalDocumentId },
+      select: { caiId: true, numeroCompleto: true },
+    });
+    if (!documento) return;
+
+    await prisma.fiscalAuditLog.create({
+      data: {
+        accion: 'reimpresion',
+        fiscalDocumentId: input.fiscalDocumentId,
+        caiId: documento.caiId,
+        usuario: input.usuario,
+        detalle: { formato: input.formato, numeroCompleto: documento.numeroCompleto },
+      },
+    });
+  } catch {
+    // Silencio a propósito: ver el comentario de arriba.
+  }
+}
+
 export async function listFiscalDocuments(
   db: DbClient,
   filtros: { businessDate?: string; from?: string; to?: string; estado?: string },

@@ -10,11 +10,11 @@ type Params = {
   params: Promise<{ id: string }>;
 };
 
-export default async function FacturaVentaPage({ params }: Params) {
-  const { userId } = await requireModuleAccess('sales');
+export default async function FacturaMolidoPage({ params }: Params) {
+  const { userId } = await requireModuleAccess('grinding');
 
   const { id } = await params;
-  const data = await buildInvoiceForOrigen('venta', id);
+  const data = await buildInvoiceForOrigen('molido', id);
   if (!data) notFound();
 
   // Abrir la hoja de un documento emitido es imprimirlo: queda en bitácora, con el

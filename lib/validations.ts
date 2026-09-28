@@ -3,6 +3,7 @@ import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
 import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
 import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS } from '@/lib/fiscal';
+import { PRINT_FORMAT_KEYS } from '@/lib/print-formats';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
@@ -241,6 +242,9 @@ export const companySettingsSchema = z.object({
   facturaRangoDesde: z.string().trim().max(40).optional().or(z.literal('')),
   facturaRangoHasta: z.string().trim().max(40).optional().or(z.literal('')),
   facturaFechaLimite: z.string().trim().max(40).optional().or(z.literal('')),
+  // Formato con el que se imprime la factura por omisión. Los dos formatos imprimen
+  // el mismo documento fiscal.
+  formatoImpresionDefault: z.enum(PRINT_FORMAT_KEYS).optional(),
 });
 
 /**

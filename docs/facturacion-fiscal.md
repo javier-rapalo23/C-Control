@@ -15,10 +15,11 @@ el bloque fiscal y **qué todavía no hace**. Última revisión: 27 de septiembr
 
 ---
 
-## 1. Los dos documentos que imprime el sistema
+## 1. Un documento, dos formatos de impresión
 
-No compiten: el ticket es el comprobante rápido del mostrador y la factura A4 es el documento
-formal que se le entrega al productor o al cliente.
+El ticket de 80 mm y la hoja A4 **no son dos documentos**: son dos formatos del mismo, con el mismo
+número fiscal y los mismos datos. El ticket es el del mostrador y la A4 la que se entrega; cuál se usa
+por omisión se configura en Mantenimiento → Facturación, y en cada fila se puede imprimir el otro.
 
 | | Ticket térmico | Factura A4 |
 | --- | --- | --- |
@@ -27,14 +28,15 @@ formal que se le entrega al productor o al cliente.
 | Qué necesita | IP de la impresora configurada + agente corriendo | Nada; usa la impresora que ya tiene la máquina |
 | Contenido | El resultado: libras, precio, total, pesaje resumido | Trazabilidad completa del pesaje, ajustes y firmas |
 | Copias | Dos tiras, cada una con su corte | Dos hojas |
-| Bloque fiscal (CAI) | No lo imprime | Sí, cuando hay CAI configurado |
-| Dónde se dispara | Botón **Ticket** en Compras y Ventas | Botón **Factura A4** (abre pestaña nueva) |
+| Bloque fiscal (CAI) | Sí, cuando el documento está emitido | Sí, cuando el documento está emitido |
+| Dónde se dispara | **Imprimir factura** en Compras, Ventas y Molido, según el formato configurado; el botón de al lado imprime en el otro | Igual (abre pestaña nueva) |
 
 **Rutas de la factura A4:** `/print/compra/:id` y `/print/venta/:id`. Son páginas, no API. Se abren
 fuera del panel, así que piden permiso de módulo por su cuenta (`purchases` y `sales`): quien no
 puede ver Compras tampoco puede abrir la factura de una compra.
 
-**Ruta del ticket:** `POST /api/print/ticket` con `{ transactionId, kind: 'purchase' | 'sale' }`.
+**Ruta del ticket:** `POST /api/print/ticket` con `{ transactionId, kind }`, donde `kind` es `compra`,
+`venta` o `molido` (se aceptan los nombres viejos `purchase` y `sale`).
 Devuelve un `jobId`; el panel consulta `GET /api/print/jobs/:id` hasta que queda en `done` o `error`.
 
 ---

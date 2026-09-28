@@ -6,6 +6,11 @@ import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, GrindingServiceDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import FiscalDocumentActions from '@/components/fiscal-document-actions';
+import InvoicePrintButtons from '@/components/invoice-print-buttons';
+import { useFiscal } from '@/lib/use-fiscal';
+import { usePrintInvoice } from '@/lib/use-print-invoice';
+import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -35,6 +40,14 @@ type Draft = { libras: string; monto: string };
 export default function GrindingPanel() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
+  const fiscal = useFiscal(businessDate, TIPO_DOCUMENTO_POR_ORIGEN.molido);
+  const impresion = usePrintInvoice();
+
+  // El hook de impresión trae su propio error; se muestra en el aviso del panel
+  // para no tener dos lugares donde aparecen los fallos.
+  useEffect(() => {
+    if (impresion.error) setError(impresion.error);
+  }, [impresion.error]);
   const [clients, setClients] = useState<ClientDTO[]>([]);
   const [services, setServices] = useState<GrindingServiceDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -305,9 +318,23 @@ export default function GrindingPanel() {
                   const draft = draftOf(service);
                   const dirty = draft.libras !== String(service.libras) || draft.monto !== String(service.monto);
                   const precio = precioPorLibra(draft.libras, draft.monto);
+                  const documento = fiscal.documentos[service.id] ?? null;
+                  // Con documento emitido el servicio no se corrige ni se borra: la
+                  // API lo rechaza, así que los controles se apagan para no ofrecer
+                  // algo que va a fallar.
+                  const congelado = documento !== null && documento.estado !== 'anulado';
                   return (
                     <tr key={service.id}>
-                      <td>{service.clientNombre}</td>
+                      <td>
+                        {service.clientNombre}
+                        <FiscalDocumentActions
+                          origen="molido"
+                          transactionId={service.id}
+                          documento={documento}
+                          caiActivo={fiscal.caiActivo}
+                          onChange={fiscal.refresh}
+                        />
+                      </td>
                       <td>
                         <input
                           value={draft.libras}
@@ -315,6 +342,7 @@ export default function GrindingPanel() {
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={congelado}
                           style={{ maxWidth: 110 }}
                         />
                       </td>
@@ -325,6 +353,7 @@ export default function GrindingPanel() {
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={congelado}
                           style={{ maxWidth: 120 }}
                         />
                       </td>
@@ -335,12 +364,25 @@ export default function GrindingPanel() {
                           <button
                             className="btn-primary"
                             type="button"
-                            disabled={!dirty || savingId !== null}
+                            disabled={!dirty || savingId !== null || congelado}
                             onClick={() => void guardarCambios(service)}
                           >
                             {savingId === service.id ? 'Guardando...' : 'Guardar'}
                           </button>
-                          <button className="btn-danger" type="button" disabled={loading} onClick={() => void eliminar(service.id)}>
+                          {/* Mismo documento en dos formatos, igual que en Compras. */}
+                          <InvoicePrintButtons
+                            origen="molido"
+                            transactionId={service.id}
+                            formatoDefault={fiscal.formatoDefault}
+                            imprimiendo={impresion.imprimiendoId === service.id}
+                            onImprimir={(formato) => void impresion.imprimir('molido', service.id, formato)}
+                          />
+                          <button
+                            className="btn-danger"
+                            type="button"
+                            disabled={loading || congelado}
+                            onClick={() => void eliminar(service.id)}
+                          >
                             Eliminar
                           </button>
                         </div>

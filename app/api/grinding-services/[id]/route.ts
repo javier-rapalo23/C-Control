@@ -2,6 +2,7 @@ import { updateGrindingServiceSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
+import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
 import { mapGrindingService, recalculateDailyBalance } from '@/lib/ledger';
 import { toBusinessDateString } from '@/lib/business-date';
 
@@ -35,6 +36,9 @@ export async function PATCH(request: Request, { params }: Params) {
       }
 
       const businessDate = toBusinessDateString(existing.businessDate);
+      // Corregir las libras o el monto cambiaría el total ya documentado, así que con
+      // documento fiscal emitido el servicio queda congelado como una compra.
+      await assertSinDocumentoFiscal(tx, 'molido', id);
       await assertCashOpen(tx, businessDate, existing.sucursalId);
 
       const service = await tx.grindingService.update({
@@ -76,6 +80,7 @@ export async function DELETE(_: Request, { params }: Params) {
       }
 
       const businessDate = toBusinessDateString(existing.businessDate);
+      await assertSinDocumentoFiscal(tx, 'molido', id);
       await assertCashOpen(tx, businessDate, existing.sucursalId);
 
       await tx.grindingService.delete({ where: { id } });

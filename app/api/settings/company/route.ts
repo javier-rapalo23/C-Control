@@ -15,6 +15,7 @@ function formatCompany(c: {
   facturaRangoDesde: string;
   facturaRangoHasta: string;
   facturaFechaLimite: string;
+  formatoImpresionDefault: string;
   updatedAt: Date;
 }) {
   return { ...c, updatedAt: c.updatedAt.toISOString() };

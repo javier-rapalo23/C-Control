@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { FiscalCaiDTO, FiscalDocumentDTO } from '@/types/domain';
+import type { CompanySettingsDTO, FiscalCaiDTO, FiscalDocumentDTO } from '@/types/domain';
+import { DEFAULT_PRINT_FORMAT, type PrintFormat, isPrintFormat } from '@/lib/print-formats';
 
 /**
  * Documentos fiscales de una fecha y el CAI con el que se emitiría, para los paneles
@@ -22,14 +23,20 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 export function useFiscal(businessDate: string, tipoDocumento: string) {
   const [documentos, setDocumentos] = useState<Record<string, FiscalDocumentDTO>>({});
   const [caiActivo, setCaiActivo] = useState<FiscalCaiDTO | null>(null);
+  const [formatoDefault, setFormatoDefault] = useState<PrintFormat>(DEFAULT_PRINT_FORMAT);
 
   const refresh = useCallback(async () => {
-    const [docs, cais] = await Promise.all([
+    const [docs, cais, empresa] = await Promise.all([
       fetch(`/api/fiscal-documents?businessDate=${businessDate}`, { cache: 'no-store' }).then(
         parseApiResponse<FiscalDocumentDTO[]>,
       ),
       fetch('/api/fiscal-cais', { cache: 'no-store' }).then(parseApiResponse<FiscalCaiDTO[]>),
+      fetch('/api/settings/company', { cache: 'no-store' }).then(parseApiResponse<CompanySettingsDTO>),
     ]);
+
+    setFormatoDefault(
+      isPrintFormat(empresa.formatoImpresionDefault) ? empresa.formatoImpresionDefault : DEFAULT_PRINT_FORMAT,
+    );
 
     const porTransaccion: Record<string, FiscalDocumentDTO> = {};
     for (const doc of docs) {
@@ -50,5 +57,5 @@ export function useFiscal(businessDate: string, tipoDocumento: string) {
     });
   }, [refresh]);
 
-  return { documentos, caiActivo, refresh };
+  return { documentos, caiActivo, formatoDefault, refresh };
 }

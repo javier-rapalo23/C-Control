@@ -72,10 +72,31 @@ export type TicketData = {
   /** Correlativo interno ya formateado (`C-000123`). Ver `lib/build-invoice.ts`. */
   numeroInterno?: string;
   /**
-   * Compra o venta. La compra **no imprime el conteo de sacos**, igual que su
+   * Compra, venta o molido. La compra **no imprime el conteo de sacos**, igual que su
    * factura A4: la tara ya dice lo que se descuenta. En la venta sí sale.
    */
-  kind?: 'compra' | 'venta';
+  kind?: 'compra' | 'venta' | 'molido';
+  /**
+   * Documento fiscal emitido. El ticket de 80 mm y la hoja A4 son **el mismo
+   * documento** en dos formatos, así que cuando existe, el ticket imprime lo mismo
+   * que la hoja: número fiscal, CAI, las dos fechas y el desglose.
+   */
+  documento?: {
+    numeroCompleto: string;
+    tipoDocumentoLabel: string;
+    estado: string;
+    fechaEmision: string;
+    cai: { codigo: string; rangoDesde: number; rangoHasta: number; fechaLimite: string };
+    desglose: {
+      importeExento: number;
+      importeExonerado: number;
+      importeGravado15: number;
+      importeGravado18: number;
+      isv15: number;
+      isv18: number;
+    };
+    anulacionMotivo: string | null;
+  } | null;
 };
 
 /**
@@ -85,26 +106,72 @@ export type TicketData = {
  */
 const TICKET_COPIAS = ['Cliente', 'Control interno'] as const;
 
+/** Los ocho dígitos del correlativo, como se imprime en el formato del SAR. */
+const pad8 = (valor: number) => String(valor).padStart(8, '0');
+
+/** Cómo se rotula la fecha de la operación, igual que en la hoja A4. */
+function fechaOperacionLabel(kind: TicketData['kind']) {
+  if (kind === 'compra') return 'Fecha compra';
+  if (kind === 'molido') return 'Fecha servicio';
+  return 'Fecha venta';
+}
+
 function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number]): Buffer[] {
   const dash = '-'.repeat(LINE_WIDTH);
   const chunks: Buffer[] = [init(), align('center'), bold(true), text(data.company.nombre || 'C-CONTROL'), bold(false)];
 
-  chunks.push(text(data.title ?? 'Comprobante de Compra'));
+  const documento = data.documento ?? null;
+
+  // Con documento emitido manda el tipo de documento fiscal; sin él, el título de
+  // siempre.
+  chunks.push(text(documento ? documento.tipoDocumentoLabel : (data.title ?? 'Comprobante de Compra')));
   // El rótulo va arriba: con el ticket en la mano es lo que dice cuál de las dos
   // copias es, y en 32 columnas no se puede poner al margen.
   chunks.push(bold(true));
   chunks.push(text(`*** ${copia.toUpperCase()} ***`));
-  if (data.numeroInterno) chunks.push(text(`No. ${data.numeroInterno}`));
+  if (documento) chunks.push(text(`No. ${documento.numeroCompleto}`));
+  else if (data.numeroInterno) chunks.push(text(`No. ${data.numeroInterno}`));
   chunks.push(bold(false));
+  // El correlativo interno sigue saliendo cuando hay número fiscal: es el que casa
+  // las dos copias y el que se busca dentro del sistema.
+  if (documento && data.numeroInterno) chunks.push(text(`Control interno ${data.numeroInterno}`));
   if (data.company.rtn) chunks.push(text(`RTN: ${data.company.rtn}`));
   if (data.company.telefono) chunks.push(text(`Tel: ${data.company.telefono}`));
   if (data.company.direccion) chunks.push(text(data.company.direccion));
 
   chunks.push(align('left'));
   chunks.push(text(dash));
+
+  // Mismo criterio que la hoja A4: sin documento, el papel dice que no es fiscal.
+  if (!documento) {
+    chunks.push(text('COMPROBANTE INTERNO'));
+    chunks.push(text('No es documento fiscal'));
+    chunks.push(text(dash));
+  } else {
+    chunks.push(text(`CAI: ${documento.cai.codigo}`));
+    if (documento.cai.rangoDesde && documento.cai.rangoHasta) {
+      chunks.push(text(`Rango: ${pad8(documento.cai.rangoDesde)} a`));
+      chunks.push(text(`       ${pad8(documento.cai.rangoHasta)}`));
+    }
+    if (documento.cai.fechaLimite) chunks.push(text(`Limite emision: ${documento.cai.fechaLimite}`));
+    chunks.push(text(dash));
+    chunks.push(text(`Emitida: ${documento.fechaEmision}`));
+  }
+
   if (data.sucursalNombre) chunks.push(text(`Sucursal: ${data.sucursalNombre}`));
-  chunks.push(text(`Fecha: ${data.businessDate}`));
+  chunks.push(text(`${documento ? fechaOperacionLabel(data.kind) : 'Fecha'}: ${data.businessDate}`));
   chunks.push(text(`Cliente: ${data.clientNombre}`));
+
+  if (documento?.estado === 'anulado') {
+    chunks.push(text(dash));
+    chunks.push(bold(true));
+    chunks.push(align('center'));
+    chunks.push(text('*** ANULADO ***'));
+    chunks.push(align('left'));
+    chunks.push(bold(false));
+    if (documento.anulacionMotivo) chunks.push(text(documento.anulacionMotivo));
+  }
+
   chunks.push(text(dash));
 
   for (const item of data.items) {
@@ -119,7 +186,12 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
       continue;
     }
 
-    const detail = `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`;
+    // El molido se cobra por el servicio, no a un precio por libra: imprimir
+    // "x L0.00" hacía dudar de si faltaba un dato.
+    const detail =
+      item.precioPorLibra > 0
+        ? `${item.libras.toFixed(2)} lb x L${item.precioPorLibra.toFixed(2)}`
+        : `${item.libras.toFixed(2)} lb`;
     chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
     // El pesaje va debajo del neto para que el productor pueda rehacer la cuenta:
     // bruto menos tara es lo que se le paga.
@@ -155,6 +227,21 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
     if (descuento > 0) {
       chunks.push(text(twoColumns('Descuento:', `-L ${descuento.toFixed(2)}`)));
       if (data.descuentoMotivo) chunks.push(text(` ${data.descuentoMotivo}`));
+    }
+  }
+
+  // Desglose fiscal: los mismos renglones que la hoja A4, y solo los que aplican.
+  if (documento) {
+    const { desglose } = documento;
+    if (desglose.importeExento > 0) {
+      chunks.push(text(twoColumns('Importe exento:', `L ${desglose.importeExento.toFixed(2)}`)));
+    }
+    if (desglose.importeExonerado > 0) {
+      chunks.push(text(twoColumns('Importe exonerado:', `L ${desglose.importeExonerado.toFixed(2)}`)));
+    }
+    if (desglose.importeGravado15 > 0) {
+      chunks.push(text(twoColumns('Gravado 15%:', `L ${desglose.importeGravado15.toFixed(2)}`)));
+      chunks.push(text(twoColumns('ISV 15%:', `L ${desglose.isv15.toFixed(2)}`)));
     }
   }
 

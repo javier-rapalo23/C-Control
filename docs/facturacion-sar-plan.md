@@ -274,10 +274,7 @@ real (≈160 s), `pnpm build`, typecheck y lint sin errores.
 - **El botón de emitir no se esconde a quien no tiene permiso.** Esconderlo haría creer que la función
   no existe; el control real es el 403 del servidor y el mensaje se muestra tal cual.
 
-### Fase 3 — Impresión desde el snapshot
-
-> Pendiente de la Fase 2 que cae acá: **el molido no tiene pantalla de emisión** porque tampoco tiene
-> impresión. La API ya lo soporta y hay prueba de su desglose; el botón entra junto con su documento.
+### Fase 3 — Impresión desde el snapshot — **hecha**
 
 - `buildInvoiceFromSnapshot` y refactor de `build-invoice.ts`: con documento emitido se imprime el
   snapshot; sin documento, el camino actual.
@@ -290,6 +287,58 @@ real (≈160 s), `pnpm build`, typecheck y lint sin errores.
 - `formatoVersion` en el snapshot, para que un cambio de maquetación no altere la lectura de un
   documento viejo.
 - **Salida:** criterio 9.5.
+
+**Cómo quedó:**
+
+| Pieza | Dónde |
+| --- | --- |
+| Impresión desde el snapshot y resolución emitido/vivo | `buildInvoiceFromDocument` y `buildInvoiceForOrigen` en `lib/build-invoice.ts` |
+| Rótulos, bloque fiscal del CAI emitido, dos fechas, desglose y tabla del molido | `components/invoice-a4.tsx` |
+| Página del molido | `/print/molido/:id` |
+| Emisión y congelado del molido | `components/grinding-panel.tsx` + asserts en `PATCH`/`DELETE` de `grinding-services` |
+| Pruebas | `tests/components/invoice-a4.test.tsx` (+8) y la de reimpresión en `tests/integration/fiscal-emision.test.ts` |
+
+Verificado: `pnpm test` 17 suites / 157 pruebas, `pnpm test:integration` 9 pruebas de emisión contra
+Postgres real, `pnpm build`, typecheck y lint sin errores. Además se revisó el HTML renderizado de una
+hoja emitida, una anulada y una sin emitir.
+
+**Decisiones de esta fase:**
+
+- **El enlace de impresión no cambió.** `/print/compra/:id` sigue recibiendo el id de la transacción y
+  decide solo: si hay documento fiscal imprime el snapshot, si no imprime los datos vivos. Así nada de
+  lo que ya existía se rompe y la hoja pasa a ser fiscal en cuanto se emite.
+- **Sin documento, la hoja dice "Comprobante interno — no es documento fiscal".** Antes salía sin
+  ninguna marca, y nada impedía archivarla como si fuera una factura.
+- **Con documento, el número fiscal encabeza y el correlativo interno queda rotulado debajo.** Los dos
+  siguen saliendo: el interno es el que casa las dos copias y el que se busca dentro del sistema.
+- **El rango del CAI se imprime con los ocho dígitos** del formato, no como los enteros que guarda la
+  base.
+- **Anulado:** recuadro con la palabra y el motivo. Se lee de lejos, que es el punto.
+- **El molido usa una tabla propia** —concepto, libras molidas, valor—: no tiene pesaje ni rendimiento,
+  y columnas vacías harían dudar de si falta un dato.
+- **Congelar el molido emitido** obligó a agregar los asserts que faltaban en su `PATCH` y `DELETE`:
+  corregir las libras o el monto habría cambiado el total ya documentado. En la Fase 2 no hacía falta
+  porque el molido todavía no se podía emitir desde la interfaz.
+- **El desglose imprime solo los renglones que aplican.** Con café exonerado sale "Importe exento" y
+  nada más; el molido es el que trae ISV de verdad.
+
+**Pregunta 7 respondida (28/09), y de la mejor manera:** el ticket y la A4 **no son dos documentos**,
+son dos formatos del mismo. Así que el ticket imprime los mismos datos fiscales y se agregó un selector
+de formato:
+
+- `CompanySettings.formatoImpresionDefault` (`a4` | `termico80`), configurable en Mantenimiento →
+  Facturación, con catálogo en `lib/print-formats.ts`.
+- En cada fila: **Imprimir factura** con el formato de siempre y el otro al lado, para el caso suelto
+  (`components/invoice-print-buttons.tsx`, `lib/use-print-invoice.ts`). Reemplazó a los botones
+  separados de "Ticket" y "Factura A4", y unificó las tres copias del código de impresión térmica que
+  había en los paneles.
+- El ticket se arma del **mismo `InvoiceData`** que la hoja (`ticketDataFromInvoice`), así que los dos
+  formatos no pueden discrepar: con documento emitido, ambos leen su snapshot.
+- Cada impresión de un documento emitido queda en bitácora como `reimpresion`, con el formato.
+
+Consecuencia a tener presente: imprimir los dos formatos deja **dos papeles con el mismo número**. Es
+una reimpresión, no dos documentos; el rótulo de copia (`Original — Cliente` / `Copia — Control
+interno`) va por copia, no por formato.
 
 ### Fase 4 — Reportes fiscales
 

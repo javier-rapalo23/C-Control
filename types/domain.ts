@@ -240,6 +240,8 @@ export type CompanySettingsDTO = {
   facturaRangoDesde: string;
   facturaRangoHasta: string;
   facturaFechaLimite: string;
+  /** `a4` o `termico80`: con qué formato se imprime la factura por omisión. */
+  formatoImpresionDefault: string;
   updatedAt: string;
 };
 

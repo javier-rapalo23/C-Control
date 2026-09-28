@@ -78,6 +78,29 @@ const CSS = `
 }
 .invoice-fiscal p { margin: 0; }
 
+/* Aviso de que la hoja no es un documento fiscal. Sobrio pero visible: es lo que
+   distingue un comprobante interno de una factura. */
+.invoice-interno { border-style: dashed; font-weight: 600; text-align: center; }
+
+/* Un documento anulado tiene que leerse como anulado de un vistazo, aunque alguien
+   solo mire la hoja de lejos. */
+.invoice-anulado {
+  margin: 10px 0 0;
+  border: 2px solid #111;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Desglose de totales del documento fiscal. Alineado a la derecha, como el total. */
+.invoice-desglose { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 9.5pt; }
+.invoice-desglose-fila { display: flex; gap: 16px; }
+.invoice-desglose-label { color: #444; min-width: 48mm; text-align: right; }
+.invoice-desglose-monto { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+
 .invoice-cliente {
   margin-top: 12px;
   border-top: 1.5px solid #111;
@@ -238,14 +261,37 @@ function FilaVenta({ linea }: { linea: InvoiceLinea }) {
   );
 }
 
+function FilaMolido({ linea }: { linea: InvoiceLinea }) {
+  return (
+    <tr>
+      <td>
+        {linea.productoNombre}
+        {linea.descripcion ? <div className="invoice-linea-desc">{linea.descripcion}</div> : null}
+      </td>
+      <td>{numero(linea.libras)}</td>
+      <td>{lempiras(linea.total)}</td>
+    </tr>
+  );
+}
+
 /** Las dos copias que se imprimen del mismo comprobante. */
 const COPIAS = [
   { id: 'cliente', rotulo: 'Original — Cliente' },
   { id: 'interno', rotulo: 'Copia — Control interno' },
 ] as const;
 
+/** Cómo se rotula la fecha de la operación según lo que ampara el documento. */
+function fechaOperacionLabel(kind: InvoiceData['kind']) {
+  if (kind === 'compra') return 'Fecha de la compra';
+  if (kind === 'molido') return 'Fecha del servicio';
+  return 'Fecha de la venta';
+}
+
 function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[number] }) {
   const esCompra = data.kind === 'compra';
+  const esMolido = data.kind === 'molido';
+  const documento = data.documento ?? null;
+  const anulado = documento?.estado === 'anulado';
   const { empresa, cliente, lineas } = data;
 
   return (
@@ -263,21 +309,45 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
             <p className={`invoice-copia${copia.id === 'interno' ? ' invoice-copia-interno' : ''}`}>
               {copia.rotulo}
             </p>
-            <p className="invoice-titulo">{data.titulo}</p>
-            {/* El correlativo interno va primero y siempre: el del talonario puede
-                venir vacío, y es este el que casa las dos copias. */}
-            <div className="invoice-meta-fila invoice-folio">
-              <dt>No.</dt>
-              <dd>{data.numeroInterno}</dd>
-            </div>
+            <p className="invoice-titulo">{documento ? documento.tipoDocumentoLabel : data.titulo}</p>
+
+            {/* Con documento emitido, el número fiscal es el que identifica la hoja y
+                va primero. El correlativo interno sigue saliendo, más discreto: es lo
+                que casa las dos copias y lo que se busca dentro del sistema. */}
+            {documento ? (
+              <div className="invoice-meta-fila invoice-folio">
+                <dt>No.</dt>
+                <dd>{documento.numeroCompleto}</dd>
+              </div>
+            ) : (
+              <div className="invoice-meta-fila invoice-folio">
+                <dt>No.</dt>
+                <dd>{data.numeroInterno}</dd>
+              </div>
+            )}
+            {documento && data.numeroInterno ? (
+              <div className="invoice-meta-fila">
+                <dt>Control interno</dt>
+                <dd>{data.numeroInterno}</dd>
+              </div>
+            ) : null}
             {data.numeroFactura ? (
               <div className="invoice-meta-fila invoice-folio">
                 <dt>Factura No.</dt>
                 <dd>{data.numeroFactura}</dd>
               </div>
             ) : null}
+
+            {/* Las dos fechas, porque no siempre coinciden: el papel se hace días
+                después del pesaje y no hay que hacerlo pasar por emitido ese día. */}
+            {documento ? (
+              <div className="invoice-meta-fila">
+                <dt>Fecha de emisión</dt>
+                <dd>{fechaLarga(documento.fechaEmision)}</dd>
+              </div>
+            ) : null}
             <div className="invoice-meta-fila">
-              <dt>Fecha</dt>
+              <dt>{documento ? fechaOperacionLabel(data.kind) : 'Fecha'}</dt>
               <dd>{fechaLarga(data.businessDate)}</dd>
             </div>
             <div className="invoice-meta-fila">
@@ -287,7 +357,30 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
           </dl>
         </header>
 
-        {empresa.fiscal ? (
+        {/* Sin documento emitido la hoja no puede pasar por fiscal, y decirlo en el
+            papel evita que alguien la archive como si lo fuera. */}
+        {!documento ? (
+          <section className="invoice-fiscal invoice-interno">
+            <p>Comprobante interno — no es documento fiscal</p>
+          </section>
+        ) : null}
+
+        {documento ? (
+          <section className="invoice-fiscal">
+            <p>CAI: {documento.cai.codigo}</p>
+            {documento.cai.rangoDesde && documento.cai.rangoHasta ? (
+              <p>
+                Rango autorizado: {String(documento.cai.rangoDesde).padStart(8, '0')} a{' '}
+                {String(documento.cai.rangoHasta).padStart(8, '0')}
+              </p>
+            ) : null}
+            {documento.cai.fechaLimite ? (
+              <p>Fecha límite de emisión: {fechaLarga(documento.cai.fechaLimite)}</p>
+            ) : null}
+          </section>
+        ) : empresa.fiscal ? (
+          // Legado: el bloque que salía de `CompanySettings` antes de que el CAI
+          // fuera administrable. Se mantiene para las hojas sin documento.
           <section className="invoice-fiscal">
             <p>CAI: {empresa.fiscal.cai}</p>
             {empresa.fiscal.rangoDesde && empresa.fiscal.rangoHasta ? (
@@ -297,6 +390,12 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
             ) : null}
             {empresa.fiscal.fechaLimite ? <p>Fecha límite de emisión: {empresa.fiscal.fechaLimite}</p> : null}
           </section>
+        ) : null}
+
+        {anulado ? (
+          <p className="invoice-anulado">
+            Anulado{documento?.anulacionMotivo ? ` — ${documento.anulacionMotivo}` : ''}
+          </p>
         ) : null}
 
         <section className="invoice-cliente">
@@ -310,7 +409,16 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
 
         <table className="invoice-lineas">
           <thead>
-            {esCompra ? (
+            {esMolido ? (
+              // El molido no tiene pesaje ni rendimiento: es un servicio sobre café
+              // que ni entra ni sale del inventario. Columnas de pesaje vacías solo
+              // harían dudar de si falta un dato.
+              <tr>
+                <th>Concepto</th>
+                <th>Libras molidas</th>
+                <th>Valor</th>
+              </tr>
+            ) : esCompra ? (
               <tr>
                 <th>Tipo de café</th>
                 <th>Bruto (lb)</th>
@@ -336,11 +444,23 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
           </thead>
           <tbody>
             {lineas.map((linea, indice) =>
-              esCompra ? <FilaCompra key={indice} linea={linea} /> : <FilaVenta key={indice} linea={linea} />,
+              esMolido ? (
+                <FilaMolido key={indice} linea={linea} />
+              ) : esCompra ? (
+                <FilaCompra key={indice} linea={linea} />
+              ) : (
+                <FilaVenta key={indice} linea={linea} />
+              ),
             )}
           </tbody>
           <tfoot>
-            {esCompra ? (
+            {esMolido ? (
+              <tr>
+                <td>Totales</td>
+                <td>{numero(data.totalLibras)}</td>
+                <td>{lempiras(data.subtotal)}</td>
+              </tr>
+            ) : esCompra ? (
               <tr>
                 <td>Totales</td>
                 {/* Bruto y tara no se totalizan: lo que se paga es el neto. */}
@@ -392,6 +512,38 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
                 </span>
                 <span className="invoice-ajuste-monto">− {lempiras(data.descuento)}</span>
               </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Desglose fiscal: solo con documento emitido, y solo los renglones que
+            aplican. Con el café exonerado, casi siempre es "importe exento" y nada
+            más; el molido es el que trae ISV de verdad. */}
+        {documento ? (
+          <div className="invoice-desglose">
+            {documento.desglose.importeExento > 0 ? (
+              <div className="invoice-desglose-fila">
+                <span className="invoice-desglose-label">Importe exento</span>
+                <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeExento)}</span>
+              </div>
+            ) : null}
+            {documento.desglose.importeExonerado > 0 ? (
+              <div className="invoice-desglose-fila">
+                <span className="invoice-desglose-label">Importe exonerado</span>
+                <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeExonerado)}</span>
+              </div>
+            ) : null}
+            {documento.desglose.importeGravado15 > 0 ? (
+              <>
+                <div className="invoice-desglose-fila">
+                  <span className="invoice-desglose-label">Importe gravado 15 %</span>
+                  <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeGravado15)}</span>
+                </div>
+                <div className="invoice-desglose-fila">
+                  <span className="invoice-desglose-label">ISV 15 %</span>
+                  <span className="invoice-desglose-monto">{lempiras(documento.desglose.isv15)}</span>
+                </div>
+              </>
             ) : null}
           </div>
         ) : null}

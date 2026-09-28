@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { FiscalCaiDTO } from '@/types/domain';
+import type { CompanySettingsDTO, FiscalCaiDTO } from '@/types/domain';
 import { MODOS_CAI, TIPOS_DOCUMENTO_FISCAL, formatNumeroFiscal } from '@/lib/fiscal';
+import { DEFAULT_PRINT_FORMAT, PRINT_FORMATS, type PrintFormat, isPrintFormat } from '@/lib/print-formats';
 
 /**
  * Administración del CAI: lo carga la contadora con la autorización del SAR en la
@@ -40,6 +41,7 @@ const formInicial = {
 export default function MaintenanceFiscalPanel() {
   const [cais, setCais] = useState<FiscalCaiDTO[]>([]);
   const [form, setForm] = useState(formInicial);
+  const [formato, setFormato] = useState<PrintFormat>(DEFAULT_PRINT_FORMAT);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +50,14 @@ export default function MaintenanceFiscalPanel() {
   const fetchCais = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await fetch('/api/fiscal-cais', { cache: 'no-store' }).then(parseApiResponse<FiscalCaiDTO[]>);
+      const [data, empresa] = await Promise.all([
+        fetch('/api/fiscal-cais', { cache: 'no-store' }).then(parseApiResponse<FiscalCaiDTO[]>),
+        fetch('/api/settings/company', { cache: 'no-store' }).then(parseApiResponse<CompanySettingsDTO>),
+      ]);
       setCais(data);
+      setFormato(
+        isPrintFormat(empresa.formatoImpresionDefault) ? empresa.formatoImpresionDefault : DEFAULT_PRINT_FORMAT,
+      );
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando los CAI');
@@ -61,6 +69,26 @@ export default function MaintenanceFiscalPanel() {
   useEffect(() => {
     void fetchCais();
   }, [fetchCais]);
+
+  async function guardarFormato(nuevo: PrintFormat) {
+    const anterior = formato;
+    try {
+      // Se cambia de una vez en pantalla: es un radio, y esperar la respuesta para
+      // moverlo se siente roto. Si falla, se regresa.
+      setFormato(nuevo);
+      setError(null);
+      setMensaje(null);
+      await fetch('/api/settings/company', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ formatoImpresionDefault: nuevo }),
+      }).then(parseApiResponse);
+      setMensaje('Formato de impresión guardado.');
+    } catch (err) {
+      setFormato(anterior);
+      setError(err instanceof Error ? err.message : 'Error guardando el formato');
+    }
+  }
 
   // Previsualización del primer número: es la forma de revisar los tres códigos sin
   // tener que emitir para descubrir que estaban mal.
@@ -140,6 +168,37 @@ export default function MaintenanceFiscalPanel() {
 
   return (
     <>
+      <section className="card" style={{ marginTop: 12 }}>
+        <h3>Formato de impresión</h3>
+        <p style={{ color: 'var(--text-soft)' }}>
+          Con cuál de los dos formatos se imprime la factura normalmente. Son el <strong>mismo
+          documento</strong>: llevan el mismo número, el mismo CAI y el mismo desglose; lo que cambia es
+          el papel. En cada compra o venta se puede imprimir el otro para un caso suelto.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          {PRINT_FORMATS.map((opcion) => (
+            <label key={opcion.key} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <input
+                type="radio"
+                name="formatoImpresion"
+                checked={formato === opcion.key}
+                onChange={() => void guardarFormato(opcion.key)}
+                style={{ width: 'auto' }}
+              />
+              <span>
+                <strong>{opcion.label}</strong>
+                <span style={{ color: 'var(--text-soft)' }}> — {opcion.descripcion}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {formato === 'termico80' ? (
+          <p style={{ color: 'var(--text-soft)', marginTop: 8 }}>
+            El ticket necesita la IP de la impresora y el agente corriendo (Mantenimiento → Empresa).
+          </p>
+        ) : null}
+      </section>
+
       <section className="card" style={{ marginTop: 12 }}>
         <h3>Factura autorizada (SAR)</h3>
         <p style={{ color: 'var(--text-soft)' }}>

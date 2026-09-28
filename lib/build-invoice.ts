@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { toBusinessDateString } from '@/lib/business-date';
 import { paymentMethodLabel } from '@/lib/payment-methods';
+import { tipoDocumentoLabel } from '@/lib/fiscal';
 
 /**
  * Datos de la factura A4, para compras y para ventas.
@@ -119,6 +120,30 @@ export async function buildInvoiceForGrinding(grindingServiceId: string): Promis
   };
 }
 
+/**
+ * Documento fiscal ya emitido, tal como quedó guardado. Cuando viene, **manda sobre
+ * todo lo demás**: el número, las fechas, el bloque del CAI y el desglose salen de
+ * acá y no de los datos vivos, que pueden haber cambiado desde la emisión.
+ */
+export type InvoiceDocumentoFiscal = {
+  id: string;
+  numeroCompleto: string;
+  tipoDocumentoLabel: string;
+  estado: string;
+  /** Fecha en que se emitió; puede ser posterior a la de la compra. */
+  fechaEmision: string;
+  cai: { codigo: string; rangoDesde: number; rangoHasta: number; fechaLimite: string };
+  desglose: {
+    importeExento: number;
+    importeExonerado: number;
+    importeGravado15: number;
+    importeGravado18: number;
+    isv15: number;
+    isv18: number;
+  };
+  anulacionMotivo: string | null;
+};
+
 export type InvoiceData = {
   kind: 'compra' | 'venta' | 'molido';
   titulo: string;
@@ -144,6 +169,11 @@ export type InvoiceData = {
   /** Totales de pie. Se omiten los que no aplican a la transacción. */
   totalLibras: number;
   totalQuintalesOro: number | null;
+  /**
+   * Null mientras la transacción no tenga documento fiscal: la hoja sale entonces
+   * rotulada como comprobante interno, que es lo que corresponde.
+   */
+  documento?: InvoiceDocumentoFiscal | null;
 };
 
 async function getEmpresa(): Promise<InvoiceEmpresa> {
@@ -284,4 +314,80 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
     total: Number(transaction.total),
     ...sumar(lineas),
   };
+}
+
+/**
+ * Datos de impresión de un documento fiscal **ya emitido**, leídos de su snapshot.
+ *
+ * Reimprimir no vuelve a consultar la compra, el cliente ni la empresa: si cambió el
+ * nombre del negocio o el del productor, el documento tiene que seguir diciendo lo
+ * que decía cuando se emitió. Lo único que se lee vivo es el estado —para rotular
+ * `ANULADO`— y el motivo de la anulación, que por definición se escribe después.
+ */
+export async function buildInvoiceFromDocument(documentId: string): Promise<InvoiceData | null> {
+  const documento = await prisma.fiscalDocument.findUnique({
+    where: { id: documentId },
+    include: { cai: { select: { codigo: true } } },
+  });
+  if (!documento) return null;
+
+  const snapshot = documento.snapshot as unknown as InvoiceData & {
+    numeroFiscal?: string;
+    fechaEmision?: string;
+    cai?: { codigo: string; rangoDesde: number; rangoHasta: number; fechaLimite: string };
+  };
+
+  return {
+    ...snapshot,
+    documento: {
+      id: documento.id,
+      numeroCompleto: documento.numeroCompleto,
+      tipoDocumentoLabel: tipoDocumentoLabel(documento.tipoDocumento),
+      estado: documento.estado,
+      fechaEmision: snapshot.fechaEmision ?? toBusinessDateString(documento.businessDate),
+      cai: snapshot.cai ?? {
+        codigo: documento.cai.codigo,
+        rangoDesde: 0,
+        rangoHasta: 0,
+        fechaLimite: '',
+      },
+      desglose: {
+        importeExento: Number(documento.importeExento),
+        importeExonerado: Number(documento.importeExonerado),
+        importeGravado15: Number(documento.importeGravado15),
+        importeGravado18: Number(documento.importeGravado18),
+        isv15: Number(documento.isv15),
+        isv18: Number(documento.isv18),
+      },
+      anulacionMotivo: documento.anulacionMotivo,
+    },
+  };
+}
+
+/**
+ * Lo que imprime una página de factura: el documento fiscal si la transacción ya lo
+ * tiene, y si no los datos vivos como comprobante interno.
+ *
+ * Así los enlaces de siempre —`/print/compra/:id`— siguen funcionando y pasan solos a
+ * imprimir el documento en cuanto se emite.
+ */
+export async function buildInvoiceForOrigen(
+  origen: 'compra' | 'venta' | 'molido',
+  transactionId: string,
+): Promise<InvoiceData | null> {
+  const campo =
+    origen === 'compra'
+      ? { purchaseTransactionId: transactionId }
+      : origen === 'venta'
+        ? { saleTransactionId: transactionId }
+        : { grindingServiceId: transactionId };
+
+  const emitido = await prisma.fiscalDocument.findFirst({ where: campo, select: { id: true } });
+  if (emitido) {
+    return buildInvoiceFromDocument(emitido.id);
+  }
+
+  if (origen === 'compra') return buildInvoiceForPurchase(transactionId);
+  if (origen === 'venta') return buildInvoiceForSale(transactionId);
+  return buildInvoiceForGrinding(transactionId);
 }

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { buildInvoiceForOrigen } from '@/lib/build-invoice';
 import {
   CaiNoDisponibleError,
   DocumentoEmitidoError,
@@ -295,6 +296,51 @@ conBase('emisión de documentos fiscales', () => {
 
     expect(snapshot.empresa.nombre).toBe(empresaOriginal.nombre);
     expect(snapshot.numeroFiscal).toBe(documento.numeroCompleto);
+
+    await prisma.companySettings.update({
+      where: { id: 'singleton' },
+      data: { nombre: empresaOriginal.nombre },
+    });
+  });
+
+  // Criterio 9.5 completo: lo que se imprime sale del snapshot, no de los datos vivos.
+  it('reimprimir después de cambiar la empresa muestra los datos originales', async () => {
+    await crearCaiActivo({ tipoDocumento: 'boleta_compra', codigoTipoDocumento: '04' }, 'boleta_compra');
+    const compra = await crearCompra();
+    const documento = await emitirDocumentoFiscal(prisma, {
+      origen: 'compra',
+      transactionId: compra.id,
+      usuario: 'tester',
+    });
+
+    const empresaOriginal = await prisma.companySettings.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: { id: 'singleton' },
+    });
+    await prisma.companySettings.update({
+      where: { id: 'singleton' },
+      data: { nombre: `Nombre nuevo ${SUFIJO}` },
+    });
+
+    // La misma llamada que hace la página `/print/compra/:id`.
+    const impreso = await buildInvoiceForOrigen('compra', compra.id);
+
+    expect(impreso?.empresa.nombre).toBe(empresaOriginal.nombre);
+    expect(impreso?.documento?.numeroCompleto).toBe(documento.numeroCompleto);
+    expect(impreso?.documento?.estado).toBe('emitido');
+    // El bloque fiscal sale del CAI con el que se emitió.
+    expect(impreso?.documento?.cai.codigo).toBeTruthy();
+
+    // Anulado, la hoja lo tiene que decir sin volver a emitir nada.
+    await anularDocumentoFiscal(prisma, {
+      id: documento.id,
+      usuario: 'admin',
+      motivo: 'Prueba de reimpresión',
+    });
+    const anulado = await buildInvoiceForOrigen('compra', compra.id);
+    expect(anulado?.documento?.estado).toBe('anulado');
+    expect(anulado?.documento?.anulacionMotivo).toBe('Prueba de reimpresión');
 
     await prisma.companySettings.update({
       where: { id: 'singleton' },

@@ -15,7 +15,9 @@ import {
 } from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
 import FiscalDocumentActions from '@/components/fiscal-document-actions';
+import InvoicePrintButtons from '@/components/invoice-print-buttons';
 import { useFiscal } from '@/lib/use-fiscal';
+import { usePrintInvoice } from '@/lib/use-print-invoice';
 import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
@@ -77,7 +79,13 @@ export default function PurchasesPanel() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
+  const impresion = usePrintInvoice();
+
+  // El hook de impresión trae su propio error; se muestra en el aviso del panel
+  // para no tener dos lugares donde aparecen los fallos.
+  useEffect(() => {
+    if (impresion.error) setError(impresion.error);
+  }, [impresion.error]);
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
@@ -290,43 +298,6 @@ export default function PurchasesPanel() {
       setError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function printTicket(transaction: PurchaseTransactionDTO) {
-    try {
-      setError(null);
-      setPrintingId(transaction.id);
-
-      const { jobId } = await fetch('/api/print/ticket', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ transactionId: transaction.id }),
-      }).then(parseApiResponse<{ jobId: string; status: string }>);
-
-      const deadline = Date.now() + 20000;
-      let status = 'pending';
-      let jobError: string | null = null;
-
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const job = await fetch(`/api/print/jobs/${jobId}`, { cache: 'no-store' }).then(
-          parseApiResponse<{ status: string; error: string | null }>,
-        );
-        status = job.status;
-        jobError = job.error;
-        if (status === 'done' || status === 'error') break;
-      }
-
-      if (status === 'error') {
-        setError(jobError || 'Error imprimiendo ticket');
-      } else if (status !== 'done') {
-        setError('La impresora no respondió a tiempo. Verifica que esté encendida y conectada a la red.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error imprimiendo ticket');
-    } finally {
-      setPrintingId(null);
     }
   }
 
@@ -763,23 +734,15 @@ export default function PurchasesPanel() {
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
-                      <button
-                        className="btn-primary"
-                        type="button"
-                        disabled={printingId === transaction.id}
-                        onClick={() => void printTicket(transaction)}
-                      >
-                        {printingId === transaction.id ? 'Imprimiendo...' : 'Ticket'}
-                      </button>
-                      {/* Pestaña aparte: la factura A4 se imprime desde el diálogo del
-                          navegador, no por el agente térmico. */}
-                      <button
-                        className="btn-primary"
-                        type="button"
-                        onClick={() => window.open(`/print/compra/${transaction.id}`, '_blank', 'noopener')}
-                      >
-                        Factura A4
-                      </button>
+                      {/* Un solo documento, dos formatos: el de siempre en el botón
+                          principal y el otro al lado. Ver `lib/print-formats.ts`. */}
+                      <InvoicePrintButtons
+                        origen="compra"
+                        transactionId={transaction.id}
+                        formatoDefault={fiscal.formatoDefault}
+                        imprimiendo={impresion.imprimiendoId === transaction.id}
+                        onImprimir={(formato) => void impresion.imprimir('compra', transaction.id, formato)}
+                      />
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar
                       </button>

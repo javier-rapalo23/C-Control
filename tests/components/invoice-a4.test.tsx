@@ -209,6 +209,135 @@ describe('InvoiceA4 — venta', () => {
   });
 });
 
+const DOCUMENTO = {
+  id: 'fd_1',
+  numeroCompleto: '001-001-04-00000123',
+  tipoDocumentoLabel: 'Boleta de compra',
+  estado: 'emitido',
+  fechaEmision: '2026-09-27',
+  cai: { codigo: 'ABCD-1234-EFGH', rangoDesde: 1, rangoHasta: 500, fechaLimite: '2027-12-31' },
+  desglose: {
+    importeExento: 25_014,
+    importeExonerado: 0,
+    importeGravado15: 0,
+    importeGravado18: 0,
+    isv15: 0,
+    isv18: 0,
+  },
+  anulacionMotivo: null,
+};
+
+describe('InvoiceA4 — documento fiscal', () => {
+  // Sin documento la hoja no puede pasar por fiscal, y el papel tiene que decirlo.
+  it('sin documento se rotula como comprobante interno', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
+    expect(html).toContain('Comprobante interno');
+    expect(html).not.toContain('CAI:');
+  });
+
+  it('con documento imprime el número fiscal, el CAI y las dos fechas', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, businessDate: '2026-09-20', documento: DOCUMENTO }} />);
+
+    expect(html).toContain('001-001-04-00000123');
+    expect(html).toContain('ABCD-1234-EFGH');
+    expect(html).not.toContain('Comprobante interno');
+    // La fecha de emisión y la de la compra son distintas y salen las dos.
+    expect(html).toContain('Fecha de emisión');
+    expect(html).toContain('27/09/2026');
+    expect(html).toContain('Fecha de la compra');
+    expect(html).toContain('20/09/2026');
+    // El correlativo interno sigue saliendo, ahora rotulado.
+    expect(html).toContain('Control interno');
+    expect(html).toContain('C-000123');
+  });
+
+  it('el rango del CAI se imprime con los ocho dígitos del formato', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
+    expect(html).toContain('00000001');
+    expect(html).toContain('00000500');
+  });
+
+  it('imprime el desglose de totales del documento', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
+    expect(html).toContain('Importe exento');
+    // Los renglones que no aplican no se imprimen: con café exonerado, no hay ISV.
+    expect(html).not.toContain('ISV 15');
+  });
+
+  it('un documento anulado lo dice con su motivo', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceA4
+        data={{
+          ...COMPRA,
+          documento: { ...DOCUMENTO, estado: 'anulado', anulacionMotivo: 'Cliente equivocado' },
+        }}
+      />,
+    );
+
+    expect(html).toContain('Anulado');
+    expect(html).toContain('Cliente equivocado');
+  });
+});
+
+describe('InvoiceA4 — molido', () => {
+  const MOLIDO: InvoiceData = {
+    ...COMPRA,
+    kind: 'molido',
+    titulo: 'Comprobante de Servicio',
+    numeroInterno: '',
+    numeroFactura: null,
+    metodoPago: null,
+    lineas: [
+      {
+        productoNombre: 'Servicio de molido',
+        pesoBruto: null,
+        numeroSacos: null,
+        taraPorSaco: null,
+        libras: 50,
+        porcentajeOro: null,
+        quintalesOro: null,
+        precioPorLibra: null,
+        precioPorQuintalOro: null,
+        descripcion: null,
+        total: 100,
+      },
+    ],
+    subtotal: 100,
+    total: 100,
+    totalLibras: 50,
+    totalQuintalesOro: null,
+    documento: {
+      ...DOCUMENTO,
+      tipoDocumentoLabel: 'Factura',
+      numeroCompleto: '001-001-01-00000045',
+      desglose: { ...DOCUMENTO.desglose, importeExento: 0, importeGravado15: 86.96, isv15: 13.04 },
+    },
+  };
+
+  const html = renderToStaticMarkup(<InvoiceA4 data={MOLIDO} />);
+
+  // El molido es un servicio sobre café del cliente: no hay pesaje ni rendimiento,
+  // y columnas vacías solo harían dudar de si falta un dato.
+  it('usa una tabla sin columnas de pesaje', () => {
+    expect(html).toContain('Libras molidas');
+    expect(html).not.toContain('Bruto (lb)');
+    expect(html).not.toContain('QQ oro');
+  });
+
+  it('imprime el ISV, que es el único ingreso gravado', () => {
+    expect(html).toContain('Importe gravado 15 %');
+    expect(html).toContain('ISV 15 %');
+    expect(html).toContain('13.04');
+  });
+
+  it('el pie de la tabla cuadra en columnas con el encabezado', () => {
+    const encabezado = anchoDeFilas(html, 'th')[0];
+    const pies = anchoDeFilas(html, 'td').filter((ancho) => ancho !== 0);
+    expect(encabezado).toBe(3);
+    for (const ancho of pies) expect(ancho).toBe(encabezado);
+  });
+});
+
 describe('InvoiceA4 — copias', () => {
   const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
 

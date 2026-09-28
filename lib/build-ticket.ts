@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { toBusinessDateString } from '@/lib/business-date';
-import { buildTicketBuffer, buildSummaryBuffer } from '@/lib/thermal-printer';
+import { buildTicketBuffer, buildSummaryBuffer, type TicketData } from '@/lib/thermal-printer';
 import { decimalToNumber, getLedgerByDate, resolveSucursalId } from '@/lib/ledger';
-import { formatNumeroInterno } from '@/lib/build-invoice';
+import { buildInvoiceForOrigen, formatNumeroInterno, type InvoiceData } from '@/lib/build-invoice';
 import { getCashSession } from '@/lib/cash-session';
 
 /** Tara total en libras. Null cuando la línea no se pesó (ventas y compras viejas). */
@@ -168,4 +168,66 @@ export async function buildSummaryForDate(businessDate: string, sucursalIdInput?
   });
 
   return { buffer, company };
+}
+
+/**
+ * Convierte los datos de la factura en datos del ticket.
+ *
+ * Los dos formatos imprimen **el mismo documento**, así que conviene que salgan de la
+ * misma fuente: si ya hay documento fiscal, `buildInvoiceForOrigen` devuelve el
+ * snapshot, y el ticket queda idéntico a la hoja en número, CAI y desglose. Sin
+ * documento, devuelve los datos vivos y el ticket sale como comprobante interno.
+ */
+export function ticketDataFromInvoice(data: InvoiceData): TicketData {
+  return {
+    company: {
+      nombre: data.empresa.nombre,
+      rtn: data.empresa.rtn,
+      telefono: data.empresa.telefono,
+      direccion: data.empresa.direccion,
+    },
+    businessDate: data.businessDate,
+    sucursalNombre: data.sucursalNombre,
+    clientNombre: data.cliente.nombre,
+    kind: data.kind,
+    numeroInterno: data.numeroInterno || undefined,
+    title: data.titulo,
+    documento: data.documento ?? null,
+    items: data.lineas.map((linea) => ({
+      productoNombre: linea.productoNombre,
+      libras: linea.libras,
+      precioPorLibra: linea.precioPorLibra ?? 0,
+      total: linea.total,
+      pesoBruto: linea.pesoBruto,
+      numeroSacos: linea.numeroSacos,
+      taraTotal:
+        linea.taraPorSaco !== null && linea.numeroSacos !== null ? linea.taraPorSaco * linea.numeroSacos : null,
+      quintalesOro: linea.quintalesOro,
+      porcentajeOro: linea.porcentajeOro,
+      precioPorQuintalOro: linea.precioPorQuintalOro,
+    })),
+    subtotal: data.subtotal,
+    bono: data.bono,
+    bonoMotivo: data.bonoMotivo,
+    descuento: data.descuento,
+    descuentoMotivo: data.descuentoMotivo,
+    total: data.total,
+  };
+}
+
+/**
+ * Ticket de 80 mm de una compra, una venta o un molido, con su documento fiscal si ya
+ * se emitió. Es la contraparte de `/print/<origen>/:id`, que imprime lo mismo en A4.
+ */
+export async function buildTicketForOrigen(origen: 'compra' | 'venta' | 'molido', transactionId: string) {
+  const [data, company] = await Promise.all([
+    buildInvoiceForOrigen(origen, transactionId),
+    prisma.companySettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } }),
+  ]);
+
+  if (!data) {
+    return null;
+  }
+
+  return { buffer: buildTicketBuffer(ticketDataFromInvoice(data)), company, documento: data.documento ?? null };
 }

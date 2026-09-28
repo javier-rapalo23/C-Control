@@ -661,6 +661,10 @@ model CompanySettings {
   facturaRangoDesde  String   @default("")
   facturaRangoHasta  String   @default("")
   facturaFechaLimite String   @default("")
+  /// Formato con el que se imprime la factura por omisión: `a4` o `termico80`. Son
+  /// dos formatos del **mismo** documento, no dos documentos distintos, así que esto
+  /// es una preferencia de impresión y nada más. Ver `lib/print-formats.ts`.
+  formatoImpresionDefault String @default("a4")
   updatedAt   DateTime @updatedAt
 }
 
