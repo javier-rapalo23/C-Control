@@ -14,6 +14,9 @@ import {
   type PaymentMethod,
 } from '@/lib/payment-methods';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import FiscalDocumentActions from '@/components/fiscal-document-actions';
+import { useFiscal } from '@/lib/use-fiscal';
+import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -66,6 +69,7 @@ function todayDateString() {
 export default function PurchasesPanel() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
+  const fiscal = useFiscal(businessDate, TIPO_DOCUMENTO_POR_ORIGEN.compra);
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [clients, setClients] = useState<ClientDTO[]>([]);
@@ -748,6 +752,13 @@ export default function PurchasesPanel() {
                           : ''}
                       </div>
                     ) : null}
+                    <FiscalDocumentActions
+                      origen="compra"
+                      transactionId={transaction.id}
+                      documento={fiscal.documentos[transaction.id] ?? null}
+                      caiActivo={fiscal.caiActivo}
+                      onChange={fiscal.refresh}
+                    />
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>

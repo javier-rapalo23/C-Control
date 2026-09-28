@@ -12,10 +12,16 @@ const conBase = process.env.TEST_DATABASE_URL ? describe : describe.skip;
 
 const SUFIJO = `test-${Date.now()}`;
 
+/**
+ * Tipo propio para esta suite: el índice parcial es por tipo de documento, así que
+ * usar `factura` la haría pelear con la suite de emisión por el único CAI activo.
+ */
+const TIPO = 'nota_credito';
+
 async function crearCai(overrides: Record<string, unknown> = {}) {
   return prisma.fiscalCai.create({
     data: {
-      tipoDocumento: 'factura',
+      tipoDocumento: TIPO,
       codigo: `CAI-${SUFIJO}-${Math.random().toString(36).slice(2, 8)}`,
       codigoEstablecimiento: '001',
       codigoPuntoEmision: '001',
@@ -52,6 +58,10 @@ conBase('restricciones de la base — facturación fiscal', () => {
   });
 
   afterAll(async () => {
+    // Los documentos primero: el RESTRICT que esta suite comprueba también impide
+    // borrar las ventas mientras exista el documento que las referencia.
+    await prisma.fiscalDocument.deleteMany({ where: { cai: { tipoDocumento: TIPO } } });
+    await prisma.fiscalCai.deleteMany({ where: { tipoDocumento: TIPO } });
     await prisma.saleTransaction.deleteMany({ where: { sucursalId } });
     await prisma.client.deleteMany({ where: { id: clientId } });
     await prisma.sucursal.deleteMany({ where: { id: sucursalId } });
@@ -95,7 +105,7 @@ conBase('restricciones de la base — facturación fiscal', () => {
 
     const base = {
       caiId: cai.id,
-      tipoDocumento: 'factura',
+      tipoDocumento: TIPO,
       correlativo: 1,
       numeroCompleto: `001-001-01-${SUFIJO}`,
       businessDate: new Date('2026-09-27T00:00:00.000Z'),
@@ -134,7 +144,7 @@ conBase('restricciones de la base — facturación fiscal', () => {
     const documento = await prisma.fiscalDocument.create({
       data: {
         caiId: cai.id,
-        tipoDocumento: 'factura',
+        tipoDocumento: TIPO,
         correlativo: 7,
         numeroCompleto: `001-001-01-${SUFIJO}-7`,
         businessDate: new Date('2026-09-27T00:00:00.000Z'),
@@ -151,7 +161,7 @@ conBase('restricciones de la base — facturación fiscal', () => {
       prisma.fiscalDocument.create({
         data: {
           caiId: cai.id,
-          tipoDocumento: 'factura',
+          tipoDocumento: TIPO,
           correlativo: 7,
           numeroCompleto: `001-001-01-${SUFIJO}-7-bis`,
           businessDate: new Date('2026-09-27T00:00:00.000Z'),

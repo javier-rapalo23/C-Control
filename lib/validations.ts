@@ -284,6 +284,20 @@ export const updateFiscalCaiSchema = z.object({
   notas: z.string().trim().max(250).optional(),
 });
 
+export const emitirFiscalDocumentSchema = z.object({
+  origen: z.enum(['compra', 'venta', 'molido']),
+  transactionId: z.string().min(1),
+  // Solo en modo talonario: el número que trae el papel.
+  numeroManual: z.number().int().min(1).max(99_999_999).optional(),
+});
+
+export const anularFiscalDocumentSchema = z.object({
+  // Obligatorio: un documento anulado sin motivo no se puede explicar después.
+  motivo: z.string().trim().min(4).max(250),
+  copiaFisicaResguardada: z.boolean().optional(),
+  copiaFisicaUbicacion: z.string().trim().max(250).optional(),
+});
+
 export const updateProductoFiscalSchema = z.object({
   clasificacionFiscal: z.enum(CLASIFICACION_FISCAL_KEYS),
 });

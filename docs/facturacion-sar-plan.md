@@ -215,7 +215,7 @@ rechazado, documento que ampare exactamente una transacción, correlativo único
 
 **Lo que falta para que esto sirva de verdad** es la Fase 2: sin emisión, el panel solo guarda datos.
 
-### Fase 2 — Emisión, anulación y bloqueo
+### Fase 2 — Emisión, anulación y bloqueo — **hecha**
 
 Van juntas a propósito: bloquear el borrado sin tener anulación deja al usuario sin salida cuando se
 equivoque.
@@ -233,7 +233,51 @@ equivoque.
   admin como valor por omisión para anular.
 - **Salida:** criterios 9.1 a 9.4 y 9.6 demostrados con pruebas.
 
+**Cómo quedó:**
+
+| Pieza | Dónde |
+| --- | --- |
+| Emisión, anulación y bloqueo | `lib/fiscal-document.ts` |
+| Reglas puras (desglose de ISV, plazo de anulación, tipo por origen) | `lib/fiscal.ts` |
+| API | `GET/POST /api/fiscal-documents`, `POST /api/fiscal-documents/:id/anular` |
+| Bloqueo de borrado | `assertSinDocumentoFiscal` en las cuatro rutas de baja |
+| Interfaz | `components/fiscal-document-actions.tsx` + `lib/use-fiscal.ts`, en las filas de Compras y Ventas |
+| Snapshot del molido | `buildInvoiceForGrinding` en `lib/build-invoice.ts` |
+| Pruebas | `tests/lib/fiscal.test.ts` (18) y `tests/integration/fiscal-emision.test.ts` (8) |
+
+Verificado: `pnpm test` 17 suites / 149 pruebas, `pnpm test:integration` 15 pruebas contra Postgres
+real (≈160 s), `pnpm build`, typecheck y lint sin errores.
+
+**Criterios de aceptación demostrados:**
+
+| Criterio | Prueba |
+| --- | --- |
+| 9.1 — 100 emisiones sin duplicados ni saltos | 100 emisiones sobre un mismo CAI, hasta **10 en vuelo** a la vez (el límite lo pone el pool de conexiones de Prisma, no la prueba); se verifica que los 100 correlativos sean consecutivos y que el contador quede en el último |
+| 9.2 — una emisión que falla no consume número | Emisión válida, emisión que falla, y la siguiente recibe el número inmediato |
+| 9.3 — no emitir con CAI vencido o agotado | Vencido, agotado y sin CAI activo, los tres con `CaiNoDisponibleError` |
+| 9.4 — lo emitido no se borra | `assertSinDocumentoFiscal` lanza con el número en el mensaje; el `RESTRICT` de la base está en `fiscal-constraints.test.ts` |
+| 9.5 — reimprimir muestra los datos originales | Mitad comprobada: se cambia el nombre de la empresa y el snapshot sigue con el viejo. La reimpresión es Fase 3 |
+| 9.6 — anular conserva el número | Anulado conserva `numeroCompleto`, exige motivo, no se repite y queda en bitácora |
+
+**Decisiones que aparecieron al implementar:**
+
+- **El snapshot se arma antes de abrir la transacción.** Con el CAI bloqueado, adentro solo quedan
+  cinco consultas rápidas. Armarlo dentro alargaba el bloqueo tanto que dos cajas emitiendo a la vez
+  se hubieran estorbado.
+- **`maxWait` 10 s y `timeout` 20 s en la transacción de emisión.** Los valores por defecto de Prisma
+  (2 s y 5 s) abortan la cola que forma el bloqueo de fila cuando dos emisiones coinciden.
+- **`numeroCompleto` es único en toda la base**, no solo por CAI. Es la red que impide imprimir dos
+  veces el mismo número si alguien cargara un CAI con un rango solapado.
+- **El bono y el descuento de una compra se cargan al importe exento**, para que el desglose cuadre
+  con el total que se paga. Hoy el café está exonerado y es el único caso; si algún día se documenta
+  algo gravado con ajustes al pie, hay que decidir cómo se reparte esa diferencia.
+- **El botón de emitir no se esconde a quien no tiene permiso.** Esconderlo haría creer que la función
+  no existe; el control real es el 403 del servidor y el mensaje se muestra tal cual.
+
 ### Fase 3 — Impresión desde el snapshot
+
+> Pendiente de la Fase 2 que cae acá: **el molido no tiene pantalla de emisión** porque tampoco tiene
+> impresión. La API ya lo soporta y hay prueba de su desglose; el botón entra junto con su documento.
 
 - `buildInvoiceFromSnapshot` y refactor de `build-invoice.ts`: con documento emitido se imprime el
   snapshot; sin documento, el camino actual.

@@ -62,8 +62,65 @@ export function formatNumeroInterno(kind: 'compra' | 'venta', numeroInterno: num
   return `${kind === 'compra' ? 'C' : 'V'}-${String(numeroInterno).padStart(6, '0')}`;
 }
 
+/**
+ * Datos del comprobante de un servicio de molido. No tiene número interno propio
+ * —el molido no es una transacción de compra ni de venta— y su única línea es el
+ * servicio, con las libras molidas como referencia.
+ */
+export async function buildInvoiceForGrinding(grindingServiceId: string): Promise<InvoiceData | null> {
+  const servicio = await prisma.grindingService.findUnique({
+    where: { id: grindingServiceId },
+    include: { client: true, sucursal: true },
+  });
+  if (!servicio) return null;
+
+  const monto = Number(servicio.monto);
+  const lineas: InvoiceLinea[] = [
+    {
+      productoNombre: 'Servicio de molido',
+      pesoBruto: null,
+      numeroSacos: null,
+      taraPorSaco: null,
+      libras: Number(servicio.libras),
+      porcentajeOro: null,
+      quintalesOro: null,
+      precioPorLibra: null,
+      precioPorQuintalOro: null,
+      descripcion: servicio.notas,
+      total: monto,
+    },
+  ];
+
+  return {
+    kind: 'molido',
+    titulo: 'Comprobante de Servicio',
+    numeroInterno: '',
+    numeroFactura: null,
+    businessDate: toBusinessDateString(servicio.businessDate),
+    sucursalNombre: servicio.sucursal.nombre,
+    metodoPago: null,
+    empresa: await getEmpresa(),
+    cliente: {
+      nombre: servicio.client.nombre,
+      rtn: servicio.client.rtn,
+      telefono: servicio.client.telefono,
+      direccion: servicio.client.direccion,
+      claveIhcafe: servicio.client.claveIhcafe,
+      nombreFinca: servicio.client.nombreFinca,
+    },
+    lineas,
+    subtotal: monto,
+    bono: 0,
+    bonoMotivo: null,
+    descuento: 0,
+    descuentoMotivo: null,
+    total: monto,
+    ...sumar(lineas),
+  };
+}
+
 export type InvoiceData = {
-  kind: 'compra' | 'venta';
+  kind: 'compra' | 'venta' | 'molido';
   titulo: string;
   /** Correlativo interno del sistema (`C-000123`). Siempre presente. */
   numeroInterno: string;

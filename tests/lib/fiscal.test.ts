@@ -1,8 +1,11 @@
 import {
   CLASIFICACION_FISCAL_MOLIDO,
+  TIPO_DOCUMENTO_POR_ORIGEN,
+  desgloseIsv,
   evaluarCai,
   formatNumeroFiscal,
   motivoNoEmitible,
+  puedeAnularse,
   tasaIsv,
 } from '@/lib/fiscal';
 
@@ -59,6 +62,79 @@ describe('tasaIsv', () => {
   // Una clasificación desconocida no puede inventar impuesto.
   it('devuelve cero para una clasificación que no existe', () => {
     expect(tasaIsv('CUALQUIERA')).toBe(0);
+  });
+});
+
+describe('TIPO_DOCUMENTO_POR_ORIGEN', () => {
+  // Es un mapa explícito porque las notas de crédito también "aplican" a una venta:
+  // elegir por coincidencia daría una nota de crédito donde va una factura.
+  it('la compra va con boleta y la venta y el molido con factura', () => {
+    expect(TIPO_DOCUMENTO_POR_ORIGEN.compra).toBe('boleta_compra');
+    expect(TIPO_DOCUMENTO_POR_ORIGEN.venta).toBe('factura');
+    expect(TIPO_DOCUMENTO_POR_ORIGEN.molido).toBe('factura');
+  });
+});
+
+describe('desgloseIsv', () => {
+  it('deja el café completo como exento y sin impuesto', () => {
+    const desglose = desgloseIsv([
+      { monto: 25_014, clasificacionFiscal: 'EXENTO' },
+      { monto: 1_000, clasificacionFiscal: 'EXENTO' },
+    ]);
+
+    expect(desglose.importeExento).toBe(26_014);
+    expect(desglose.importeGravado15).toBe(0);
+    expect(desglose.isv15).toBe(0);
+    expect(desglose.total).toBe(26_014);
+  });
+
+  // El molido se cobra con el ISV dentro: la base se saca hacia atrás y el impuesto
+  // es la diferencia, para que base + ISV dé exactamente lo cobrado.
+  it('saca la base hacia atrás cuando el monto ya incluye el ISV', () => {
+    const desglose = desgloseIsv([
+      { monto: 100, clasificacionFiscal: CLASIFICACION_FISCAL_MOLIDO, isvIncluido: true },
+    ]);
+
+    expect(desglose.importeGravado15).toBe(86.96);
+    expect(desglose.isv15).toBe(13.04);
+    expect(desglose.importeGravado15 + desglose.isv15).toBe(100);
+    expect(desglose.total).toBe(100);
+  });
+
+  // Un monto que no divide exacto es donde aparecería el descuadre de un centavo.
+  it('no descuadra con montos que no dividen exacto', () => {
+    for (const monto of [10, 33.33, 57.75, 999.99]) {
+      const desglose = desgloseIsv([
+        { monto, clasificacionFiscal: CLASIFICACION_FISCAL_MOLIDO, isvIncluido: true },
+      ]);
+      expect(Number((desglose.importeGravado15 + desglose.isv15).toFixed(2))).toBe(monto);
+      expect(desglose.total).toBe(monto);
+    }
+  });
+
+  it('suma el impuesto al total cuando el monto no lo incluye', () => {
+    const desglose = desgloseIsv([{ monto: 100, clasificacionFiscal: 'GRAVADO_15' }]);
+
+    expect(desglose.importeGravado15).toBe(100);
+    expect(desglose.isv15).toBe(15);
+    expect(desglose.total).toBe(115);
+  });
+});
+
+describe('puedeAnularse', () => {
+  it('solo el mismo día de la emisión', () => {
+    // 2026-09-27 a las 14:00 de Honduras son las 20:00 UTC.
+    const emitido = new Date('2026-09-27T20:00:00.000Z');
+    expect(puedeAnularse(emitido, '2026-09-27')).toBe(true);
+    expect(puedeAnularse(emitido, '2026-09-28')).toBe(false);
+  });
+
+  // A las 19:00 de Honduras el UTC ya está en el día siguiente: comparar sin la zona
+  // habría dado por vencido el plazo antes de que terminara el día del negocio.
+  it('usa la fecha de Honduras y no la del servidor', () => {
+    const emitidoDeNoche = new Date('2026-09-28T02:00:00.000Z'); // 27 a las 20:00 en HN
+    expect(puedeAnularse(emitidoDeNoche, '2026-09-27')).toBe(true);
+    expect(puedeAnularse(emitidoDeNoche, '2026-09-28')).toBe(false);
   });
 });
 

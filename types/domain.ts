@@ -284,6 +284,45 @@ export type FiscalCaiDTO = {
   };
 };
 
+export type FiscalDocumentDTO = {
+  id: string;
+  caiId: string;
+  caiCodigo: string | null;
+  tipoDocumento: string;
+  tipoDocumentoLabel: string;
+  correlativo: number;
+  /** `EEE-PPP-TT-CCCCCCCC`. */
+  numeroCompleto: string;
+  estado: string;
+  /** Fecha de negocio de la transacción amparada. */
+  businessDate: string;
+  emitidoEn: string;
+  /** Fecha de negocio de la emisión; es la que decide el plazo de anulación. */
+  fechaEmision: string;
+  emitidoPor: string;
+  purchaseTransactionId: string | null;
+  saleTransactionId: string | null;
+  grindingServiceId: string | null;
+  total: number;
+  moneda: string;
+  desglose: {
+    importeExento: number;
+    importeExonerado: number;
+    importeGravado15: number;
+    importeGravado18: number;
+    isv15: number;
+    isv18: number;
+  };
+  formatoVersion: string;
+  anuladoEn: string | null;
+  anuladoPor: string | null;
+  anulacionMotivo: string | null;
+  copiaFisicaResguardada: boolean;
+  copiaFisicaUbicacion: string | null;
+  /** Derivado: solo se puede anular el mismo día de la emisión. */
+  anulable: boolean;
+};
+
 export type ModuleAccessDTO = {
   moduleKey: string;
   label: string;

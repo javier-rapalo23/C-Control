@@ -3,6 +3,7 @@ import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
+import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -19,6 +20,8 @@ export async function DELETE(_: Request, { params }: Params) {
       }
 
       const businessDate = existing.businessDate.toISOString().slice(0, 10);
+      // Igual que en compras: borrar una línea cambia el total ya documentado.
+      await assertSinDocumentoFiscal(tx, 'venta', existing.saleTransactionId);
       await assertCashOpen(tx, businessDate, existing.sucursalId);
 
       // Toda venta pertenece a una transacción, así que siempre hay cabecera que

@@ -1,4 +1,4 @@
-import { parseBusinessDate, todayBusinessDate, toBusinessDateString } from '@/lib/business-date';
+import { businessDateOf, parseBusinessDate, todayBusinessDate, toBusinessDateString } from '@/lib/business-date';
 
 /**
  * Catálogos y reglas de la facturación fiscal (SAR), sin base de datos.
@@ -73,6 +73,105 @@ export const CLASIFICACION_FISCAL_MOLIDO = 'GRAVADO_15';
 
 export function tasaIsv(clasificacion: string): number {
   return CLASIFICACIONES_FISCALES.find((c) => c.key === clasificacion)?.tasaIsv ?? 0;
+}
+
+/** Sobre qué se emite un documento. */
+export type OrigenDocumento = 'compra' | 'venta' | 'molido';
+
+/**
+ * Qué tipo de documento le corresponde a cada origen. Es un mapa explícito y no una
+ * búsqueda por `aplicaA` porque las notas de crédito también aplican a una venta:
+ * elegir por coincidencia daría una nota de crédito donde va una factura.
+ */
+export const TIPO_DOCUMENTO_POR_ORIGEN: Record<OrigenDocumento, string> = {
+  compra: 'boleta_compra',
+  venta: 'factura',
+  molido: 'factura',
+};
+
+/**
+ * Anular solo se permite **el mismo día de la emisión** (decisión del 27/09/2026).
+ * Después hace falta una nota de crédito, que todavía no existe.
+ *
+ * Se compara en fecha de negocio: con la hora del servidor, un documento emitido a
+ * las 19:00 de Honduras ya contaría como "de ayer" a las 18:01 del día siguiente.
+ */
+export function puedeAnularse(emitidoEn: Date, hoy: string = todayBusinessDate()): boolean {
+  return businessDateOf(emitidoEn) === hoy;
+}
+
+export type LineaFiscal = {
+  /** Monto de la línea tal como se cobra o se paga. */
+  monto: number;
+  clasificacionFiscal: string;
+  /**
+   * Si el monto ya trae el ISV dentro. Es el caso del molido: se captura un monto
+   * único y el impuesto va incluido, así que la base se calcula hacia atrás.
+   */
+  isvIncluido?: boolean;
+};
+
+export type DesgloseIsv = {
+  importeExento: number;
+  importeExonerado: number;
+  importeGravado15: number;
+  importeGravado18: number;
+  isv15: number;
+  isv18: number;
+  total: number;
+};
+
+const redondear = (valor: number) => Math.round(valor * 100) / 100;
+
+/**
+ * Desglose de totales para el pie del documento.
+ *
+ * Con `isvIncluido`, el ISV sale como **la diferencia** entre el monto y la base
+ * redondeada, no de multiplicar la base por la tasa: así base + ISV da exactamente
+ * el monto cobrado y el documento no descuadra por un centavo.
+ */
+export function desgloseIsv(lineas: LineaFiscal[]): DesgloseIsv {
+  const desglose: DesgloseIsv = {
+    importeExento: 0,
+    importeExonerado: 0,
+    importeGravado15: 0,
+    importeGravado18: 0,
+    isv15: 0,
+    isv18: 0,
+    total: 0,
+  };
+
+  for (const linea of lineas) {
+    const tasa = tasaIsv(linea.clasificacionFiscal);
+    desglose.total = redondear(desglose.total + linea.monto);
+
+    if (tasa === 0) {
+      if (linea.clasificacionFiscal === 'EXONERADO') {
+        desglose.importeExonerado = redondear(desglose.importeExonerado + linea.monto);
+      } else {
+        desglose.importeExento = redondear(desglose.importeExento + linea.monto);
+      }
+      continue;
+    }
+
+    const base = linea.isvIncluido ? redondear(linea.monto / (1 + tasa)) : redondear(linea.monto);
+    const impuesto = linea.isvIncluido ? redondear(linea.monto - base) : redondear(base * tasa);
+
+    if (tasa === 0.18) {
+      desglose.importeGravado18 = redondear(desglose.importeGravado18 + base);
+      desglose.isv18 = redondear(desglose.isv18 + impuesto);
+    } else {
+      desglose.importeGravado15 = redondear(desglose.importeGravado15 + base);
+      desglose.isv15 = redondear(desglose.isv15 + impuesto);
+    }
+
+    // Sin `isvIncluido` el impuesto se suma sobre el monto de la línea.
+    if (!linea.isvIncluido) {
+      desglose.total = redondear(desglose.total + impuesto);
+    }
+  }
+
+  return desglose;
 }
 
 export const MODOS_CAI = ['TALONARIO', 'SISTEMA'] as const;

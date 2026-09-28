@@ -7,6 +7,9 @@ import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/ty
 import { useSucursal } from '@/lib/use-sucursal';
 import { previewQuintalesOro } from '@/lib/oro-preview';
 import ClientQuickCreateModal from '@/components/client-quick-create-modal';
+import FiscalDocumentActions from '@/components/fiscal-document-actions';
+import { useFiscal } from '@/lib/use-fiscal';
+import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -61,6 +64,7 @@ function todayDateString() {
 export default function SalesPanel() {
   const { sucursales, sucursalId, setSucursalId } = useSucursal();
   const [businessDate, setBusinessDate] = useState(todayDateString());
+  const fiscal = useFiscal(businessDate, TIPO_DOCUMENTO_POR_ORIGEN.venta);
   const [ledger, setLedger] = useState<LedgerDTO | null>(null);
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [clients, setClients] = useState<ClientDTO[]>([]);
@@ -633,6 +637,13 @@ export default function SalesPanel() {
                     <div style={{ color: 'var(--text-soft)' }}>
                       {transaction.numeroInterno} · {transaction.items.length} items
                     </div>
+                    <FiscalDocumentActions
+                      origen="venta"
+                      transactionId={transaction.id}
+                      documento={fiscal.documentos[transaction.id] ?? null}
+                      caiActivo={fiscal.caiActivo}
+                      onChange={fiscal.refresh}
+                    />
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>

@@ -2,6 +2,7 @@ import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
+import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -21,6 +22,7 @@ export async function DELETE(_: Request, { params }: Params) {
         return null;
       }
 
+      await assertSinDocumentoFiscal(tx, 'venta', id);
       await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
 
       await tx.saleTransaction.delete({ where: { id } });

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { CashClosedError } from '@/lib/cash-session';
 import { ModulePermissionError } from '@/lib/require-api-module-access';
+import { CaiNoDisponibleError, DocumentoEmitidoError } from '@/lib/fiscal-document';
 import type { ApiError, ApiResponse, ApiSuccess } from '@/types/api';
 
 export function success<T>(data: T, status = 200): NextResponse<ApiSuccess<T>> {
@@ -58,6 +59,17 @@ export function handleApiError(error: unknown): NextResponse<ApiError> {
   if (error instanceof Prisma.PrismaClientInitializationError) {
     console.error(error);
     return failure('DATABASE_UNAVAILABLE', 'No hay conexión con la base de datos. Intenta de nuevo en unos segundos.', 503);
+  }
+
+  // 409: el payload es válido, pero la transacción ya está documentada y eso no se
+  // arregla reintentando. El cliente necesita distinguirlo para ofrecer "anular".
+  if (error instanceof DocumentoEmitidoError) {
+    return failure('FISCAL_DOCUMENT_ISSUED', error.message, 409, { numeroCompleto: error.numeroCompleto });
+  }
+
+  // 409 también: falta un CAI utilizable, no un dato de la petición.
+  if (error instanceof CaiNoDisponibleError) {
+    return failure('FISCAL_CAI_UNAVAILABLE', error.message, 409);
   }
 
   // 403 y no 400: el payload puede ser correcto; lo que falta es el permiso.

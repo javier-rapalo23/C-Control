@@ -18,8 +18,17 @@ export function toBusinessDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Fecha de negocio de un instante concreto. Un `DateTime` guardado en UTC no se
+ * puede comparar contra una fecha de negocio sin pasar por acá: a las 20:00 de
+ * Honduras el UTC ya está en el día siguiente.
+ */
+export function businessDateOf(instant: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE }).format(instant);
+}
+
 export function todayBusinessDate(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE }).format(new Date());
+  return businessDateOf(new Date());
 }
 
 /**

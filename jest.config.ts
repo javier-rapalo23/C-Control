@@ -36,6 +36,12 @@ const config: Config = {
       displayName: 'integration',
       roots: ['<rootDir>/tests/integration'],
       setupFiles: ['<rootDir>/tests/integration/setup-env.ts'],
+      // La base de pruebas está en Railway: cada consulta cruza la red, y una
+      // emisión son varias. Con los 5 s por defecto, las pruebas no fallaban por lo
+      // que comprueban sino por el reloj. El `setupFilesAfterEnv` es el que además
+      // sube el límite de los hooks.
+      setupFilesAfterEnv: ['<rootDir>/tests/integration/setup-timeout.ts'],
+      testTimeout: 60_000,
     },
   ],
 };

@@ -2,6 +2,7 @@ import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
+import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
 import { toBusinessDateString } from '@/lib/business-date';
 
 type Params = {
@@ -22,6 +23,10 @@ export async function DELETE(_: Request, { params }: Params) {
         return null;
       }
 
+      // Con documento fiscal emitido la compra ya no se puede borrar: se anula el
+      // documento. La base lo impediría igual (`onDelete: Restrict`), pero ese error
+      // no le dice nada a quien está en el mostrador.
+      await assertSinDocumentoFiscal(tx, 'compra', id);
       await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
 
       // Una compra pendiente ya pagada también movió la caja del día del pago:

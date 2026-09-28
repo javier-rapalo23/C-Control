@@ -1326,11 +1326,10 @@ En el CSS de impresión, el que se saca del flujo es el **contenedor** `.invoice
 hoja: posicionando cada `.invoice-sheet` por separado, las dos caían una encima de la otra. El salto
 entre copias es un `break-before: page` sobre la segunda hoja.
 
-### 10.3 Base de la facturación fiscal (SAR) — **modelo listo, todavía no emite**
+### 10.3 Facturación fiscal (SAR) — **emite y anula; imprime desde el snapshot en la fase siguiente**
 
-Primera fase del plan de `docs/facturacion-sar-plan.md`. **Nada emite documentos fiscales todavía**:
-esto registra el CAI y deja el modelo en su lugar. Mientras no haya CAI activo, la operación se
-comporta exactamente como antes (§10.2).
+Fases 1 y 2 del plan de `docs/facturacion-sar-plan.md`. Mientras no haya un CAI activo, la operación
+se comporta exactamente como antes (§10.2): el botón de emitir dice que no hay CAI y nada más cambia.
 
 | Modelo | Para qué |
 | --- | --- |
@@ -1363,6 +1362,44 @@ Decisiones que conviene no deshacer sin leer el plan:
 - **`onDelete: Restrict`** en las tres relaciones de `FiscalDocument`: es lo que impedirá borrar una
   transacción ya documentada aunque una ruta olvide comprobarlo.
 - **Un CAI con documentos no se borra**, se desactiva; es historial fiscal.
+
+#### Emisión
+
+`lib/fiscal-document.ts`. `POST /api/fiscal-documents` con `{ origen, transactionId }` —`origen` es
+`compra`, `venta` o `molido`— emite el documento de **una** transacción. Desde Compras y Ventas se
+dispara con el botón **Emitir documento fiscal** de cada fila.
+
+| Regla | Cómo |
+| --- | --- |
+| El correlativo no salta ni se repite | Se toma del contador del CAI con `SELECT … FOR UPDATE`; si algo falla, el rollback lo devuelve |
+| La fecha de emisión es hoy y no se edita | De eso depende que la numeración salga en orden cronológico. La fecha de negocio de la transacción se guarda aparte |
+| La caja cerrada no bloquea | Emitir no mueve efectivo, igual que una carga de inventario |
+| Modo `TALONARIO` | El número lo escribe quien factura; se valida contra el rango y contra los ya usados |
+| Modo `SISTEMA` | Lo asigna la aplicación (autoimpresor) |
+| Desglose de ISV | Café exonerado; el **molido** es `GRAVADO_15` y su monto ya trae el ISV dentro, así que la base sale hacia atrás (`monto ÷ 1.15`) y el impuesto es la diferencia |
+
+**El snapshot se arma antes de abrir la transacción**, para que el CAI quede bloqueado el menor tiempo
+posible; adentro solo quedan cinco consultas. La transacción usa `maxWait` 10 s y `timeout` 20 s: con
+los valores por defecto de Prisma, la cola que forma el bloqueo se abortaría al coincidir dos cajas.
+
+#### Anulación y bloqueo
+
+- `POST /api/fiscal-documents/:id/anular` con **motivo obligatorio**, y solo **el mismo día** de la
+  emisión (se compara en fecha de Honduras). Después hace falta una nota de crédito, que aún no
+  existe. Conserva el número: un correlativo emitido nunca se libera.
+- Registra dónde queda archivada la copia física del anulado.
+- `assertSinDocumentoFiscal(db, origen, id)` es el gemelo de `assertCashOpen` y lo llaman las **cuatro
+  rutas de baja** (compra y venta, completas y por línea): con documento emitido responden
+  **409 `FISCAL_DOCUMENT_ISSUED`**. Borrar una línea también está prohibido, porque cambiaría el total
+  ya documentado.
+- Todo queda en `FiscalAuditLog`: emisión, anulación y cambios de CAI.
+
+**Permisos:** `fiscal_emitir` (editor por omisión) y `fiscal_anular` (solo admin), configurables en
+Mantenimiento → Roles (§8.5). El botón no se esconde a quien no tiene permiso: el control es el 403
+del servidor, y esconderlo haría creer que la función no existe.
+
+**Todavía no:** la impresión desde el snapshot, el rótulo `ANULADO` en la hoja y el documento del
+molido —la API ya lo emite, pero no hay pantalla porque tampoco hay impresión—.
 
 ---
 

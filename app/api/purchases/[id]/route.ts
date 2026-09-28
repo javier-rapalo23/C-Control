@@ -3,6 +3,7 @@ import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
+import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -18,6 +19,9 @@ export async function DELETE(_: Request, { params }: Params) {
         return null;
       }
 
+      // Borrar una línea cambia el total de la cabecera, así que con documento
+      // emitido está tan prohibido como borrar la compra entera.
+      await assertSinDocumentoFiscal(tx, 'compra', existing.purchaseTransactionId);
       await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
 
       // Toda compra pertenece a una transacción, así que siempre hay cabecera que
