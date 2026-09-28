@@ -1,17 +1,20 @@
 # Facturación y parte fiscal
 
 Cómo funciona hoy la emisión de comprobantes en C-Control: qué imprime, cómo se numera, qué lleva
-el bloque fiscal y **qué todavía no hace**. Última revisión: 27 de septiembre de 2026.
+el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembre de 2026.
 
-> **Estado (27/09/2026):** ya está aplicada la **Fase 1** del plan de `facturacion-sar-plan.md`: el
-> modelo fiscal (`FiscalCai`, `FiscalDocument`, `FiscalAuditLog`) y el panel de CAI en
-> Mantenimiento → Facturación. **La emisión todavía no existe**, así que todo lo que sigue describe
-> el comportamiento vigente; ver §10.3 de `DOCUMENTACION.md` para lo nuevo.
+> **Estado (28/09/2026):** están aplicadas las **Fases 1 a 4** del plan de
+> `facturacion-sar-plan.md`: el modelo fiscal (`FiscalCai`, `FiscalDocument`, `FiscalAuditLog`) con
+> su panel en Mantenimiento → Facturación, la **emisión** del correlativo autorizado y la
+> **anulación**, la impresión desde el snapshot en los dos formatos, y los **reportes fiscales**
+> (libro de compras, libro de ventas, pendientes de emitir, estado del CAI, con exportación a CSV).
+> Falta la Fase 5: notas de crédito y débito.
 
-> **Lo primero, para que no haya malentendidos:** hoy el sistema imprime **comprobantes internos**,
-> no facturas fiscales. Tiene preparado el bloque de factura autorizada (CAI) y se activa llenando
-> cuatro campos, pero el **correlativo fiscal** —el número que debe salir del rango autorizado por
-> el SAR— no lo genera: ese número sigue saliendo del talonario físico y se captura a mano.
+> **Lo primero, para que no haya malentendidos:** una transacción **sin documento emitido** se
+> imprime rotulada *"comprobante interno — no es documento fiscal"*, y no lleva CAI. Se vuelve
+> documento fiscal cuando alguien lo **emite**, y ahí toma el número del rango autorizado. En modo
+> `SISTEMA` ese número lo asigna la aplicación; en modo `TALONARIO` se teclea el del papel y el
+> sistema lo valida contra el rango. Emitir exige el permiso `fiscal_emitir`; anular, `fiscal_anular`.
 
 ---
 
@@ -114,25 +117,32 @@ Detalles de por qué está hecho así:
 
 ## 4. El bloque fiscal (CAI)
 
-La factura A4 imprime un recuadro con los datos de la factura autorizada **solo si el CAI tiene
-valor**. Mientras esté vacío, la factura sale como comprobante interno, que es lo que corresponde
-mientras el negocio facture con talonario.
+El recuadro con CAI, rango autorizado y fecha límite se imprime **solo si el documento está
+emitido**, y sale del CAI con el que se emitió, guardado en el documento. Sin documento, la hoja y el
+ticket llevan el rótulo *"comprobante interno — no es documento fiscal"* y ningún CAI.
 
-Los cuatro campos viven en `CompanySettings` (registro único) y se llenan en
-**Mantenimiento → Empresa → Factura autorizada (SAR)**:
+El CAI se administra en **Mantenimiento → Facturación** (tabla `FiscalCai`), un registro por
+autorización:
 
 | Campo | Qué es | Ejemplo |
 | --- | --- | --- |
-| `cai` | Código de Autorización de Impresión. **Es el interruptor**: con valor, aparece el bloque | `ABCD-1234-EFGH` |
-| `facturaRangoDesde` | Primer número del rango autorizado | `000-001-01-00000001` |
-| `facturaRangoHasta` | Último número del rango autorizado | `000-001-01-00005000` |
-| `facturaFechaLimite` | Fecha límite de emisión | `31/12/2027` |
+| `codigo` | Código de Autorización de Impresión, único en la base | `ABCD-1234-EFGH` |
+| `tipoDocumento` | Sobre qué se emite: boleta de compra, factura… | `boleta_compra` |
+| `codigoEstablecimiento`, `codigoPuntoEmision`, `codigoTipoDocumento` | Los tres primeros segmentos del número | `001`, `001`, `04` |
+| `rangoDesde`, `rangoHasta` | Rango autorizado, solo el correlativo | `1`, `500` |
+| `fechaLimite` | Fecha límite de emisión | `2027-12-31` |
+| `modo` | `SISTEMA` (el número lo asigna la app) o `TALONARIO` (se teclea el del papel) | `SISTEMA` |
+| `ultimoCorrelativo` | Contador. Es la fila que se bloquea al emitir | `123` |
+| `alertaPorcentaje`, `alertaDiasPrevios` | Cuándo avisar que el rango se agota o la fecha se acerca | `80`, `30` |
 
-Los cuatro son **texto libre** (máximo 40–50 caracteres). El sistema no valida el formato, no
-verifica que el rango sea coherente ni avisa cuando la fecha límite está por vencerse.
+**Solo puede haber un CAI activo por tipo de documento**, garantizado por un índice parcial. Agotado
+y vencido **no se guardan**: se derivan del rango y de la fecha en cada lectura, para que no puedan
+quedar desactualizados el día que pasa la fecha límite sin que nadie escriba nada.
 
-Activar la facturación autorizada es llenar esos campos: no hay que tocar código ni desplegar nada.
-Lo que **no** se resuelve llenándolos es el correlativo fiscal (§7).
+Los cuatro campos viejos de `CompanySettings` (`cai`, `facturaRangoDesde`, `facturaRangoHasta`,
+`facturaFechaLimite`) quedaron como **datos históricos y ya no se imprimen**. Con ellos llenos, una
+hoja sin documento salía rotulada "no es documento fiscal" y con un CAI debajo: un código de
+autorización sobre un papel sin correlativo autorizado.
 
 ---
 
@@ -142,7 +152,8 @@ Lo que **no** se resuelve llenándolos es el correlativo fiscal (§7).
 | --- | --- | --- |
 | Encabezado | Nombre de la empresa, RTN, dirección, teléfono, correo | De `CompanySettings`. Si falta el nombre, imprime "Empresa sin nombre" |
 | Identificación | Rótulo de la copia, título, `No.` interno, `Factura No.`, fecha, sucursal | El interno va primero y siempre |
-| Bloque fiscal | CAI, rango autorizado, fecha límite | Solo con CAI configurado |
+| Bloque fiscal | CAI, rango autorizado, fecha límite | Solo con documento emitido; si no, el rótulo de comprobante interno |
+| Desglose | Importe exento, exonerado, gravado 15/18 % e ISV | Solo con documento emitido, y solo los renglones que aplican |
 | Cliente | Nombre, finca, clave IHCAFE, RTN, teléfono, dirección | Cada dato sale solo si existe. Se rotula **Productor** en compras y **Cliente** en ventas |
 | Líneas (compra) | Tipo de café, bruto, tara, neto, quintales oro, precio, valor | **Sin sacos ni rendimiento**: la tara ya explica el descuento y el rendimiento es una estimación del beneficio |
 | Líneas (venta) | Concepto, bruto, sacos, tara, neto, rendimiento, quintales oro, precio, valor | Detalle completo; lo revisa un comprador. Lo que no se pesó sale con guion, no con cero |
@@ -175,71 +186,147 @@ monto que se captura ya lo incluye, así que el desglose se calcula hacia atrás
 
 ---
 
-## 7. Lo que el sistema NO hace
+## 7. Emisión, anulación y reimpresión
 
-Importante para no dar por cubierto lo que no lo está:
+**Emitir** (`fiscal_emitir`) toma el siguiente número del CAI activo del tipo que corresponde y crea
+el documento. Dos garantías, que son la razón del diseño:
+
+- **El número no se salta ni se repite.** El contador vive en la fila del CAI y se bloquea con
+  `SELECT … FOR UPDATE` dentro de la misma transacción que crea el documento. Si algo falla, el
+  rollback devuelve el contador y **el número no se consume**. Una secuencia de Postgres no servía:
+  el rollback se la come y deja hueco.
+- **Lo emitido es inmutable.** El documento guarda un `snapshot` de todo lo impreso, así que
+  reimprimir no depende de los datos vivos: si mañana cambia el nombre de la empresa o el RTN del
+  cliente, la reimpresión sigue mostrando lo que se entregó. La transacción amparada queda bloqueada
+  para edición y borrado, en la aplicación y en la base (`onDelete: Restrict`).
+
+La **fecha de emisión es hoy y no se edita**: de eso depende que el orden de los números coincida con
+el de las fechas. La fecha de negocio de la transacción se guarda aparte, porque el papel a veces se
+hace días después del pesaje.
+
+**Anular** (`fiscal_anular`) solo se permite **el mismo día de la emisión**, comparado en fecha de
+negocio de Honduras y no con la hora del servidor. Exige motivo y dónde quedó resguardada la copia
+física. El número **no se libera**: el documento queda en estado `anulado`, se reimprime con
+`*** ANULADO ***` y su motivo, y sigue apareciendo en el libro. Después del día de emisión hace falta
+una nota de crédito, que todavía no existe (Fase 5).
+
+Cada emisión, anulación, alta o cambio de CAI y **cada reimpresión** queda en `FiscalAuditLog`, con
+el formato usado. Como el número no se reasigna nunca, lo auditable de una reimpresión es cuántas
+veces se imprimió y cómo.
+
+---
+
+## 8. Reportes fiscales
+
+En **Reportes → Fiscal**, con el mismo rango de fechas que las demás pestañas (hay atajos *Este mes*
+y *Mes pasado*, porque el libro es mensual):
+
+| Vista | Qué muestra |
+| --- | --- |
+| **Libro de compras** | Un renglón por boleta de compra, por fecha de emisión |
+| **Libro de ventas** | Igual, con las facturas |
+| **Pendientes de emitir** | Compras, ventas y molidos del período sin documento, con los días que llevan así |
+| **Estado del CAI** | Rango consumido, disponibles, próximo número, días para vencer y por qué no puede emitir, si es el caso |
+
+Tres cosas que conviene saber al leer el libro:
+
+- **Se ordena por fecha de emisión**, no por la de la compra o la venta. La fecha de la operación va
+  en su propia columna.
+- **Los anulados aparecen y no suman.** Tienen que estar para que la numeración se lea completa; su
+  monto va aparte, en "Anulado (no suma)".
+- **Avisa de los números que faltan** entre el primero y el último del período, por CAI. No es
+  necesariamente un error —una hoja dañada del talonario lo explica— pero es lo primero que se
+  pregunta en una revisión.
+
+Los dos libros y los pendientes se **descargan en CSV**, con los montos como número para poder
+sumarlos en Excel sin limpiar la columna.
+
+Las notas de crédito y débito **todavía no entran al libro**: no se pueden emitir, y cuando existan
+hay que decidir su signo, porque sumar una nota de crédito como una factura infla el ingreso.
+
+---
+
+## 9. Lo que el sistema NO hace
 
 | No hace | Qué implica |
 | --- | --- |
-| **Generar el correlativo fiscal del rango del CAI** | El número autorizado sale del talonario y se captura a mano. El correlativo interno (`C-000123`) **no lo sustituye** |
-| **Calcular impuestos (ISV) ni exoneraciones** | No hay ninguna noción de impuesto en el sistema: el total es el monto del café más o menos los ajustes |
-| **Anular comprobantes** | No existe el estado "anulada". Se borra la transacción, lo que deja un hueco en la numeración y ningún rastro del documento |
-| **Notas de crédito o débito** | No existen |
-| **Llevar libro de ventas ni reporte fiscal** | Los reportes son de negocio (compras, ventas, gastos por rango), no declaraciones |
-| **Validar el CAI, el rango o el vencimiento** | Son texto libre; nadie avisa si el rango se agotó o la fecha límite pasó |
-| **Guardar copia electrónica del documento emitido** | La factura se arma cada vez desde los datos actuales de la transacción y de la empresa. Si mañana cambia el nombre de la empresa, una factura vieja se reimprime con el nombre nuevo |
-| **Numerar las ventas en el talonario** | `numeroFactura` es solo de compras |
+| **Notas de crédito o débito** | No existen. Un error detectado **al día siguiente** no tiene salida dentro del sistema: la anulación está limitada al mismo día |
+| **Retenciones IHCAFE** | Fuera de alcance por decisión del 27/09/2026. Si deben salir en el documento, entra en la Fase 5 |
+| **Guía de remisión** | Fuera de alcance: antes hay que modelar el traslado de café entre bodegas |
+| **Facturar en otra moneda** | `moneda` y `tipoCambio` están en el modelo, pero todo se emite en HNL |
+| **Un documento por varias transacciones** | Un documento ampara **una** compra, venta o molido (decisión del 27/09/2026) |
+| **Declaraciones ante el SAR** | Los reportes son el insumo de la contadora, no una declaración |
+| **Numerar las ventas en el talonario** | `numeroFactura` es solo de compras, y hoy solo tiene sentido para lo histórico |
 | **Hoja de facturación por productor** | Pendiente: el detalle línea por línea de un productor en el formato con el que se le liquida |
 
 ---
 
-## 8. Cómo activar la facturación autorizada
+## 10. Cómo activar la facturación autorizada
 
-1. Llenar CAI, rango desde, rango hasta y fecha límite en **Mantenimiento → Empresa**.
-2. Imprimir una factura de prueba y verificar que el recuadro fiscal aparezca con los cuatro datos.
-3. Seguir capturando a mano el número del talonario en **Factura No.** de cada compra.
-
-Si lo que se quiere es que **el sistema** emita el número autorizado, hay que programarlo. Como
-mínimo: un correlativo por rango que no se salte ni repita números, control de qué pasa al agotarse
-el rango o vencer la fecha, y anulación de documentos (porque un número fiscal emitido no se puede
-borrar, solo anular). Nada de eso existe hoy.
+1. La contadora consigue la autorización del SAR y **carga el CAI** en Mantenimiento → Facturación:
+   código, tipo de documento, los tres códigos del número, rango, fecha límite y modo.
+2. Revisar el **próximo número** que muestra el panel antes de emitir el primero: es la forma de
+   detectar un código mal tecleado sin gastar un número.
+3. Dar los permisos: `fiscal_emitir` y `fiscal_anular` se configuran por rol en Mantenimiento →
+   Roles. No aparecen en el menú, son solo permisos.
+4. Elegir el **formato de impresión** por omisión (80 mm o A4) en Mantenimiento → Facturación.
+5. Emitir una de prueba y verificar en el papel el número, el CAI, el rango y la fecha límite.
 
 ---
 
-## 9. Dónde está cada cosa en el código
+## 11. Dónde está cada cosa en el código
 
 | Archivo | Qué hace |
 | --- | --- |
-| `lib/build-invoice.ts` | Reúne los datos de la factura A4 (compras y ventas) y formatea el correlativo interno (`formatNumeroInterno`) |
+| `lib/fiscal.ts` | Catálogos y reglas puras: tipos de documento, clasificaciones e ISV, formato del número, evaluación del CAI, plazo de anulación, desglose |
+| `lib/fiscal-cai.ts` | DTO del CAI con el estado del rango derivado en cada lectura |
+| `lib/fiscal-document.ts` | Emisión (con el bloqueo de fila), anulación, bitácora, bloqueo de edición (`assertSinDocumentoFiscal`) |
+| `lib/fiscal-reports.ts` | Libro de compras y ventas, pendientes de emitir, saltos de numeración, columnas del CSV |
+| `lib/csv.ts` | El archivo que abre Excel: BOM, comillas, protección de fórmulas |
+| `lib/build-invoice.ts` | Datos de la factura: desde el snapshot si el documento está emitido, si no de los datos vivos. Formatea el correlativo interno |
+| `lib/build-ticket.ts` | Convierte esos mismos datos al ticket: los dos formatos leen una sola fuente |
+| `lib/thermal-printer.ts` | Buffers ESC/POS: ticket (dos copias, bloque fiscal) y resumen del día |
+| `lib/print-formats.ts`, `lib/use-print-invoice.ts` | El catálogo de formatos y el hook que imprime en el elegido |
 | `components/invoice-a4.tsx` | La hoja: maquetación, CSS de impresión y las dos copias |
-| `components/invoice-toolbar.tsx` | Botón de imprimir; el CSS lo oculta al imprimir |
-| `app/print/compra/[id]/page.tsx`, `app/print/venta/[id]/page.tsx` | Las páginas de factura, con su control de acceso |
-| `lib/thermal-printer.ts` | Buffers ESC/POS: ticket (dos copias) y resumen del día |
-| `lib/build-ticket.ts` | Reúne los datos del ticket y del resumen |
-| `app/api/print/ticket/route.ts` | Encola el `PrintJob` del ticket |
-| `app/api/print/agent/*` | Endpoints del agente local: reclama trabajos pendientes y reporta el resultado. Se autentica con `PRINT_AGENT_TOKEN` |
-| `app/api/settings/company/route.ts` | Lee y guarda los datos de empresa, incluidos los fiscales |
-| `components/maintenance-company-panel.tsx` | Formulario de Mantenimiento → Empresa |
-| `prisma/schema.prisma` | `CompanySettings` (datos fiscales), `numeroInterno` y `numeroFactura` en las cabeceras, `PrintJob` |
+| `components/invoice-print-buttons.tsx` | "Imprimir factura" en el formato por omisión, más el otro formato |
+| `components/fiscal-document-actions.tsx` | Emitir y anular desde Compras, Ventas y Molido |
+| `components/maintenance-fiscal-panel.tsx` | Mantenimiento → Facturación: CAI y formato por omisión |
+| `components/fiscal-reports-panel.tsx` | Reportes → Fiscal: los dos libros, pendientes, estado del CAI y la descarga |
+| `app/api/fiscal-cais/*`, `app/api/fiscal-documents/*` | Administración del CAI, emisión y anulación |
+| `app/api/reports/fiscal/libro`, `.../pendientes` | Los reportes, en JSON o CSV |
+| `app/print/{compra,venta,molido}/[id]/page.tsx` | Las páginas de factura A4, con su control de acceso |
+| `app/api/print/ticket/route.ts` | Encola el `PrintJob` del ticket y registra la reimpresión |
+| `app/api/print/agent/*` | Endpoints del agente local. Se autentica con `PRINT_AGENT_TOKEN` |
+| `prisma/schema.prisma` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog`, `numeroInterno`, `Producto.clasificacionFiscal`, `CompanySettings.formatoImpresionDefault` |
 
 **Migraciones relacionadas:**
 
 | Migración | Qué trajo |
 | --- | --- |
-| `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` y los cuatro campos fiscales de `CompanySettings` |
+| `20260915000000_invoice_number_and_fiscal_base` | `PurchaseTransaction.numeroFactura` y los cuatro campos fiscales de `CompanySettings` (hoy históricos) |
 | `20260925000000_add_numero_interno` | `numeroInterno` en compras y ventas: secuencia, único y backfill en orden de creación |
+| `20260927000000_add_fiscal_base` | Las tres tablas fiscales, el índice parcial de un CAI activo por tipo, los `CHECK` y los `RESTRICT` |
+| `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault` |
 
-**Pruebas:** `tests/lib/build-invoice.test.ts` (datos de la factura, correlativo, bloque fiscal solo
-con CAI), `tests/components/invoice-a4.test.tsx` (HTML de la hoja, las dos copias, cuadre de
-columnas) y `tests/lib/ticket-copias.test.ts` (dos copias en el buffer, un corte por copia).
+**Pruebas:** `tests/lib/fiscal.test.ts` (reglas del CAI y desglose), `tests/lib/fiscal-reports.test.ts`
+y `tests/lib/csv.test.ts` (libro, pendientes y exportación), `tests/lib/build-invoice.test.ts`,
+`tests/components/invoice-a4.test.tsx`, `tests/lib/ticket-copias.test.ts`, y contra Postgres de
+verdad `tests/integration/fiscal-{constraints,emision,reportes}.test.ts`.
 
 ---
 
-## 10. Estado y pendientes
+## 12. Estado y pendientes
 
-- La migración `20260925000000_add_numero_interno` **debe aplicarse** (`npx prisma migrate dev`, o
-  `prisma migrate deploy` en producción) antes de usar la app: la columna es `NOT NULL` y sin ella
-  fallan las consultas de compras y ventas.
-- Falta ver impreso el corte entre las dos copias, tanto en A4 como en la térmica.
-- Para el detalle de decisiones de diseño, ver `DOCUMENTACION.md` §10.1 (ticket), §10.2 (factura
-  A4 y numeración) y §19.3 (por qué el número del talonario se captura a mano).
+- **Las migraciones fiscales deben aplicarse a la base de la operación** (`prisma migrate deploy`):
+  `20260925000000_add_numero_interno`, `20260927000000_add_fiscal_base` y
+  `20260928000000_add_print_format`. La primera crea una columna `NOT NULL`, así que sin ella fallan
+  las consultas de compras y ventas.
+- **La contadora tiene que confirmar** el tipo de documento que corresponde a las compras y su código
+  de dos dígitos (`TT`), además del formato y las leyendas exactas que exige el SAR.
+- Falta ver impreso el corte entre las dos copias, tanto en A4 como en la térmica, y el ticket fiscal
+  en la impresora real.
+- Pendiente la Fase 5: notas de crédito y débito, retenciones IHCAFE si deben salir en el documento, y
+  guía de remisión.
+- Para el detalle de decisiones de diseño, ver `DOCUMENTACION.md` §6.14 (reportes fiscales), §10.1
+  (ticket), §10.2 (factura A4 y numeración), §10.3 (emisión, anulación y formatos) y §19.3 (por qué el
+  número del talonario se captura a mano).

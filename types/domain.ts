@@ -631,3 +631,105 @@ export type PayrollPreviewDTO = {
     empleados: number;
   };
 };
+
+/**
+ * Un renglón del libro de compras o de ventas: **un documento fiscal**, con los datos
+ * como quedaron al emitirlo. El nombre del cliente, su RTN y el correlativo interno
+ * salen del `snapshot`, no de los registros vivos: el libro tiene que decir lo que
+ * dice el papel que se entregó, aunque después le hayan corregido el RTN al cliente.
+ */
+export type FiscalBookRowDTO = {
+  id: string;
+  numeroCompleto: string;
+  correlativo: number;
+  tipoDocumento: string;
+  tipoDocumentoLabel: string;
+  caiCodigo: string | null;
+  /** Fecha de negocio de la emisión: la que ordena el libro. */
+  fechaEmision: string;
+  /** Fecha de negocio de la transacción amparada; puede ser anterior. */
+  businessDate: string;
+  numeroInterno: string | null;
+  clienteNombre: string | null;
+  clienteRtn: string | null;
+  sucursalNombre: string | null;
+  origen: 'compra' | 'venta' | 'molido' | null;
+  importeExento: number;
+  importeExonerado: number;
+  importeGravado15: number;
+  importeGravado18: number;
+  isv15: number;
+  isv18: number;
+  total: number;
+  estado: string;
+  anulado: boolean;
+  anulacionMotivo: string | null;
+  emitidoPor: string;
+};
+
+/**
+ * Hueco en la numeración dentro del período: números del rango que no aparecen entre
+ * el primero y el último emitido. No es un error por sí mismo —un talonario puede
+ * tener una hoja dañada— pero es lo que la contadora debe poder explicar.
+ */
+export type FiscalBookGapDTO = {
+  caiCodigo: string | null;
+  tipoDocumentoLabel: string;
+  desde: number;
+  hasta: number;
+  cantidad: number;
+};
+
+export type FiscalBookReportDTO = {
+  /** `compras` (boletas de compra) o `ventas` (facturas). */
+  libro: 'compras' | 'ventas';
+  from: string;
+  to: string;
+  rows: FiscalBookRowDTO[];
+  /** Los anulados aparecen en `rows` pero **no** suman en los totales. */
+  totals: {
+    documentos: number;
+    anulados: number;
+    importeExento: number;
+    importeExonerado: number;
+    importeGravado15: number;
+    importeGravado18: number;
+    isv15: number;
+    isv18: number;
+    total: number;
+    /** Lo que habría sumado lo anulado, para poder cuadrar contra el talonario. */
+    totalAnulado: number;
+  };
+  saltos: FiscalBookGapDTO[];
+};
+
+/** Transacción que todavía no tiene documento fiscal. */
+export type FiscalPendingRowDTO = {
+  origen: 'compra' | 'venta' | 'molido';
+  origenLabel: string;
+  transactionId: string;
+  businessDate: string;
+  numeroInterno: string | null;
+  clienteNombre: string;
+  sucursalNombre: string;
+  total: number;
+  /** Días de negocio transcurridos desde la transacción; 0 si es de hoy. */
+  diasSinEmitir: number;
+};
+
+export type FiscalPendingReportDTO = {
+  from: string;
+  to: string;
+  sucursalId: string | null;
+  rows: FiscalPendingRowDTO[];
+  totals: {
+    documentos: number;
+    total: number;
+    porOrigen: Array<{
+      origen: 'compra' | 'venta' | 'molido';
+      origenLabel: string;
+      documentos: number;
+      total: number;
+    }>;
+  };
+};

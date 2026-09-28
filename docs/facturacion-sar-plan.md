@@ -1,7 +1,7 @@
 # Facturación fiscal SAR — revisión del estado actual y plan
 
 Respuesta a `facturacion-sar-c-control.md`. Revisado contra el código del 27 de septiembre de 2026
-(rutas de `facturacion-fiscal.md` §9, esquema Prisma, validaciones, middleware y pruebas).
+(rutas de `facturacion-fiscal.md` §11, esquema Prisma, validaciones, middleware y pruebas).
 **No se escribió código.**
 
 Las respuestas del 27 de septiembre ya están incorporadas: §8 tiene las decisiones y §8b lo que
@@ -340,11 +340,54 @@ Consecuencia a tener presente: imprimir los dos formatos deja **dos papeles con 
 una reimpresión, no dos documentos; el rótulo de copia (`Original — Cliente` / `Copia — Control
 interno`) va por copia, no por formato.
 
-### Fase 4 — Reportes fiscales
+### Fase 4 — Reportes fiscales — **hecha**
 
 - Libro de compras y libro de ventas por período, con anulados.
 - Pendientes de emitir y estado de CAI.
-- Exportación (CSV, salvo que se quiera la dependencia de Excel).
+- Exportación en **CSV**, sin dependencia nueva: `exceljs` habría sido 8 MB para un archivo que Excel
+  abre igual.
+
+**Cómo quedó:**
+
+| Pieza | Dónde |
+| --- | --- |
+| Libro, pendientes, saltos de numeración y columnas del CSV | `lib/fiscal-reports.ts` |
+| Codificación del CSV (BOM, comillas, protección de fórmulas) | `lib/csv.ts` |
+| Endpoints, con `formato=csv` y permiso del módulo `reports` | `/api/reports/fiscal/libro`, `/api/reports/fiscal/pendientes` |
+| Pestaña Fiscal con las cuatro vistas y la descarga | `components/fiscal-reports-panel.tsx`, montada desde `components/reports-panel.tsx` |
+| Estado del CAI | Reusa `GET /api/fiscal-cais`, que ya deriva rango, vencimiento y próximo número |
+| Pruebas | `tests/lib/fiscal-reports.test.ts` (14), `tests/lib/csv.test.ts` (6), `tests/integration/fiscal-reportes.test.ts` (5) |
+
+Verificado: `pnpm test` 19 suites / 184 pruebas, typecheck y lint sin errores, y la suite de
+integración de reportes en verde contra Postgres real (5 pruebas).
+
+**Decisiones de esta fase:**
+
+- **El libro se ordena por fecha de emisión**, no por la de la compra o la venta: es la fecha que el
+  documento declara y la que sigue el correlativo. La fecha de la operación va en columna aparte.
+- **Los anulados aparecen y no suman.** Están para que la numeración se lea completa; su monto va a
+  `totalAnulado` y en el CSV a una columna propia, para que arrastrar la suma en Excel no dé un total
+  distinto al del reporte.
+- **Los datos del cliente salen del snapshot**, no de `Client`: si alguien corrige un RTN, el libro
+  seguiría cuadrando con el papel entregado.
+- **El recorte del período se hace en fecha de negocio**, con un día de margen en la consulta y el
+  filtro fino en JavaScript. Con el corte en UTC, un documento emitido a las siete de la noche caía en
+  el mes siguiente.
+- **Se informan los saltos de numeración** entre el primero y el último del período, por CAI. Con el
+  contador bloqueado no deberían existir, pero en modo talonario el número lo teclea una persona.
+- **Las notas de crédito no entran al libro todavía:** no se pueden emitir, y sumarlas como una factura
+  infla el ingreso. Cuando existan (Fase 5) hay que agregarlas **con signo**.
+- **Los dos endpoints comprueban el módulo `reports`** con `requireApiModuleAccess`, a diferencia de
+  los cuatro reportes de negocio, que se apoyan solo en el middleware: entregan el detalle documento
+  por documento en un archivo descargable.
+- **El libro no filtra por sucursal** y los pendientes sí: un documento fiscal no tiene sucursal propia
+  —el CAI es de la empresa— y el nombre de la bodega queda dentro del snapshot.
+
+**Trampa cerrada en el camino:** la hoja A4 sin documento emitido todavía imprimía, como legado, el CAI
+de los cuatro campos viejos de `CompanySettings`. Salía rotulada "no es documento fiscal" **y con un
+CAI debajo**. Se eliminó ese bloque, los campos quedaron marcados como históricos en Mantenimiento →
+Empresa, y la prueba que verificaba que se imprimieran ahora verifica lo contrario. Es el paso 4 de la
+estrategia de migración (§5), que había quedado pendiente de la Fase 3.
 
 ### Fase 5 — Condicionales, según respuestas
 
@@ -480,6 +523,9 @@ Aditiva y en dos tiempos, para que un rollback no pierda datos.
 3. **`numeroFactura` histórico se conserva como legado.** No se convierte en `FiscalDocument` ni se
    importa: se arranca a emitir desde cero y lo viejo queda como dato de consulta.
 4. **Migración 2 (Fase 3),** cuando el panel nuevo ya esté en uso: dejar de leer las columnas viejas.
+   **Hecho en la Fase 4** (se había pasado por alto): la hoja A4 ya no imprime el bloque legado y los
+   campos quedaron marcados como históricos en Mantenimiento → Empresa. No hizo falta migración: era
+   dejar de leerlos.
 5. **Migración 3 (fase posterior),** solo tras confirmar que nadie las lee: eliminar `cai`,
    `facturaRangoDesde`, `facturaRangoHasta`, `facturaFechaLimite` de `CompanySettings`, y renombrar
    `numeroFactura` a `numeroFacturaLegacy`.
@@ -523,6 +569,14 @@ Aditiva y en dos tiempos, para que un rollback no pierda datos.
 - **La anulación limitada al mismo día deja un hueco operativo** hasta que existan las notas de
   crédito: un error detectado al día siguiente no tiene corrección posible dentro del sistema. Vale
   la pena confirmar con la contadora si eso es aceptable en el arranque.
+- **Cuántas emisiones simultáneas soporta depende de la latencia a la base.** Observado el 28/09/2026:
+  con la base de pruebas respondiendo a la mitad de velocidad que el día anterior, la prueba de 100
+  emisiones con 10 en vuelo empezó a fallar con `Transaction already closed` a los 20 s. Con el
+  bloqueo tomado corren cinco consultas, así que cada turno cuesta cinco viajes de ida y vuelta y el
+  décimo espera la suma de los nueve anteriores. **Falla seguro** —el rollback devuelve el contador y
+  no se consume número—, pero es un error en el mostrador. Si alguna vez se ve en producción, las
+  salidas son subir `timeout`/`maxWait` en `emitirDocumentoFiscal` o reducir las consultas que corren
+  dentro del bloqueo; al volumen real del negocio (unas pocas cajas) no debería aparecer.
 
 ---
 

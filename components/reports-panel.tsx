@@ -5,6 +5,7 @@ import type { ApiResponse } from '@/types/api';
 import type { ExpenseReportDTO, GrindingReportDTO, PurchaseReportDTO, SaleReportDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ErrorToast from '@/components/error-toast';
+import FiscalReportsPanel from '@/components/fiscal-reports-panel';
 import LoadingOverlay from '@/components/loading-overlay';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -34,6 +35,17 @@ function addDays(date: string, days: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
+/** Primer día del mes de una fecha. El mes es el período del libro fiscal y del ISV. */
+function startOfMonth(date: string) {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** Último día del mes: el día 0 del mes siguiente, que evita contar febreros a mano. */
+function endOfMonth(date: string) {
+  const [year, month] = date.split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
 const money = (value: number) => `L ${value.toFixed(2)}`;
 const number = (value: number) => value.toLocaleString('es-HN', { maximumFractionDigits: 2 });
 
@@ -44,7 +56,7 @@ export default function ReportsPanel() {
   const [from, setFrom] = useState(startOfWeek(today));
   const [to, setTo] = useState(addDays(startOfWeek(today), 6));
   const [groupBy, setGroupBy] = useState<'day' | 'week'>('day');
-  const [tab, setTab] = useState<'purchases' | 'sales' | 'grinding' | 'expenses'>('purchases');
+  const [tab, setTab] = useState<'purchases' | 'sales' | 'grinding' | 'expenses' | 'fiscal'>('purchases');
   const [report, setReport] = useState<PurchaseReportDTO | null>(null);
   const [saleReport, setSaleReport] = useState<SaleReportDTO | null>(null);
   const [grindingReport, setGrindingReport] = useState<GrindingReportDTO | null>(null);
@@ -56,6 +68,9 @@ export default function ReportsPanel() {
   // visible; cambiar de pestaña con el mismo rango dispara la consulta que falta.
   const fetchReport = useCallback(async () => {
     if (!sucursalId) return;
+    // La pestaña fiscal no consulta acá: sus tres vistas tienen endpoints propios y
+    // las maneja `FiscalReportsPanel`, que recibe el rango ya elegido arriba.
+    if (tab === 'fiscal') return;
     try {
       setLoading(true);
       const params = new URLSearchParams({ from, to, groupBy, sucursalId });
@@ -84,7 +99,21 @@ export default function ReportsPanel() {
     void fetchReport();
   }, [fetchReport]);
 
-  function setPreset(preset: 'thisWeek' | 'lastWeek' | 'last30') {
+  function setPreset(preset: 'thisWeek' | 'lastWeek' | 'last30' | 'thisMonth' | 'lastMonth') {
+    if (preset === 'thisMonth') {
+      setFrom(startOfMonth(today));
+      setTo(endOfMonth(today));
+      setGroupBy('week');
+      return;
+    }
+    if (preset === 'lastMonth') {
+      // Un día antes del primero de este mes cae siempre en el mes anterior.
+      const mesPasado = addDays(startOfMonth(today), -1);
+      setFrom(startOfMonth(mesPasado));
+      setTo(endOfMonth(mesPasado));
+      setGroupBy('week');
+      return;
+    }
     if (preset === 'thisWeek') {
       setFrom(startOfWeek(today));
       setTo(addDays(startOfWeek(today), 6));
@@ -121,6 +150,9 @@ export default function ReportsPanel() {
         <button type="button" className={tab === 'expenses' ? 'active' : ''} onClick={() => setTab('expenses')}>
           Gastos
         </button>
+        <button type="button" className={tab === 'fiscal' ? 'active' : ''} onClick={() => setTab('fiscal')}>
+          Fiscal
+        </button>
       </div>
 
       <section className="card" style={{ marginTop: 12 }}>
@@ -143,18 +175,24 @@ export default function ReportsPanel() {
             Hasta
             <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
           </label>
-          <label style={{ gridColumn: 'span 3' }}>
-            Agrupar por
-            <select value={groupBy} onChange={(event) => setGroupBy(event.target.value as 'day' | 'week')}>
-              <option value="day">Día</option>
-              <option value="week">Semana</option>
-            </select>
-          </label>
+          {/* Los reportes fiscales listan documento por documento: no hay nada que
+              agrupar por día ni por semana. */}
+          {tab === 'fiscal' ? null : (
+            <label style={{ gridColumn: 'span 3' }}>
+              Agrupar por
+              <select value={groupBy} onChange={(event) => setGroupBy(event.target.value as 'day' | 'week')}>
+                <option value="day">Día</option>
+                <option value="week">Semana</option>
+              </select>
+            </label>
+          )}
         </div>
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setPreset('thisWeek')}>Esta semana</button>
           <button onClick={() => setPreset('lastWeek')}>Semana pasada</button>
           <button onClick={() => setPreset('last30')}>Últimos 30 días</button>
+          <button onClick={() => setPreset('thisMonth')}>Este mes</button>
+          <button onClick={() => setPreset('lastMonth')}>Mes pasado</button>
         </div>
       </section>
 
@@ -604,6 +642,8 @@ export default function ReportsPanel() {
           </section>
         </>
       ) : null}
+
+      {tab === 'fiscal' ? <FiscalReportsPanel from={from} to={to} sucursalId={sucursalId} /> : null}
 
       <LoadingOverlay active={loading} />
     </main>

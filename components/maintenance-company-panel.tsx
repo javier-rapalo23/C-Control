@@ -141,10 +141,12 @@ export default function MaintenanceCompanyPanel() {
         </label>
 
         <div style={{ gridColumn: 'span 12', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
-          <h4 style={{ margin: '0 0 4px' }}>Factura autorizada (SAR)</h4>
+          <h4 style={{ margin: '0 0 4px' }}>Factura autorizada (SAR) — datos históricos</h4>
           <p style={{ color: 'var(--text-soft)', fontSize: 13, margin: '0 0 12px' }}>
-            Opcional. Mientras el CAI esté vacío, la factura A4 sale como comprobante interno. En
-            cuanto se llene, el bloque fiscal aparece impreso en cada factura.
+            <strong>Estos campos ya no se imprimen.</strong> El CAI con el que se emite se administra
+            en la pestaña <strong>Facturación</strong>, con su rango, su vigencia y su contador; el
+            bloque fiscal sale del documento emitido, no de acá. Se conservan por si hace falta
+            consultar lo que estaba cargado antes.
           </p>
         </div>
         <label style={{ gridColumn: 'span 12' }}>
@@ -152,7 +154,7 @@ export default function MaintenanceCompanyPanel() {
           <input
             value={companyForm.cai}
             onChange={(e) => setCompanyForm((f) => ({ ...f, cai: e.target.value }))}
-            placeholder="dejar vacío si aún se factura con talonario"
+            placeholder="histórico; el CAI vigente va en la pestaña Facturación"
           />
         </label>
         <label style={{ gridColumn: 'span 4' }}>

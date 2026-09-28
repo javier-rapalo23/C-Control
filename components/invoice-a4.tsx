@@ -378,19 +378,11 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
               <p>Fecha límite de emisión: {fechaLarga(documento.cai.fechaLimite)}</p>
             ) : null}
           </section>
-        ) : empresa.fiscal ? (
-          // Legado: el bloque que salía de `CompanySettings` antes de que el CAI
-          // fuera administrable. Se mantiene para las hojas sin documento.
-          <section className="invoice-fiscal">
-            <p>CAI: {empresa.fiscal.cai}</p>
-            {empresa.fiscal.rangoDesde && empresa.fiscal.rangoHasta ? (
-              <p>
-                Rango autorizado: {empresa.fiscal.rangoDesde} a {empresa.fiscal.rangoHasta}
-              </p>
-            ) : null}
-            {empresa.fiscal.fechaLimite ? <p>Fecha límite de emisión: {empresa.fiscal.fechaLimite}</p> : null}
-          </section>
         ) : null}
+        {/* Los cuatro campos viejos de `CompanySettings` ya no se imprimen. Con ellos
+            llenos, una hoja sin documento salía rotulada "no es documento fiscal" y
+            con un CAI debajo: un código de autorización sobre un papel que no tiene
+            correlativo autorizado. El CAI ahora lo trae el documento emitido. */}
 
         {anulado ? (
           <p className="invoice-anulado">

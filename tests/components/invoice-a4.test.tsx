@@ -122,8 +122,11 @@ describe('InvoiceA4 — compra', () => {
     expect(html).not.toContain('CAI:');
   });
 
-  it('imprime el bloque fiscal cuando la empresa ya tiene CAI', () => {
-    const conCai = renderToStaticMarkup(
+  // Los cuatro campos viejos de `CompanySettings` ya no imprimen nada: con ellos
+  // llenos y sin documento emitido, la hoja salía rotulada "no es documento fiscal" y
+  // con un CAI debajo. El CAI lo trae el documento, no la configuración de la empresa.
+  it('no imprime el CAI viejo de la empresa en una hoja sin documento', () => {
+    const conCaiLegado = renderToStaticMarkup(
       <InvoiceA4
         data={{
           ...COMPRA,
@@ -139,9 +142,10 @@ describe('InvoiceA4 — compra', () => {
         }}
       />,
     );
-    expect(conCai).toContain('CAI:');
-    expect(conCai).toContain('ABCD-1234');
-    expect(conCai).toContain('31/12/2027');
+
+    expect(conCaiLegado).not.toContain('CAI:');
+    expect(conCaiLegado).not.toContain('ABCD-1234');
+    expect(conCaiLegado).toContain('no es documento fiscal');
   });
 });
 

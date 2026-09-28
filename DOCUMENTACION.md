@@ -723,6 +723,52 @@ Reglas:
 La liquidación vive en columnas de `PurchaseTransaction` y no en una tabla de abonos: **el pago es
 total, no hay abonos parciales**. Soportarlos exigiría una tabla propia (§17).
 
+### 6.14 Reportes fiscales — libro de compras, libro de ventas y pendientes
+
+`lib/fiscal-reports.ts`. Son los reportes que la contadora presenta y con los que se cuadra el
+talonario, así que no se parecen a los de §6.10: acá la unidad no es el día ni el producto, **es el
+documento**.
+
+Tres reglas los definen:
+
+1. **El libro se ordena por fecha de emisión**, no por la fecha de la compra o la venta. Es la fecha
+   que el documento declara y la que sigue el correlativo. La fecha de negocio de la transacción va
+   en su propia columna, porque el papel a veces se hace días después del pesaje.
+2. **Los anulados aparecen y no suman.** Un número anulado no se libera nunca (§10.3), así que tiene
+   que estar en el libro para que la numeración se lea completa; su monto se informa aparte, en
+   `totalAnulado`, y las columnas de importe del CSV salen en cero.
+3. **Los datos del cliente salen del `snapshot`.** Leerlos de `Client` daría un libro que cambia
+   cuando alguien corrige un RTN, y el papel ya entregado dejaría de coincidir con el libro.
+
+El rango de fechas llega en fechas de negocio y `emitidoEn` es un instante: la consulta pide un día
+de margen a cada lado y el recorte fino se hace con `businessDateOf`. Sin eso, un documento emitido
+a las siete de la noche en Honduras —ya del día siguiente en UTC— caería en el mes equivocado.
+
+**Libro de compras** (`boleta_compra`) y **libro de ventas** (`factura`) son el mismo reporte con
+distinto tipo de documento. Las notas de crédito y débito **todavía no entran**: no se pueden emitir,
+y cuando existan hay que decidir su signo, porque sumar una nota de crédito como una factura infla
+el ingreso declarado.
+
+**Saltos de numeración.** El reporte informa los números del rango que no aparecen entre el primero y
+el último del período, por CAI. Con el contador bloqueado no deberían existir, pero en modo
+`TALONARIO` el número lo teclea una persona. No es necesariamente un error —una hoja dañada del
+talonario lo explica— pero es lo primero que se pregunta en una revisión.
+
+**Pendientes de emitir** (`getFiscalPendingReport`) — compras, ventas y molidos del período sin
+documento fiscal, ordenados por antigüedad y con los días que llevan sin emitir. Es lo que dice qué
+falta antes de cerrar el mes. Acepta `sucursalId`; el libro no, porque un documento fiscal no tiene
+sucursal propia: el CAI es de la empresa, y el nombre de la bodega queda dentro del snapshot.
+
+**Estado del CAI** no tiene endpoint propio: la vista lee `GET /api/fiscal-cais`, que ya deriva el
+rango consumido, los días para vencer y el próximo número (§10.3).
+
+**Exportación.** `lib/csv.ts` arma el archivo. Los montos van como número —sin `L` ni separador de
+miles— para que se puedan sumar en Excel sin limpiar la columna. Tres detalles que el archivo lleva
+por razones concretas: **BOM** (sin él Excel en Windows rompe los acentos), fin de línea `\r\n`, y
+comillas en todo campo con coma, comilla o salto de línea. Un texto que empiece con `=`, `+`, `-` o
+`@` se prefija con `'`: Excel lo ejecutaría como fórmula, y el nombre del cliente lo escribe una
+persona. Los números nunca se prefijan, para que un monto negativo siga siendo número.
+
 Base: `/api`. Todas las respuestas usan `ApiResponse<T>`.
 
 ### Autenticación
@@ -799,6 +845,13 @@ en un traslado basta con que esté cerrada la del origen o la del destino.
 | GET | `/api/reports/sales` | Mismos parámetros. Añade `promedioPorQuintalOro` a los totales. |
 | GET | `/api/reports/grinding` | Mismos parámetros. Libras, lempiras y servicios de molido, con desglose por cliente y `promedioPorLibra` (§6.12). |
 | GET | `/api/reports/expenses` | Mismos parámetros. Desglosa por categoría y por banco. |
+| GET | `/api/reports/fiscal/libro` | `?libro=compras\|ventas&from&to&formato=csv`. Sin rango, el mes en curso. Un renglón por documento, anulados incluidos (§6.14). Exige el módulo `reports`. |
+| GET | `/api/reports/fiscal/pendientes` | `?from&to&sucursalId&formato=csv`. Transacciones sin documento fiscal. Exige el módulo `reports`. |
+
+Los cuatro primeros se apoyan solo en el middleware (sesión válida, §8.3) y en el control de la
+página. Los dos fiscales comprueban además el módulo `reports` con `requireApiModuleAccess`: entregan
+el detalle documento por documento en un archivo descargable, y quien no puede abrir la página de
+reportes tampoco debería poder pedirlo por URL.
 
 ### Personal — **todas requieren rol `admin`**
 
@@ -1023,6 +1076,10 @@ no un módulo navegable: `fiscal_emitir` y `fiscal_anular` (§10.3). Aparecen en
 para poder configurarlas, pero el sidenav las filtra porque no tienen a dónde llevar. Anular arranca
 con `defaultRoles: []`, o sea solo admin: destruye el valor de un número ya entregado.
 
+`requireApiModuleAccess` también protege los dos reportes fiscales con el módulo `reports` (§6.14).
+Los reportes de negocio no lo hacen: se apoyan en el middleware y en el control de la página. La
+diferencia es que los fiscales entregan el detalle documento por documento en un archivo descargable.
+
 ### 8.6 Usuarios de fallback
 
 `lib/auth.ts` define cuentas de prueba **solo fuera de producción**:
@@ -1103,6 +1160,7 @@ servidor autorizó la navegación.
 | `cash-session-panel.tsx` | ~740 | Apertura y cierre de caja, ingresos, salidas y traslados. |
 | `pending-payments-section.tsx` | ~220 | Sección de Caja: compras pendientes, pago y deshacer (§6.13). |
 | `invoice-a4.tsx` | ~420 | Hoja de factura A4 con su CSS de impresión, en dos copias (§10.2). Se renderiza en el servidor. |
+| `fiscal-reports-panel.tsx` | ~420 | Pestaña Fiscal de Reportes: libro de compras, libro de ventas, pendientes de emitir, estado del CAI y descarga CSV (§6.14). Recibe el rango del panel de reportes. |
 | `invoice-toolbar.tsx` | 22 | Botón de imprimir de la página de factura; el CSS de impresión lo oculta. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
 | `dashboard-home.tsx` | 382 | Resumen diario y agrupación por producto. |
@@ -1338,10 +1396,13 @@ En el CSS de impresión, el que se saca del flujo es el **contenedor** `.invoice
 hoja: posicionando cada `.invoice-sheet` por separado, las dos caían una encima de la otra. El salto
 entre copias es un `break-before: page` sobre la segunda hoja.
 
-### 10.3 Facturación fiscal (SAR) — **emite y anula; imprime desde el snapshot en la fase siguiente**
+### 10.3 Facturación fiscal (SAR) — emisión, anulación, impresión desde el snapshot y reportes
 
-Fases 1 y 2 del plan de `docs/facturacion-sar-plan.md`. Mientras no haya un CAI activo, la operación
+Fases 1 a 4 del plan de `docs/facturacion-sar-plan.md`. Mientras no haya un CAI activo, la operación
 se comporta exactamente como antes (§10.2): el botón de emitir dice que no hay CAI y nada más cambia.
+
+Lo que se emite se lee después en los **reportes fiscales** —libro de compras, libro de ventas,
+pendientes de emitir y estado del CAI, con exportación a CSV—: §6.14.
 
 | Modelo | Para qué |
 | --- | --- |
@@ -1540,7 +1601,7 @@ pnpm dev                    # http://localhost:3000
 | `20260920010000_add_grinding_services` | `GrindingService`: servicio de molido (§6.12). |
 | `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
 | `20260925000000_add_numero_interno` | `PurchaseTransaction.numeroInterno` y `SaleTransaction.numeroInterno`: correlativo interno por secuencia, con backfill en orden de creación (§10.2). |
-| `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Aditiva; todavía no emite nada. Lleva un índice parcial y varios `CHECK` escritos a mano. |
+| `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Lleva un índice parcial y varios `CHECK` escritos a mano. |
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault`: con qué formato se imprime la factura por omisión (§10.3). |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
@@ -1559,13 +1620,25 @@ En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
 ## 14. Pruebas
 
-Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/*` mapeado.
+Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/*` mapeado, en **dos
+proyectos**:
 
 ```bash
-pnpm test
+pnpm test              # unit: 19 suites, 184 pruebas. Sin base de datos.
+pnpm test:integration  # integration: 4 suites, 21 pruebas, contra Postgres de verdad
+pnpm test:db:migrate   # aplica las migraciones a la base de pruebas
 ```
 
-Cobertura actual (9 suites, 73 pruebas):
+El proyecto `integration` corre `--runInBand` con 60 s de tiempo límite y necesita
+`TEST_DATABASE_URL` en `.env.test` (ignorado por git). **Si esa URL es igual a la de `.env`, el arnés
+y `scripts/test-db-migrate.mjs` abortan**: las pruebas borran lo que crean y la base de `.env` es la
+de la operación. Sin `.env.test`, las suites de integración se saltan en vez de fallar.
+
+Lo que solo se puede verificar con Postgres: el bloqueo de fila que asigna el correlativo fiscal, los
+`CHECK` y los `RESTRICT` del esquema, y que las consultas de los reportes fiscales sean las que se
+creen (un doble de Prisma no valida un `where`).
+
+Cobertura del proyecto `unit`:
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
 - `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` deriva la
@@ -1601,6 +1674,10 @@ Cobertura actual (9 suites, 73 pruebas):
   semanal domingo–sábado, agrupación por cliente, ventas sin producto, el precio por quintal oro
   y la división por cero.
 
+- `tests/lib/ledger.test.ts` — la ecuación del saldo del día con un doble de Prisma: qué suma y qué
+  resta cada movimiento, que una compra que no es en efectivo no salga de la gaveta, el molido, las
+  compras pendientes liquidadas hoy y los traslados según de qué lado esté la sucursal.
+
 - `tests/lib/summary-ticket.test.ts` — qué imprime el resumen según el estado de la caja: arqueo
   real cuando está cerrada, estimado cuando está abierta o no existe, y el nombre del signo de la
   diferencia.
@@ -1609,18 +1686,38 @@ Cobertura actual (9 suites, 73 pruebas):
   `CONTROL INTERNO`) dentro del mismo buffer, con el mismo correlativo interno y **un corte `GS V`
   por copia**: sin el segundo corte las dos salen pegadas en una sola tira.
 
-`payroll` y `reports` usan un doble de Prisma para fijar las reglas de dinero sin base de datos;
-`summary-ticket` y `ticket-copias` inspeccionan el buffer ESC/POS como texto.
+- `tests/lib/fiscal-reports.test.ts` — el libro (§6.14): orden por fecha de emisión, el recorte por
+  **fecha de negocio** y no por la fecha UTC del instante —un documento emitido a las 22:00 de
+  Honduras se guarda con fecha UTC del día siguiente—, que el anulado aparezca sin sumar, que cada
+  libro traiga solo su tipo de documento, la detección de saltos sin cruzar dos CAI, y que un
+  snapshot con otra forma no tumbe el reporte. Pendientes: los tres orígenes juntos, la serie del
+  correlativo interno y los días sin emitir.
+- `tests/lib/csv.test.ts` — el archivo que abre Excel: BOM, `\r\n`, comillas, el texto que Excel
+  tomaría por fórmula y que un monto negativo siga siendo número.
+
+`payroll`, `reports` y `fiscal-reports` usan un doble de Prisma para fijar las reglas sin base de
+datos; `summary-ticket` y `ticket-copias` inspeccionan el buffer ESC/POS como texto.
+
+Cobertura del proyecto `integration` (`tests/integration/`, cada suite limpia lo que crea **antes y
+después**, para que un fallo a medias no bloquee la corrida siguiente):
+
+- `database.test.ts` — conexión y migraciones aplicadas.
+- `fiscal-constraints.test.ts` — lo que protege el esquema: un solo CAI activo por tipo, rango y
+  contador coherentes, exactamente una transacción referenciada, anulación completa y el `RESTRICT`
+  que impide borrar una transacción documentada.
+- `fiscal-emision.test.ts` — los criterios de aceptación de la emisión: 100 emisiones sobre el mismo
+  CAI sin repetir ni saltar números, que una emisión fallida **no consuma número**, que no emita con
+  el CAI vencido, agotado o inactivo, y el modo talonario.
+- `fiscal-reportes.test.ts` — que `fiscalDocument: { is: null }` encuentre lo que no tiene documento
+  y deje de listarlo al emitir, que el filtro por tipo separe los dos libros, y que un documento
+  anulado de verdad salga en el libro sin sumar.
 
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
-`Request` estándar. La cobertura sigue siendo baja: no hay pruebas de los cálculos de balance,
-tara ni conversión a oro, que son la lógica de mayor riesgo.
+`Request` estándar.
 
-> ⚠️ **Hoy la suite no corre.** Los 15 suites fallan antes de ejecutar una sola prueba con
-> `TypeError: this._moduleMocker.clearMocksOnScope is not a function`. Es un desajuste de versiones
-> en `node_modules`: `jest` quedó en 30.4.2 y `jest-runtime`/`jest-cli` en 30.3.0. Se arregla
-> reinstalando dependencias para alinear el árbol. Mientras tanto, lo único que verifica el
-> repositorio es `tsc --noEmit`, `next lint` y `prisma validate`.
+Lo que **no** está cubierto: los cálculos de tara y de conversión a oro tienen pruebas
+(`oro`, `oro-preview`), pero el recálculo del balance diario solo está probado con un doble
+(`ledger.test.ts`) y no de punta a punta, y no hay pruebas de las rutas de compras, ventas ni caja.
 
 ---
 
