@@ -2,10 +2,13 @@ import {
   CLASIFICACION_FISCAL_MOLIDO,
   TIPO_DOCUMENTO_POR_ORIGEN,
   desgloseIsv,
+  desgloseNota,
+  esNota,
   evaluarCai,
   formatNumeroFiscal,
   motivoNoEmitible,
   puedeAnularse,
+  signoLibro,
   tasaIsv,
 } from '@/lib/fiscal';
 
@@ -199,5 +202,96 @@ describe('evaluarCai', () => {
     expect(estado.puedeEmitir).toBe(false);
     expect(estado.siguienteCorrelativo).toBeNull();
     expect(motivoNoEmitible(estado, false)).toContain('inactivo');
+  });
+});
+
+/**
+ * Notas de crédito y débito. Lo que hay que fijar acá es el signo con el que entran al
+ * libro y el prorrateo del desglose: una nota parcial sobre algo gravado tiene que
+ * llevar su parte del ISV, o el impuesto declarado deja de cuadrar.
+ */
+describe('notas de crédito y débito', () => {
+  const EXENTO = {
+    importeExento: 1_000,
+    importeExonerado: 0,
+    importeGravado15: 0,
+    importeGravado18: 0,
+    isv15: 0,
+    isv18: 0,
+    total: 1_000,
+  };
+
+  // Un molido de L 100 con ISV incluido: base 86.96 e ISV 13.04.
+  const GRAVADO = {
+    importeExento: 0,
+    importeExonerado: 0,
+    importeGravado15: 86.96,
+    importeGravado18: 0,
+    isv15: 13.04,
+    isv18: 0,
+    total: 100,
+  };
+
+  it('la nota de crédito resta en el libro y la de débito suma', () => {
+    expect(signoLibro('nota_credito')).toBe(-1);
+    expect(signoLibro('nota_debito')).toBe(1);
+    expect(signoLibro('factura')).toBe(1);
+    expect(signoLibro('boleta_compra')).toBe(1);
+  });
+
+  it('reconoce los dos tipos de nota y ningún otro', () => {
+    expect(esNota('nota_credito')).toBe(true);
+    expect(esNota('nota_debito')).toBe(true);
+    expect(esNota('factura')).toBe(false);
+    expect(esNota('boleta_compra')).toBe(false);
+  });
+
+  it('acreditar el documento completo copia su desglose', () => {
+    expect(desgloseNota(GRAVADO, 100)).toEqual(GRAVADO);
+  });
+
+  it('una nota parcial sobre algo exento va toda a exento', () => {
+    expect(desgloseNota(EXENTO, 250)).toMatchObject({ importeExento: 250, isv15: 0, total: 250 });
+  });
+
+  // La mitad de un monto con ISV incluido lleva la mitad del impuesto: base + ISV tiene
+  // que dar exactamente el monto de la nota.
+  it('una nota parcial sobre algo gravado lleva su parte del ISV', () => {
+    const mitad = desgloseNota(GRAVADO, 50);
+
+    expect(mitad.importeGravado15 + mitad.isv15).toBeCloseTo(50, 2);
+    expect(mitad.importeGravado15).toBeCloseTo(43.48, 2);
+    expect(mitad.isv15).toBeCloseTo(6.52, 2);
+    expect(mitad.importeExento).toBe(0);
+  });
+
+  // El renglón más grande absorbe el resto: sin eso, prorratear cada parte y redondear
+  // dejaba un centavo fuera del desglose.
+  it('la suma de los renglones da exactamente el monto de la nota', () => {
+    const mixto = {
+      importeExento: 333.33,
+      importeExonerado: 0,
+      importeGravado15: 289.86,
+      importeGravado18: 0,
+      isv15: 43.48,
+      isv18: 0,
+      total: 666.67,
+    };
+
+    for (const monto of [0.01, 1.11, 33.33, 100.01, 333.34, 666.66]) {
+      const nota = desgloseNota(mixto, monto);
+      const suma =
+        nota.importeExento + nota.importeExonerado + nota.importeGravado15 + nota.isv15 + nota.importeGravado18 + nota.isv18;
+
+      expect(Math.round(suma * 100) / 100).toBe(monto);
+      expect(nota.total).toBe(monto);
+    }
+  });
+
+  // No debería existir un documento con total 0, pero dejar el monto fuera del desglose
+  // sí sería un error de verdad.
+  it('sin total original, el monto entra como exento', () => {
+    const cero = { ...EXENTO, importeExento: 0, total: 0 };
+    expect(desgloseNota(cero, 75)).toMatchObject({ importeExento: 75, total: 75 });
   });
 });

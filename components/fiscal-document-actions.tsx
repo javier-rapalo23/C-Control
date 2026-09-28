@@ -19,16 +19,30 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
+const money = (valor: number) => `L ${valor.toFixed(2)}`;
+
 type Props = {
   origen: 'compra' | 'venta' | 'molido';
   transactionId: string;
   documento: FiscalDocumentDTO | null;
   /** CAI activo del tipo que le toca a este origen; null si no hay ninguno. */
   caiActivo: FiscalCaiDTO | null;
+  /** CAI activos por tipo: las notas tienen su propia serie. */
+  caisActivos?: Record<string, FiscalCaiDTO>;
+  /** Imprime una nota ya emitida, en el formato configurado. */
+  onImprimirNota?: (documentoId: string) => void;
   onChange: () => void | Promise<void>;
 };
 
-export default function FiscalDocumentActions({ origen, transactionId, documento, caiActivo, onChange }: Props) {
+export default function FiscalDocumentActions({
+  origen,
+  transactionId,
+  documento,
+  caiActivo,
+  caisActivos,
+  onImprimirNota,
+  onChange,
+}: Props) {
   const [numeroManual, setNumeroManual] = useState('');
   const [motivo, setMotivo] = useState('');
   const [ubicacion, setUbicacion] = useState('');
@@ -36,8 +50,52 @@ export default function FiscalDocumentActions({ origen, transactionId, documento
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Nota de crédito o débito: es lo único que corrige un documento después del día de
+  // emisión, porque anular está limitado al mismo día.
+  const [notaAbierta, setNotaAbierta] = useState(false);
+  const [notaTipo, setNotaTipo] = useState<'nota_credito' | 'nota_debito'>('nota_credito');
+  const [notaMonto, setNotaMonto] = useState('');
+  const [notaMotivo, setNotaMotivo] = useState('');
+  const [notaNumeroManual, setNotaNumeroManual] = useState('');
+
   // En modo talonario el número lo trae el papel, así que hay que escribirlo.
   const pideNumero = caiActivo?.modo === 'TALONARIO';
+  const caiNota = caisActivos?.[notaTipo] ?? null;
+  const notaPideNumero = caiNota?.modo === 'TALONARIO';
+
+  async function emitirNota() {
+    if (!documento) return;
+    try {
+      setTrabajando(true);
+      setError(null);
+      await fetch(`/api/fiscal-documents/${documento.id}/nota`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tipo: notaTipo,
+          monto: Number(notaMonto),
+          motivo: notaMotivo,
+          ...(notaPideNumero ? { numeroManual: Number(notaNumeroManual) } : {}),
+        }),
+      }).then(parseApiResponse);
+      setNotaAbierta(false);
+      setNotaMonto('');
+      setNotaMotivo('');
+      setNotaNumeroManual('');
+      await onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error emitiendo la nota');
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  function abrirNota() {
+    // El monto arranca en el saldo: lo más común es corregir el documento completo, y
+    // escribir el total a mano es donde se equivoca uno.
+    setNotaMonto(documento ? String(documento.saldoAcreditable) : '');
+    setNotaAbierta(true);
+  }
 
   async function emitir() {
     try {
@@ -106,7 +164,97 @@ export default function FiscalDocumentActions({ origen, transactionId, documento
         ) : null}
         {!anulado && !documento.anulable ? (
           <div style={{ color: 'var(--text-soft)' }}>
-            Ya no se puede anular: se emitió el {documento.fechaEmision}.
+            Ya no se puede anular: se emitió el {documento.fechaEmision}. Se corrige con una nota.
+          </div>
+        ) : null}
+
+        {/* Notas ya emitidas sobre este documento. Se listan siempre: son parte del
+            documento para la contadora, y cada una se puede reimprimir. */}
+        {documento.notas.length > 0 ? (
+          <div style={{ marginTop: 4 }}>
+            {documento.notas.map((nota) => (
+              <div key={nota.id} style={{ color: nota.estado === 'anulado' ? 'var(--danger)' : 'var(--text-soft)' }}>
+                {nota.tipoDocumentoLabel} <strong>{nota.numeroCompleto}</strong> ·{' '}
+                {nota.tipoDocumento === 'nota_credito' ? '−' : '+'}
+                {money(nota.total)}
+                {nota.estado === 'anulado' ? ' · ANULADA' : ''}
+                {onImprimirNota ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ marginLeft: 6, padding: '2px 6px' }}
+                    onClick={() => onImprimirNota(nota.id)}
+                  >
+                    Imprimir
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            <div style={{ color: 'var(--text-soft)' }}>Queda por acreditar {money(documento.saldoAcreditable)}.</div>
+          </div>
+        ) : null}
+
+        {/* Emitir nota: disponible mientras el documento no esté anulado. El mismo día,
+            anular sigue siendo el camino más simple; después es el único. */}
+        {!anulado && !notaAbierta ? (
+          <button type="button" style={{ marginTop: 4, marginLeft: documento.anulable ? 6 : 0 }} onClick={abrirNota}>
+            Nota de crédito o débito
+          </button>
+        ) : null}
+
+        {notaAbierta ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+            <select value={notaTipo} onChange={(event) => setNotaTipo(event.target.value as typeof notaTipo)}>
+              <option value="nota_credito">Nota de crédito (resta)</option>
+              <option value="nota_debito">Nota de débito (suma)</option>
+            </select>
+            {caiNota === null ? (
+              <span style={{ color: 'var(--text-soft)' }}>
+                No hay CAI activo para este tipo de nota. Se registra en Mantenimiento → Facturación.
+              </span>
+            ) : null}
+            <input
+              value={notaMonto}
+              onChange={(event) => setNotaMonto(event.target.value)}
+              inputMode="decimal"
+              placeholder={
+                notaTipo === 'nota_credito'
+                  ? `Monto (máximo ${money(documento.saldoAcreditable)})`
+                  : 'Monto de la nota'
+              }
+            />
+            <input
+              value={notaMotivo}
+              onChange={(event) => setNotaMotivo(event.target.value)}
+              placeholder="Motivo (obligatorio): qué se corrige y por qué"
+            />
+            {notaPideNumero ? (
+              <input
+                value={notaNumeroManual}
+                onChange={(event) => setNotaNumeroManual(event.target.value)}
+                inputMode="numeric"
+                placeholder={`No. del talonario (${caiNota?.rangoDesde}–${caiNota?.rangoHasta})`}
+              />
+            ) : null}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                className="btn-primary"
+                type="button"
+                disabled={
+                  trabajando ||
+                  caiNota === null ||
+                  notaMotivo.trim().length < 4 ||
+                  !(Number(notaMonto) > 0) ||
+                  (notaPideNumero && notaNumeroManual.trim() === '')
+                }
+                onClick={() => void emitirNota()}
+              >
+                {trabajando ? 'Emitiendo...' : 'Emitir nota'}
+              </button>
+              <button className="btn-secondary" type="button" onClick={() => setNotaAbierta(false)}>
+                Cancelar
+              </button>
+            </div>
           </div>
         ) : null}
 

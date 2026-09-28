@@ -1,7 +1,7 @@
 # Facturación fiscal SAR — revisión del estado actual y plan
 
 Respuesta a `facturacion-sar-c-control.md`. Revisado contra el código del 27 de septiembre de 2026
-(rutas de `facturacion-fiscal.md` §11, esquema Prisma, validaciones, middleware y pruebas).
+(rutas de `facturacion-fiscal.md` §12, esquema Prisma, validaciones, middleware y pruebas).
 **No se escribió código.**
 
 Las respuestas del 27 de septiembre ya están incorporadas: §8 tiene las decisiones y §8b lo que
@@ -375,8 +375,9 @@ integración de reportes en verde contra Postgres real (5 pruebas).
   el mes siguiente.
 - **Se informan los saltos de numeración** entre el primero y el último del período, por CAI. Con el
   contador bloqueado no deberían existir, pero en modo talonario el número lo teclea una persona.
-- **Las notas de crédito no entran al libro todavía:** no se pueden emitir, y sumarlas como una factura
-  infla el ingreso. Cuando existan (Fase 5) hay que agregarlas **con signo**.
+- **Las notas de crédito no entraban al libro todavía:** no se podían emitir, y sumarlas como una
+  factura infla el ingreso. Resuelto en la Fase 5: entran **con signo** y por el libro del documento
+  que corrigen.
 - **Los dos endpoints comprueban el módulo `reports`** con `requireApiModuleAccess`, a diferencia de
   los cuatro reportes de negocio, que se apoyan solo en el middleware: entregan el detalle documento
   por documento en un archivo descargable.
@@ -389,14 +390,57 @@ CAI debajo**. Se eliminó ese bloque, los campos quedaron marcados como históri
 Empresa, y la prueba que verificaba que se imprimieran ahora verifica lo contrario. Es el paso 4 de la
 estrategia de migración (§5), que había quedado pendiente de la Fase 3.
 
-### Fase 5 — Condicionales, según respuestas
+### Fase 5 — Notas de crédito y débito — **hecha**
 
-- Retenciones IHCAFE (configurables, con vigencia por cosecha). **Fuera de alcance por ahora** por
-  decisión del 27/09; entra acá si después deben salir en el documento.
 - Notas de crédito y débito: son lo que permite corregir un documento **después** del día de emisión,
-  ya que la anulación quedó limitada al mismo día. Mientras no existan, un error detectado al día
-  siguiente no tiene salida dentro del sistema.
-- Guía de remisión, fuera de alcance por ahora; **antes** exige modelar el traslado de café (§2.4).
+  ya que la anulación quedó limitada al mismo día.
+- Retenciones IHCAFE (configurables, con vigencia por cosecha). **Fuera de alcance** por decisión del
+  27/09: cambiarían el total impreso, así que entran cuando el negocio lo confirme.
+- Guía de remisión, **fuera de alcance**; antes exige modelar el traslado de café (§2.4).
+
+**Cómo quedó:**
+
+| Pieza | Dónde |
+| --- | --- |
+| Catálogo, signo del libro y prorrateo del desglose | `TIPOS_NOTA`, `esNota`, `signoLibro`, `desgloseNota` en `lib/fiscal.ts` |
+| Emisión, techo del saldo y bloqueo de la anulación | `emitirNotaFiscal`, `saldoAcreditable` y el guardia nuevo de `anularDocumentoFiscal` en `lib/fiscal-document.ts` |
+| Toma del correlativo, ahora compartida | `tomarCorrelativo`: la extracción del bloque que ya usaba la emisión, para que la nota tenga la misma garantía |
+| Modelo y migración | `documentoOrigenId`, `notaMotivo` y el `CHECK` de referencia en `20260929000000_add_fiscal_notas` |
+| Ruta y permiso | `POST /api/fiscal-documents/:id/nota`, permiso `fiscal_nota` (solo admin por omisión) |
+| Impresión en los dos formatos | `kind: 'nota'` en `InvoiceData`, tabla de dos columnas y bloque de referencia en `components/invoice-a4.tsx`, rama propia en `lib/thermal-printer.ts`, página `/print/nota/:id` |
+| Interfaz | `components/fiscal-document-actions.tsx`: listado de notas con su monto, saldo restante y formulario de emisión |
+| Libro | `lib/fiscal-reports.ts`: las notas entran por su `documentoOrigen` y con importes ya firmados |
+| Pruebas | `tests/lib/fiscal.test.ts` (+6), `tests/lib/fiscal-reports.test.ts` (+4), `tests/lib/ticket-copias.test.ts` (+4), `tests/components/invoice-a4.test.tsx` (+5), `tests/integration/fiscal-notas.test.ts` (6) |
+
+Verificado: `pnpm test` 19 suites / 204 pruebas, `pnpm build`, typecheck y lint sin errores, y la suite
+de integración de notas en verde contra Postgres real (6 pruebas, incluidos los dos `CHECK` nuevos).
+
+**Decisiones de esta fase:**
+
+- **La nota no ampara una transacción: modifica un documento.** El `CHECK` viejo exigía exactamente una
+  transacción referenciada, así que hubo que reemplazarlo. El nuevo comprueba **la forma** —o una
+  transacción, o un documento corregido, nunca las dos ni ninguna— y no el tipo de documento, para que
+  el catálogo siga viviendo en `lib/fiscal.ts` y agregar un tipo no obligue a migrar.
+- **Los montos se guardan en positivo y el signo lo pone el libro.** Es como se imprimen ("nota de
+  crédito por L 500.00"); guardarlos negativos haría ilegible el papel.
+- **El techo es el saldo, y se comprueba dentro de la transacción.** Antes del bloqueo, dos notas
+  simultáneas sobre la misma factura pasarían las dos la comprobación y entre las dos acreditarían más
+  de lo facturado. La nota de débito no tiene techo: sube lo que se cobra.
+- **Se permiten notas parciales**, con el desglose prorrateado desde el documento corregido. El renglón
+  más grande absorbe el centavo del redondeo, así que la suma de los renglones da exactamente el monto
+  de la nota.
+- **Una nota no se corrige con otra nota**: si está mal, se anula el mismo día. Y **un documento con
+  notas vigentes no se puede anular**, porque dejaría las notas apuntando a algo que ya no declara nada.
+- **La nota hereda empresa y cliente del snapshot del documento corregido**, no de los datos vivos: los
+  dos papeles se archivan juntos y tienen que leerse como el par que son.
+- **El libro de una nota lo decide el documento que corrige**, no su propio tipo: una nota de crédito
+  sobre una boleta de compra es del libro de compras.
+- **Permiso propio `fiscal_nota`**, solo admin por omisión, con el mismo criterio que anular: rebaja un
+  ingreso ya declarado.
+
+**Lo que hay que confirmar con la contadora:** el código `TT` de las notas, y si una **boleta de
+compra** se corrige con nota de crédito o de otra forma. El sistema lo permite; que sea lo correcto
+ante el SAR no lo puedo verificar desde acá.
 
 ---
 

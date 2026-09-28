@@ -13,13 +13,16 @@ import { requireSessionUser } from '@/lib/request-user';
  * `kind` acepta los nombres viejos (`purchase`, `sale`) porque los paneles los
  * mandaban así antes de que existiera el molido.
  */
-const ORIGENES: Record<string, 'compra' | 'venta' | 'molido'> = {
+const ORIGENES: Record<string, 'compra' | 'venta' | 'molido' | 'nota'> = {
   compra: 'compra',
   purchase: 'compra',
   venta: 'venta',
   sale: 'venta',
   molido: 'molido',
   grinding: 'molido',
+  // En una nota, `transactionId` es el id del **documento**: no ampara ninguna
+  // transacción, corrige otro documento.
+  nota: 'nota',
 };
 
 export async function POST(request: NextRequest) {

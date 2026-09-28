@@ -26,7 +26,9 @@ export function usePrintInvoice() {
   const [error, setError] = useState<string | null>(null);
 
   const imprimir = useCallback(
-    async (origen: 'compra' | 'venta' | 'molido', transactionId: string, formato: PrintFormat) => {
+    // Con `origen = 'nota'`, el id es el del **documento**: una nota de crédito no ampara
+    // ninguna transacción.
+    async (origen: 'compra' | 'venta' | 'molido' | 'nota', transactionId: string, formato: PrintFormat) => {
       setError(null);
 
       if (formato === 'a4') {

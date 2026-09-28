@@ -3,12 +3,13 @@
 Cómo funciona hoy la emisión de comprobantes en C-Control: qué imprime, cómo se numera, qué lleva
 el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembre de 2026.
 
-> **Estado (28/09/2026):** están aplicadas las **Fases 1 a 4** del plan de
+> **Estado (28/09/2026):** están aplicadas las **Fases 1 a 5** del plan de
 > `facturacion-sar-plan.md`: el modelo fiscal (`FiscalCai`, `FiscalDocument`, `FiscalAuditLog`) con
 > su panel en Mantenimiento → Facturación, la **emisión** del correlativo autorizado y la
-> **anulación**, la impresión desde el snapshot en los dos formatos, y los **reportes fiscales**
-> (libro de compras, libro de ventas, pendientes de emitir, estado del CAI, con exportación a CSV).
-> Falta la Fase 5: notas de crédito y débito.
+> **anulación**, la impresión desde el snapshot en los dos formatos, los **reportes fiscales**
+> (libro de compras, libro de ventas, pendientes de emitir, estado del CAI, con exportación a CSV) y
+> las **notas de crédito y débito**. Quedan fuera de alcance, por decisión del 27/09, las retenciones
+> IHCAFE y la guía de remisión.
 
 > **Lo primero, para que no haya malentendidos:** una transacción **sin documento emitido** se
 > imprime rotulada *"comprobante interno — no es documento fiscal"*, y no lleva CAI. Se vuelve
@@ -207,8 +208,8 @@ hace días después del pesaje.
 **Anular** (`fiscal_anular`) solo se permite **el mismo día de la emisión**, comparado en fecha de
 negocio de Honduras y no con la hora del servidor. Exige motivo y dónde quedó resguardada la copia
 física. El número **no se libera**: el documento queda en estado `anulado`, se reimprime con
-`*** ANULADO ***` y su motivo, y sigue apareciendo en el libro. Después del día de emisión hace falta
-una nota de crédito, que todavía no existe (Fase 5).
+`*** ANULADO ***` y su motivo, y sigue apareciendo en el libro. Después del día de emisión se corrige
+con una nota (§9). Un documento con notas vigentes **no se puede anular**: primero se anulan ellas.
 
 Cada emisión, anulación, alta o cambio de CAI y **cada reimpresión** queda en `FiscalAuditLog`, con
 el formato usado. Como el número no se reasigna nunca, lo auditable de una reimpresión es cuántas
@@ -241,17 +242,43 @@ Tres cosas que conviene saber al leer el libro:
 Los dos libros y los pendientes se **descargan en CSV**, con los montos como número para poder
 sumarlos en Excel sin limpiar la columna.
 
-Las notas de crédito y débito **todavía no entran al libro**: no se pueden emitir, y cuando existan
-hay que decidir su signo, porque sumar una nota de crédito como una factura infla el ingreso.
+Las notas de crédito y débito **sí entran al libro**, con su signo: la de crédito resta y la de débito
+suma. Cada una entra al libro del documento que corrige, y la columna `Modifica` dice a cuál, porque un
+renglón en negativo sin referencia no se puede explicar.
 
 ---
 
-## 9. Lo que el sistema NO hace
+## 9. Notas de crédito y débito
+
+Son **la única forma de corregir un documento después del día de emisión**, porque anular está
+limitado al mismo día. La nota **no toca el documento original** —lo emitido es inmutable—: se suma o
+se resta en el libro.
+
+Se emiten desde la misma fila de Compras, Ventas o Molido, con el botón **Nota de crédito o débito**.
+Piden tipo, monto y motivo; el monto viene propuesto con el saldo completo, que es el caso más común.
+
+| Regla | Por qué |
+| --- | --- |
+| Tiene **su propia serie** y su propio CAI | El SAR autoriza un rango por tipo de documento: la contadora carga el CAI de `nota_credito` (y el de `nota_debito` si se usa) igual que el de la factura |
+| **Motivo obligatorio** | Es lo que explica la nota en una revisión. Lo exige la validación y también un `CHECK` de la base |
+| **No se puede acreditar más de lo facturado** | El techo es lo que queda del documento: su total, más las notas de débito, menos las de crédito ya emitidas. Una nota anulada devuelve el saldo |
+| Puede ser **parcial** | Acreditar la mitad acredita la mitad de cada renglón: si el original llevaba ISV —el molido—, la nota lleva su parte |
+| **No sobre otra nota**, ni sobre un documento anulado | Corregir una corrección enreda el libro; un documento anulado ya no declara nada |
+| Se imprime en los dos formatos | 80 mm y A4, y la hoja dice **qué documento modifica**, con su número y su fecha |
+
+Emitirlas tiene permiso propio, **`fiscal_nota`**, por omisión solo admin: una nota de crédito rebaja
+un ingreso ya declarado, así que pesa lo mismo que anular.
+
+Lo que la nota **no** hace: no mueve inventario ni cambia la transacción. Si una devolución de café
+implica además un movimiento de bodega, ese se registra aparte.
+
+---
+
+## 10. Lo que el sistema NO hace
 
 | No hace | Qué implica |
 | --- | --- |
-| **Notas de crédito o débito** | No existen. Un error detectado **al día siguiente** no tiene salida dentro del sistema: la anulación está limitada al mismo día |
-| **Retenciones IHCAFE** | Fuera de alcance por decisión del 27/09/2026. Si deben salir en el documento, entra en la Fase 5 |
+| **Retenciones IHCAFE** | Fuera de alcance por decisión del 27/09/2026. Si deben salir en el documento, cambian el total impreso |
 | **Guía de remisión** | Fuera de alcance: antes hay que modelar el traslado de café entre bodegas |
 | **Facturar en otra moneda** | `moneda` y `tipoCambio` están en el modelo, pero todo se emite en HNL |
 | **Un documento por varias transacciones** | Un documento ampara **una** compra, venta o molido (decisión del 27/09/2026) |
@@ -261,26 +288,26 @@ hay que decidir su signo, porque sumar una nota de crédito como una factura inf
 
 ---
 
-## 10. Cómo activar la facturación autorizada
+## 11. Cómo activar la facturación autorizada
 
 1. La contadora consigue la autorización del SAR y **carga el CAI** en Mantenimiento → Facturación:
    código, tipo de documento, los tres códigos del número, rango, fecha límite y modo.
 2. Revisar el **próximo número** que muestra el panel antes de emitir el primero: es la forma de
    detectar un código mal tecleado sin gastar un número.
-3. Dar los permisos: `fiscal_emitir` y `fiscal_anular` se configuran por rol en Mantenimiento →
-   Roles. No aparecen en el menú, son solo permisos.
+3. Dar los permisos: `fiscal_emitir`, `fiscal_anular` y `fiscal_nota` se configuran por rol en
+   Mantenimiento → Roles. No aparecen en el menú, son solo permisos.
 4. Elegir el **formato de impresión** por omisión (80 mm o A4) en Mantenimiento → Facturación.
 5. Emitir una de prueba y verificar en el papel el número, el CAI, el rango y la fecha límite.
 
 ---
 
-## 11. Dónde está cada cosa en el código
+## 12. Dónde está cada cosa en el código
 
 | Archivo | Qué hace |
 | --- | --- |
 | `lib/fiscal.ts` | Catálogos y reglas puras: tipos de documento, clasificaciones e ISV, formato del número, evaluación del CAI, plazo de anulación, desglose |
 | `lib/fiscal-cai.ts` | DTO del CAI con el estado del rango derivado en cada lectura |
-| `lib/fiscal-document.ts` | Emisión (con el bloqueo de fila), anulación, bitácora, bloqueo de edición (`assertSinDocumentoFiscal`) |
+| `lib/fiscal-document.ts` | Emisión (con el bloqueo de fila), notas de crédito y débito, anulación, bitácora, bloqueo de edición (`assertSinDocumentoFiscal`) |
 | `lib/fiscal-reports.ts` | Libro de compras y ventas, pendientes de emitir, saltos de numeración, columnas del CSV |
 | `lib/csv.ts` | El archivo que abre Excel: BOM, comillas, protección de fórmulas |
 | `lib/build-invoice.ts` | Datos de la factura: desde el snapshot si el documento está emitido, si no de los datos vivos. Formatea el correlativo interno |
@@ -289,12 +316,13 @@ hay que decidir su signo, porque sumar una nota de crédito como una factura inf
 | `lib/print-formats.ts`, `lib/use-print-invoice.ts` | El catálogo de formatos y el hook que imprime en el elegido |
 | `components/invoice-a4.tsx` | La hoja: maquetación, CSS de impresión y las dos copias |
 | `components/invoice-print-buttons.tsx` | "Imprimir factura" en el formato por omisión, más el otro formato |
-| `components/fiscal-document-actions.tsx` | Emitir y anular desde Compras, Ventas y Molido |
+| `components/fiscal-document-actions.tsx` | Emitir, anular y emitir notas desde Compras, Ventas y Molido |
 | `components/maintenance-fiscal-panel.tsx` | Mantenimiento → Facturación: CAI y formato por omisión |
 | `components/fiscal-reports-panel.tsx` | Reportes → Fiscal: los dos libros, pendientes, estado del CAI y la descarga |
-| `app/api/fiscal-cais/*`, `app/api/fiscal-documents/*` | Administración del CAI, emisión y anulación |
+| `app/api/fiscal-cais/*`, `app/api/fiscal-documents/*` | Administración del CAI, emisión, anulación y notas (`:id/nota`) |
 | `app/api/reports/fiscal/libro`, `.../pendientes` | Los reportes, en JSON o CSV |
 | `app/print/{compra,venta,molido}/[id]/page.tsx` | Las páginas de factura A4, con su control de acceso |
+| `app/print/nota/[id]/page.tsx` | La hoja A4 de una nota. El id es el del **documento**, no de una transacción |
 | `app/api/print/ticket/route.ts` | Encola el `PrintJob` del ticket y registra la reimpresión |
 | `app/api/print/agent/*` | Endpoints del agente local. Se autentica con `PRINT_AGENT_TOKEN` |
 | `prisma/schema.prisma` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog`, `numeroInterno`, `Producto.clasificacionFiscal`, `CompanySettings.formatoImpresionDefault` |
@@ -307,26 +335,29 @@ hay que decidir su signo, porque sumar una nota de crédito como una factura inf
 | `20260925000000_add_numero_interno` | `numeroInterno` en compras y ventas: secuencia, único y backfill en orden de creación |
 | `20260927000000_add_fiscal_base` | Las tres tablas fiscales, el índice parcial de un CAI activo por tipo, los `CHECK` y los `RESTRICT` |
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault` |
+| `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo`, con el `CHECK` de referencia reemplazado: o una transacción, o un documento corregido |
 
-**Pruebas:** `tests/lib/fiscal.test.ts` (reglas del CAI y desglose), `tests/lib/fiscal-reports.test.ts`
+**Pruebas:** `tests/lib/fiscal.test.ts` (reglas del CAI, desglose y notas), `tests/lib/fiscal-reports.test.ts`
 y `tests/lib/csv.test.ts` (libro, pendientes y exportación), `tests/lib/build-invoice.test.ts`,
 `tests/components/invoice-a4.test.tsx`, `tests/lib/ticket-copias.test.ts`, y contra Postgres de
-verdad `tests/integration/fiscal-{constraints,emision,reportes}.test.ts`.
+verdad `tests/integration/fiscal-{constraints,emision,reportes,notas}.test.ts`.
 
 ---
 
-## 12. Estado y pendientes
+## 13. Estado y pendientes
 
 - **Las migraciones fiscales deben aplicarse a la base de la operación** (`prisma migrate deploy`):
-  `20260925000000_add_numero_interno`, `20260927000000_add_fiscal_base` y
-  `20260928000000_add_print_format`. La primera crea una columna `NOT NULL`, así que sin ella fallan
-  las consultas de compras y ventas.
+  `20260925000000_add_numero_interno`, `20260927000000_add_fiscal_base`,
+  `20260928000000_add_print_format` y `20260929000000_add_fiscal_notas`. La primera crea una columna
+  `NOT NULL`, así que sin ella fallan las consultas de compras y ventas.
 - **La contadora tiene que confirmar** el tipo de documento que corresponde a las compras y su código
-  de dos dígitos (`TT`), además del formato y las leyendas exactas que exige el SAR.
+  de dos dígitos (`TT`), además del formato y las leyendas exactas que exige el SAR. Lo mismo para las
+  notas: su código `TT` y si una **boleta de compra** se corrige con nota de crédito o de otra forma.
+  El sistema lo permite; que sea lo correcto ante el SAR es lo que hay que confirmar.
 - Falta ver impreso el corte entre las dos copias, tanto en A4 como en la térmica, y el ticket fiscal
   en la impresora real.
-- Pendiente la Fase 5: notas de crédito y débito, retenciones IHCAFE si deben salir en el documento, y
-  guía de remisión.
+- Fuera de alcance por decisión del 27/09: retenciones IHCAFE —cambiarían el total impreso— y guía de
+  remisión, que antes exige modelar el traslado de café entre bodegas.
 - Para el detalle de decisiones de diseño, ver `DOCUMENTACION.md` §6.14 (reportes fiscales), §10.1
-  (ticket), §10.2 (factura A4 y numeración), §10.3 (emisión, anulación y formatos) y §19.3 (por qué el
-  número del talonario se captura a mano).
+  (ticket), §10.2 (factura A4 y numeración), §10.3 (emisión, anulación y formatos), §10.4 (notas) y
+  §19.3 (por qué el número del talonario se captura a mano).

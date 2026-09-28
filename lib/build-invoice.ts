@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { toBusinessDateString } from '@/lib/business-date';
+import { businessDateOf, toBusinessDateString } from '@/lib/business-date';
 import { paymentMethodLabel } from '@/lib/payment-methods';
 import { tipoDocumentoLabel } from '@/lib/fiscal';
 
@@ -133,6 +133,13 @@ export type InvoiceDocumentoFiscal = {
   /** Fecha en que se emitió; puede ser posterior a la de la compra. */
   fechaEmision: string;
   cai: { codigo: string; rangoDesde: number; rangoHasta: number; fechaLimite: string };
+  /** Por qué se emitió la nota. Null en facturas y boletas. */
+  notaMotivo?: string | null;
+  /**
+   * El documento que esta nota modifica. Va impreso: una nota de crédito sin decir a
+   * qué factura corresponde no sirve ni al cliente ni a la contadora.
+   */
+  documentoOrigen?: { numeroCompleto: string; tipoDocumentoLabel: string; fechaEmision: string } | null;
   desglose: {
     importeExento: number;
     importeExonerado: number;
@@ -145,7 +152,17 @@ export type InvoiceDocumentoFiscal = {
 };
 
 export type InvoiceData = {
-  kind: 'compra' | 'venta' | 'molido';
+  /**
+   * `nota` es una nota de crédito o débito: no ampara una transacción sino que modifica
+   * otro documento, así que no tiene pesaje ni líneas de café, solo el concepto y el
+   * monto del ajuste.
+   */
+  kind: 'compra' | 'venta' | 'molido' | 'nota';
+  /**
+   * Sobre qué transacción era el documento que la nota modifica. Solo en notas, y solo
+   * para rotular: a quien se le compra café se le dice **productor**, no cliente.
+   */
+  notaSobre?: 'compra' | 'venta' | 'molido' | null;
   titulo: string;
   /** Correlativo interno del sistema (`C-000123`). Siempre presente. */
   numeroInterno: string;
@@ -327,7 +344,12 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
 export async function buildInvoiceFromDocument(documentId: string): Promise<InvoiceData | null> {
   const documento = await prisma.fiscalDocument.findUnique({
     where: { id: documentId },
-    include: { cai: { select: { codigo: true } } },
+    include: {
+      cai: { select: { codigo: true } },
+      // La referencia de una nota se lee viva porque es inmutable: el número y la fecha
+      // del documento modificado no cambian nunca.
+      documentoOrigen: { select: { numeroCompleto: true, tipoDocumento: true, emitidoEn: true } },
+    },
   });
   if (!documento) return null;
 
@@ -351,6 +373,14 @@ export async function buildInvoiceFromDocument(documentId: string): Promise<Invo
         rangoHasta: 0,
         fechaLimite: '',
       },
+      notaMotivo: documento.notaMotivo,
+      documentoOrigen: documento.documentoOrigen
+        ? {
+            numeroCompleto: documento.documentoOrigen.numeroCompleto,
+            tipoDocumentoLabel: tipoDocumentoLabel(documento.documentoOrigen.tipoDocumento),
+            fechaEmision: businessDateOf(documento.documentoOrigen.emitidoEn),
+          }
+        : null,
       desglose: {
         importeExento: Number(documento.importeExento),
         importeExonerado: Number(documento.importeExonerado),

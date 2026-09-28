@@ -7,14 +7,18 @@ import {
   type OrigenDocumento,
   TIPO_DOCUMENTO_POR_ORIGEN,
   desgloseIsv,
+  desgloseNota,
+  esNota,
   evaluarCai,
   formatNumeroFiscal,
   motivoNoEmitible,
   puedeAnularse,
+  signoLibro,
   tipoDocumentoLabel,
+  type TipoNota,
 } from '@/lib/fiscal';
 import { buildInvoiceForGrinding, buildInvoiceForPurchase, buildInvoiceForSale } from '@/lib/build-invoice';
-import type { FiscalDocumentDTO } from '@/types/domain';
+import type { FiscalDocumentDTO, FiscalNotaResumenDTO } from '@/types/domain';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -85,7 +89,21 @@ type FiscalDocumentRow = {
   anulacionMotivo: string | null;
   copiaFisicaResguardada: boolean;
   copiaFisicaUbicacion: string | null;
+  documentoOrigenId: string | null;
+  notaMotivo: string | null;
   cai?: { codigo: string } | null;
+  documentoOrigen?: { id: string; numeroCompleto: string; tipoDocumento: string; emitidoEn: Date } | null;
+  notas?: NotaRow[];
+};
+
+type NotaRow = {
+  id: string;
+  tipoDocumento: string;
+  numeroCompleto: string;
+  estado: string;
+  total: Prisma.Decimal;
+  notaMotivo: string | null;
+  emitidoEn: Date;
 };
 
 export function mapFiscalDocument(doc: FiscalDocumentRow): FiscalDocumentDTO {
@@ -124,10 +142,68 @@ export function mapFiscalDocument(doc: FiscalDocumentRow): FiscalDocumentDTO {
     copiaFisicaUbicacion: doc.copiaFisicaUbicacion,
     // Derivado: el plazo es el mismo día de la emisión.
     anulable: doc.estado === 'emitido' && puedeAnularse(doc.emitidoEn),
+    esNota: esNota(doc.tipoDocumento),
+    notaMotivo: doc.notaMotivo,
+    documentoOrigen: doc.documentoOrigen
+      ? {
+          id: doc.documentoOrigen.id,
+          numeroCompleto: doc.documentoOrigen.numeroCompleto,
+          tipoDocumento: doc.documentoOrigen.tipoDocumento,
+          tipoDocumentoLabel: tipoDocumentoLabel(doc.documentoOrigen.tipoDocumento),
+          fechaEmision: businessDateOf(doc.documentoOrigen.emitidoEn),
+        }
+      : null,
+    notas: (doc.notas ?? []).map(mapNotaResumen),
+    saldoAcreditable: saldoAcreditable(doc),
   };
 }
 
-export const fiscalDocumentInclude = { cai: { select: { codigo: true } } } as const;
+function mapNotaResumen(nota: NotaRow): FiscalNotaResumenDTO {
+  return {
+    id: nota.id,
+    tipoDocumento: nota.tipoDocumento,
+    tipoDocumentoLabel: tipoDocumentoLabel(nota.tipoDocumento),
+    numeroCompleto: nota.numeroCompleto,
+    estado: nota.estado,
+    total: Number(nota.total),
+    notaMotivo: nota.notaMotivo,
+    fechaEmision: businessDateOf(nota.emitidoEn),
+  };
+}
+
+/**
+ * Cuánto queda por acreditar de un documento: su total, más las notas de débito, menos
+ * las de crédito. Es el techo de la próxima nota de crédito.
+ *
+ * Las notas **anuladas no cuentan**: anular una nota de crédito el mismo día devuelve el
+ * saldo, que es justo para lo que sirve. Una nota no tiene saldo propio: lo que se
+ * corrige es la factura, no la corrección.
+ */
+function saldoAcreditable(doc: FiscalDocumentRow): number {
+  if (esNota(doc.tipoDocumento)) return 0;
+
+  const vigentes = (doc.notas ?? []).filter((nota) => nota.estado === 'emitido');
+  const saldo = vigentes.reduce(
+    (acumulado, nota) => acumulado + signoLibro(nota.tipoDocumento) * Number(nota.total),
+    Number(doc.total),
+  );
+
+  return Math.max(0, Math.round(saldo * 100) / 100);
+}
+
+/**
+ * Lo que hace falta para armar el DTO. Las notas vienen con el documento porque la fila
+ * del panel tiene que poder decir "ya se acreditó L 500 de esta factura" sin otra
+ * consulta: es lo que decide si se puede emitir otra nota y por cuánto.
+ */
+export const fiscalDocumentInclude = {
+  cai: { select: { codigo: true } },
+  documentoOrigen: { select: { id: true, numeroCompleto: true, tipoDocumento: true, emitidoEn: true } },
+  notas: {
+    select: { id: true, tipoDocumento: true, numeroCompleto: true, estado: true, total: true, notaMotivo: true, emitidoEn: true },
+    orderBy: { emitidoEn: 'desc' },
+  },
+} as const;
 
 /** Campo de `FiscalDocument` que corresponde a cada origen. */
 const CAMPO_ORIGEN: Record<OrigenDocumento, 'purchaseTransactionId' | 'saleTransactionId' | 'grindingServiceId'> = {
@@ -258,6 +334,96 @@ export type EmitirInput = {
   numeroManual?: number;
 };
 
+/** El CAI tal como lo devuelve el `SELECT … FOR UPDATE`, sin pasar por Prisma. */
+type CaiBloqueado = {
+  id: string;
+  codigo: string;
+  codigoEstablecimiento: string;
+  codigoPuntoEmision: string;
+  codigoTipoDocumento: string;
+  rangoDesde: number;
+  rangoHasta: number;
+  fechaLimite: Date;
+  modo: string;
+  estado: string;
+  ultimoCorrelativo: number;
+  alertaPorcentaje: number;
+  alertaDiasPrevios: number;
+};
+
+/**
+ * Toma el siguiente número del CAI activo de un tipo y avanza el contador, con la fila
+ * bloqueada.
+ *
+ * Lo comparten la emisión de facturas y la de notas: son series distintas —cada tipo de
+ * documento tiene su propio CAI— pero la garantía tiene que ser la misma, y duplicar
+ * este bloque era la forma segura de que una nota acabara con un número repetido.
+ *
+ * Solo se llama **dentro** de una transacción: el bloqueo dura hasta que esa transacción
+ * termina, y es lo que impide que dos peticiones lean el mismo contador.
+ */
+async function tomarCorrelativo(
+  tx: Prisma.TransactionClient,
+  tipoDocumento: string,
+  hoy: string,
+  numeroManual?: number,
+): Promise<{ cai: CaiBloqueado; correlativo: number; numeroCompleto: string }> {
+  // `FOR UPDATE` serializa las emisiones de este CAI: dos peticiones simultáneas
+  // esperan su turno en vez de leer el mismo contador y repetir el número.
+  const filas = await tx.$queryRaw<
+    CaiBloqueado[]
+  >`SELECT * FROM "FiscalCai" WHERE "tipoDocumento" = ${tipoDocumento} AND "estado" = 'activo' FOR UPDATE`;
+
+  const cai = filas[0];
+  if (!cai) {
+    throw new CaiNoDisponibleError(
+      `No hay un CAI activo para ${tipoDocumentoLabel(tipoDocumento)}. Regístrelo en Mantenimiento → Facturación.`,
+    );
+  }
+
+  const estadoCai = evaluarCai(cai, hoy);
+  const motivo = motivoNoEmitible(estadoCai, cai.estado === 'activo');
+  if (motivo) {
+    throw new CaiNoDisponibleError(motivo);
+  }
+
+  let correlativo: number;
+  if (cai.modo === 'TALONARIO') {
+    if (numeroManual === undefined) {
+      throw new Error('Este CAI está en modo talonario: hay que escribir el número que trae el papel.');
+    }
+    if (numeroManual < cai.rangoDesde || numeroManual > cai.rangoHasta) {
+      throw new Error(
+        `El número ${numeroManual} está fuera del rango autorizado (${cai.rangoDesde}–${cai.rangoHasta}).`,
+      );
+    }
+    correlativo = numeroManual;
+  } else {
+    // `siguienteCorrelativo` no puede ser null acá: `motivoNoEmitible` ya descartó
+    // vencido, agotado e inactivo.
+    correlativo = estadoCai.siguienteCorrelativo as number;
+  }
+
+  // En modo talonario los números pueden llegar desordenados; el contador se queda
+  // con el más alto para no volver a ofrecer uno ya usado.
+  await tx.fiscalCai.update({
+    where: { id: cai.id },
+    data: { ultimoCorrelativo: Math.max(cai.ultimoCorrelativo, correlativo) },
+  });
+
+  return { cai, correlativo, numeroCompleto: formatNumeroFiscal({ ...cai, correlativo }) };
+}
+
+/** Bloque del CAI que se guarda en el snapshot: el vigente al emitir, no el de después. */
+function caiDelSnapshot(cai: CaiBloqueado) {
+  return {
+    codigo: cai.codigo,
+    rangoDesde: cai.rangoDesde,
+    rangoHasta: cai.rangoHasta,
+    fechaLimite: toBusinessDateString(cai.fechaLimite),
+  };
+}
+
 /**
  * Emite el documento fiscal de una transacción.
  *
@@ -284,65 +450,8 @@ export async function emitirDocumentoFiscal(
   return prisma.$transaction(async (tx) => {
     await assertSinDocumentoFiscal(tx, input.origen, input.transactionId);
 
-    // `FOR UPDATE` serializa las emisiones de este CAI: dos peticiones simultáneas
-    // esperan su turno en vez de leer el mismo contador y repetir el número.
-    const filas = await tx.$queryRaw<
-      Array<{
-        id: string;
-        codigo: string;
-        codigoEstablecimiento: string;
-        codigoPuntoEmision: string;
-        codigoTipoDocumento: string;
-        rangoDesde: number;
-        rangoHasta: number;
-        fechaLimite: Date;
-        modo: string;
-        estado: string;
-        ultimoCorrelativo: number;
-        alertaPorcentaje: number;
-        alertaDiasPrevios: number;
-      }>
-    >`SELECT * FROM "FiscalCai" WHERE "tipoDocumento" = ${tipoDocumento} AND "estado" = 'activo' FOR UPDATE`;
-
-    const cai = filas[0];
-    if (!cai) {
-      throw new CaiNoDisponibleError(
-        `No hay un CAI activo para ${tipoDocumentoLabel(tipoDocumento)}. Regístrelo en Mantenimiento → Facturación.`,
-      );
-    }
-
-    const estadoCai = evaluarCai(cai, hoy);
-    const motivo = motivoNoEmitible(estadoCai, cai.estado === 'activo');
-    if (motivo) {
-      throw new CaiNoDisponibleError(motivo);
-    }
-
-    let correlativo: number;
-    if (cai.modo === 'TALONARIO') {
-      if (input.numeroManual === undefined) {
-        throw new Error('Este CAI está en modo talonario: hay que escribir el número que trae el papel.');
-      }
-      if (input.numeroManual < cai.rangoDesde || input.numeroManual > cai.rangoHasta) {
-        throw new Error(
-          `El número ${input.numeroManual} está fuera del rango autorizado (${cai.rangoDesde}–${cai.rangoHasta}).`,
-        );
-      }
-      correlativo = input.numeroManual;
-    } else {
-      // `siguienteCorrelativo` no puede ser null acá: `motivoNoEmitible` ya descartó
-      // vencido, agotado e inactivo.
-      correlativo = estadoCai.siguienteCorrelativo as number;
-    }
-
+    const { cai, correlativo, numeroCompleto } = await tomarCorrelativo(tx, tipoDocumento, hoy, input.numeroManual);
     const desglose = ajustarDesgloseAlTotal(desgloseIsv(lineas), totalTransaccion);
-    const numeroCompleto = formatNumeroFiscal({ ...cai, correlativo });
-
-    // En modo talonario los números pueden llegar desordenados; el contador se queda
-    // con el más alto para no volver a ofrecer uno ya usado.
-    await tx.fiscalCai.update({
-      where: { id: cai.id },
-      data: { ultimoCorrelativo: Math.max(cai.ultimoCorrelativo, correlativo) },
-    });
 
     const documento = await tx.fiscalDocument.create({
       data: {
@@ -366,12 +475,7 @@ export async function emitirDocumentoFiscal(
           ...snapshot,
           numeroFiscal: numeroCompleto,
           fechaEmision: hoy,
-          cai: {
-            codigo: cai.codigo,
-            rangoDesde: cai.rangoDesde,
-            rangoHasta: cai.rangoHasta,
-            fechaLimite: toBusinessDateString(cai.fechaLimite),
-          },
+          cai: caiDelSnapshot(cai),
         } as unknown as Prisma.InputJsonValue,
         formatoVersion: FORMATO_VERSION,
       },
@@ -397,6 +501,215 @@ export async function emitirDocumentoFiscal(
   { maxWait: 10_000, timeout: 20_000 });
 }
 
+/** Una nota que no se puede emitir por el estado de lo que pretende corregir. */
+export class NotaNoValidaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotaNoValidaError';
+  }
+}
+
+export type EmitirNotaInput = {
+  /** Documento que se corrige. */
+  documentoOrigenId: string;
+  tipo: TipoNota;
+  /** Monto de la nota, en positivo. Puede ser parcial. */
+  monto: number;
+  motivo: string;
+  usuario: string;
+  /** Solo en modo TALONARIO: el número que trae el papel de la nota. */
+  numeroManual?: number;
+};
+
+/**
+ * Arma el snapshot de la nota a partir del documento que corrige.
+ *
+ * La nota hereda **la empresa y el cliente tal como quedaron en el documento original**,
+ * no los datos vivos: si al productor le corrigieron el nombre después, la nota tiene
+ * que seguir diciendo lo mismo que la factura que corrige, o no se leen como el par que
+ * son.
+ *
+ * Su única línea es el ajuste: el motivo como concepto y el monto como valor. No lleva
+ * pesaje ni precio por libra, porque lo que se corrige es dinero, no café.
+ */
+function snapshotDeNota(
+  origen: { snapshot: Prisma.JsonValue; numeroCompleto: string; tipoDocumento: string; emitidoEn: Date },
+  input: { tipo: TipoNota; monto: number; motivo: string; hoy: string },
+): Record<string, unknown> {
+  const base = (origen.snapshot ?? {}) as Record<string, unknown>;
+  const linea = {
+    productoNombre: input.motivo,
+    pesoBruto: null,
+    numeroSacos: null,
+    taraPorSaco: null,
+    libras: 0,
+    porcentajeOro: null,
+    quintalesOro: null,
+    precioPorLibra: null,
+    precioPorQuintalOro: null,
+    descripcion: `Sobre ${tipoDocumentoLabel(origen.tipoDocumento)} No. ${origen.numeroCompleto}`,
+    total: input.monto,
+  };
+
+  return {
+    ...base,
+    kind: 'nota',
+    // Sobre qué transacción era el documento corregido, solo para rotular al cliente.
+    notaSobre: base.kind ?? null,
+    titulo: tipoDocumentoLabel(input.tipo),
+    // La nota no tiene correlativo interno propio: el del sistema es el de la
+    // transacción, y ya sale impreso en el documento que se corrige.
+    numeroInterno: '',
+    numeroFactura: null,
+    // La fecha de la operación de una nota es el día en que se emite: no hay pesaje
+    // anterior que amparar.
+    businessDate: input.hoy,
+    metodoPago: null,
+    lineas: [linea],
+    subtotal: input.monto,
+    bono: 0,
+    bonoMotivo: null,
+    descuento: 0,
+    descuentoMotivo: null,
+    total: input.monto,
+    totalLibras: 0,
+    totalQuintalesOro: null,
+  };
+}
+
+/**
+ * Emite una nota de crédito o de débito sobre un documento ya emitido.
+ *
+ * Es la única forma de corregir después del día de emisión, porque anular está limitado
+ * al mismo día. La nota **no toca** el documento original —lo emitido es inmutable— sino
+ * que se suma o se resta en el libro (`signoLibro`).
+ *
+ * Tiene su propia serie: el CAI de `nota_credito` es distinto del de `factura`, así que
+ * el número sale del contador de ese CAI con el mismo bloqueo de fila.
+ *
+ * Las validaciones van **dentro** de la transacción, después de tomar el bloqueo: dos
+ * notas de crédito simultáneas sobre la misma factura pasarían las dos la comprobación
+ * del saldo si se hiciera antes, y entre las dos acreditarían más de lo facturado.
+ */
+export async function emitirNotaFiscal(
+  prisma: PrismaClient,
+  input: EmitirNotaInput,
+): Promise<FiscalDocumentDTO> {
+  const hoy = todayBusinessDate();
+  const monto = Math.round(input.monto * 100) / 100;
+
+  if (!(monto > 0)) {
+    throw new NotaNoValidaError('El monto de la nota tiene que ser mayor que cero.');
+  }
+  if (input.motivo.trim().length < 4) {
+    throw new NotaNoValidaError('La nota necesita un motivo: es lo que la explica ante una revisión.');
+  }
+
+  return prisma.$transaction(
+    async (tx) => {
+      const origen = await tx.fiscalDocument.findUnique({
+        where: { id: input.documentoOrigenId },
+        include: { notas: { select: { tipoDocumento: true, estado: true, total: true } } },
+      });
+
+      if (!origen) {
+        throw new NotaNoValidaError('No se encontró el documento que se quiere corregir.');
+      }
+      // Corregir una corrección enredaría el libro sin necesidad: si la nota está mal,
+      // se anula el mismo día o se emite otra sobre el documento original.
+      if (esNota(origen.tipoDocumento)) {
+        throw new NotaNoValidaError('No se puede emitir una nota sobre otra nota.');
+      }
+      // Un documento anulado ya no declara nada: no hay qué corregirle.
+      if (origen.estado === 'anulado') {
+        throw new NotaNoValidaError('El documento está anulado: no hace falta una nota para corregirlo.');
+      }
+
+      const vigentes = origen.notas.filter((nota) => nota.estado === 'emitido');
+      const saldo =
+        Math.round(
+          vigentes.reduce(
+            (acumulado, nota) => acumulado + signoLibro(nota.tipoDocumento) * Number(nota.total),
+            Number(origen.total),
+          ) * 100,
+        ) / 100;
+
+      // Acreditar más de lo facturado declararía un ingreso negativo que nunca existió.
+      // La nota de débito no tiene techo: sube lo que se cobra, no lo devuelve.
+      if (input.tipo === 'nota_credito' && monto > saldo) {
+        throw new NotaNoValidaError(
+          `La nota de crédito no puede pasar de L ${saldo.toFixed(2)}, que es lo que queda por acreditar del documento.`,
+        );
+      }
+
+      const { cai, correlativo, numeroCompleto } = await tomarCorrelativo(tx, input.tipo, hoy, input.numeroManual);
+
+      const desglose = desgloseNota(
+        {
+          importeExento: Number(origen.importeExento),
+          importeExonerado: Number(origen.importeExonerado),
+          importeGravado15: Number(origen.importeGravado15),
+          importeGravado18: Number(origen.importeGravado18),
+          isv15: Number(origen.isv15),
+          isv18: Number(origen.isv18),
+          total: Number(origen.total),
+        },
+        monto,
+      );
+
+      const documento = await tx.fiscalDocument.create({
+        data: {
+          caiId: cai.id,
+          tipoDocumento: input.tipo,
+          correlativo,
+          numeroCompleto,
+          // La nota es de hoy: no ampara un pesaje anterior.
+          businessDate: parseBusinessDate(hoy),
+          emitidoPor: input.usuario,
+          documentoOrigenId: origen.id,
+          notaMotivo: input.motivo.trim(),
+          total: monto,
+          importeExento: desglose.importeExento,
+          importeExonerado: desglose.importeExonerado,
+          importeGravado15: desglose.importeGravado15,
+          importeGravado18: desglose.importeGravado18,
+          isv15: desglose.isv15,
+          isv18: desglose.isv18,
+          snapshot: {
+            ...snapshotDeNota(origen, { tipo: input.tipo, monto, motivo: input.motivo.trim(), hoy }),
+            numeroFiscal: numeroCompleto,
+            fechaEmision: hoy,
+            cai: caiDelSnapshot(cai),
+          } as unknown as Prisma.InputJsonValue,
+          formatoVersion: FORMATO_VERSION,
+        },
+        include: fiscalDocumentInclude,
+      });
+
+      await tx.fiscalAuditLog.create({
+        data: {
+          accion: 'nota',
+          fiscalDocumentId: documento.id,
+          caiId: cai.id,
+          usuario: input.usuario,
+          detalle: {
+            tipo: input.tipo,
+            numeroCompleto,
+            monto,
+            motivo: input.motivo.trim(),
+            documentoOrigen: origen.numeroCompleto,
+            saldoAntes: saldo,
+          },
+        },
+      });
+
+      return mapFiscalDocument(documento);
+    },
+    // Mismos márgenes que la emisión: lo que domina es la cola del bloqueo del CAI.
+    { maxWait: 10_000, timeout: 20_000 },
+  );
+}
+
 export type AnularInput = {
   id: string;
   usuario: string;
@@ -416,11 +729,22 @@ export async function anularDocumentoFiscal(
   input: AnularInput,
 ): Promise<FiscalDocumentDTO | null> {
   return prisma.$transaction(async (tx) => {
-    const existente = await tx.fiscalDocument.findUnique({ where: { id: input.id } });
+    const existente = await tx.fiscalDocument.findUnique({
+      where: { id: input.id },
+      include: { notas: { where: { estado: 'emitido' }, select: { numeroCompleto: true } } },
+    });
     if (!existente) return null;
 
     if (existente.estado === 'anulado') {
       throw new Error('Este documento ya está anulado.');
+    }
+    // Anular el documento dejaría sus notas apuntando a algo que ya no declara nada, y
+    // las notas siguen contando en el libro. Primero se anulan ellas.
+    if (existente.notas.length > 0) {
+      throw new NotaNoValidaError(
+        `Este documento tiene ${existente.notas.length === 1 ? 'una nota emitida' : `${existente.notas.length} notas emitidas`} ` +
+          `(${existente.notas.map((nota) => nota.numeroCompleto).join(', ')}). Anule primero las notas.`,
+      );
     }
     if (!puedeAnularse(existente.emitidoEn)) {
       throw new Error(

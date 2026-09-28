@@ -46,6 +46,15 @@ export const MODULE_DEFS: ModuleDef[] = [
     defaultRoles: [],
     permissionOnly: true,
   },
+  // Una nota de crédito rebaja un ingreso ya declarado, así que pesa lo mismo que
+  // anular: arranca solo para admin.
+  {
+    key: 'fiscal_nota',
+    href: '',
+    label: 'Facturación: emitir nota de crédito o débito',
+    defaultRoles: [],
+    permissionOnly: true,
+  },
 ];
 
 export function isRoleAllowed(moduleRoles: string[], role: string | null): boolean {

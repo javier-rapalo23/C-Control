@@ -24,6 +24,9 @@ type DocFake = {
   isv15?: number;
   anulacionMotivo?: string | null;
   snapshot?: unknown;
+  /** Solo en notas: el documento que corrigen y por qué. */
+  documentoOrigen?: { numeroCompleto: string; tipoDocumento: string };
+  notaMotivo?: string | null;
 };
 
 function documento(doc: DocFake) {
@@ -49,6 +52,8 @@ function documento(doc: DocFake) {
     isv15: doc.isv15 ?? 0,
     isv18: 0,
     anulacionMotivo: doc.anulacionMotivo ?? null,
+    documentoOrigen: doc.documentoOrigen ?? null,
+    notaMotivo: doc.notaMotivo ?? null,
     snapshot: doc.snapshot ?? {
       numeroInterno: 'C-000123',
       sucursalNombre: 'Bodega San Juan',
@@ -59,24 +64,35 @@ function documento(doc: DocFake) {
 }
 
 /**
- * Doble de `fiscalDocument.findMany`. Aplica los dos filtros que sí manda la consulta
- * —tipo de documento y ventana de instantes— para que el recorte por fecha de negocio,
- * que ocurre en JavaScript, se pruebe de verdad y no sobre una lista ya filtrada.
+ * Doble de `fiscalDocument.findMany`. Aplica los filtros que sí manda la consulta —la
+ * ventana de instantes y el `OR` de tipo propio o tipo del documento corregido— para que
+ * el recorte por fecha de negocio, que ocurre en JavaScript, se pruebe de verdad y no
+ * sobre una lista ya filtrada.
  */
 function fakeDb(docs: DocFake[]) {
   const filas = docs.map(documento);
 
+  type Where = {
+    emitidoEn: { gte: Date; lt: Date };
+    OR: Array<{ tipoDocumento?: { in: string[] }; documentoOrigen?: { tipoDocumento: { in: string[] } } }>;
+  };
+
   return {
     fiscalDocument: {
-      findMany: async ({
-        where,
-      }: {
-        where: { tipoDocumento: { in: string[] }; emitidoEn: { gte: Date; lt: Date } };
-      }) =>
-        filas
-          .filter((fila) => where.tipoDocumento.in.includes(fila.tipoDocumento))
+      findMany: async ({ where }: { where: Where }) => {
+        const tipos = new Set(
+          where.OR.flatMap((clausula) => clausula.tipoDocumento?.in ?? clausula.documentoOrigen?.tipoDocumento.in ?? []),
+        );
+
+        return filas
+          .filter(
+            (fila) =>
+              tipos.has(fila.tipoDocumento) ||
+              (fila.documentoOrigen !== null && tipos.has(fila.documentoOrigen.tipoDocumento)),
+          )
           .filter((fila) => fila.emitidoEn >= where.emitidoEn.gte && fila.emitidoEn < where.emitidoEn.lt)
-          .sort((a, b) => a.emitidoEn.getTime() - b.emitidoEn.getTime() || a.correlativo - b.correlativo),
+          .sort((a, b) => a.emitidoEn.getTime() - b.emitidoEn.getTime() || a.correlativo - b.correlativo);
+      },
     },
   } as unknown as PrismaClient;
 }
@@ -235,6 +251,118 @@ describe('getFiscalBookReport', () => {
     );
 
     expect(reporte.rows[0]).toMatchObject({ clienteNombre: null, clienteRtn: null, numeroInterno: null });
+  });
+
+  // Una nota de crédito rebaja lo declarado: entra al libro con importes negativos, o el
+  // total del período seguiría diciendo que se cobró lo que se devolvió.
+  it('la nota de crédito entra al libro en negativo y resta del total', async () => {
+    const reporte = await getFiscalBookReport(
+      fakeDb([
+        {
+          id: 'fd-1',
+          correlativo: 1,
+          emitidoEn: '2026-09-10T16:00:00.000Z',
+          tipoDocumento: 'factura',
+          total: 3_000,
+        },
+        {
+          id: 'nc-1',
+          correlativo: 1,
+          emitidoEn: '2026-09-12T16:00:00.000Z',
+          tipoDocumento: 'nota_credito',
+          caiId: 'cai-nc',
+          total: 500,
+          notaMotivo: 'Café devuelto por humedad',
+          documentoOrigen: { numeroCompleto: '001-001-01-00000001', tipoDocumento: 'factura' },
+        },
+      ]),
+      { libro: 'ventas', from: '2026-09-01', to: '2026-09-30' },
+    );
+
+    const nota = reporte.rows.find((row) => row.id === 'nc-1');
+    expect(nota).toMatchObject({
+      esNota: true,
+      signo: -1,
+      total: -500,
+      importeExento: -500,
+      notaMotivo: 'Café devuelto por humedad',
+      documentoOrigenNumero: '001-001-01-00000001',
+    });
+    expect(reporte.totals.total).toBe(2_500);
+    expect(reporte.totals.importeExento).toBe(2_500);
+  });
+
+  // El libro de una nota lo decide el documento que corrige, no su propio tipo: la misma
+  // nota de crédito puede ser de compras o de ventas.
+  it('la nota sigue al libro del documento que corrige', async () => {
+    const docs: DocFake[] = [
+      {
+        id: 'nc-compra',
+        correlativo: 1,
+        emitidoEn: '2026-09-12T16:00:00.000Z',
+        tipoDocumento: 'nota_credito',
+        caiId: 'cai-nc',
+        total: 200,
+        notaMotivo: 'Peso corregido',
+        documentoOrigen: { numeroCompleto: '001-001-04-00000009', tipoDocumento: 'boleta_compra' },
+      },
+    ];
+
+    const compras = await getFiscalBookReport(fakeDb(docs), SEPTIEMBRE);
+    expect(compras.rows.map((row) => row.id)).toEqual(['nc-compra']);
+    expect(compras.totals.total).toBe(-200);
+
+    const ventas = await getFiscalBookReport(fakeDb(docs), { ...SEPTIEMBRE, libro: 'ventas' });
+    expect(ventas.rows).toHaveLength(0);
+  });
+
+  it('una nota anulada aparece y no resta', async () => {
+    const reporte = await getFiscalBookReport(
+      fakeDb([
+        { id: 'fd-1', correlativo: 1, emitidoEn: '2026-09-10T16:00:00.000Z', tipoDocumento: 'factura', total: 1_000 },
+        {
+          id: 'nc-1',
+          correlativo: 1,
+          emitidoEn: '2026-09-10T17:00:00.000Z',
+          tipoDocumento: 'nota_credito',
+          caiId: 'cai-nc',
+          total: 400,
+          estado: 'anulado',
+          notaMotivo: 'Se emitió por error',
+          anulacionMotivo: 'Monto equivocado',
+          documentoOrigen: { numeroCompleto: '001-001-01-00000001', tipoDocumento: 'factura' },
+        },
+      ]),
+      { libro: 'ventas', from: '2026-09-01', to: '2026-09-30' },
+    );
+
+    expect(reporte.rows).toHaveLength(2);
+    expect(reporte.totals.total).toBe(1_000);
+    expect(reporte.totals.totalAnulado).toBe(-400);
+  });
+
+  // Las notas son otra serie, con su propio CAI: comparar sus correlativos con los de las
+  // facturas inventaría huecos en las dos.
+  it('no busca saltos entre la serie de la factura y la de la nota', async () => {
+    const reporte = await getFiscalBookReport(
+      fakeDb([
+        { id: 'fd-1', correlativo: 40, emitidoEn: '2026-09-10T16:00:00.000Z', tipoDocumento: 'factura' },
+        { id: 'fd-2', correlativo: 41, emitidoEn: '2026-09-11T16:00:00.000Z', tipoDocumento: 'factura' },
+        {
+          id: 'nc-1',
+          correlativo: 1,
+          emitidoEn: '2026-09-12T16:00:00.000Z',
+          tipoDocumento: 'nota_credito',
+          caiId: 'cai-nc',
+          total: 100,
+          notaMotivo: 'Ajuste',
+          documentoOrigen: { numeroCompleto: '001-001-01-00000040', tipoDocumento: 'factura' },
+        },
+      ]),
+      { libro: 'ventas', from: '2026-09-01', to: '2026-09-30' },
+    );
+
+    expect(reporte.saltos).toEqual([]);
   });
 
   it('rechaza un rango invertido', async () => {

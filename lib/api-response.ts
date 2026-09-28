@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { CashClosedError } from '@/lib/cash-session';
 import { ModulePermissionError } from '@/lib/require-api-module-access';
-import { CaiNoDisponibleError, DocumentoEmitidoError } from '@/lib/fiscal-document';
+import { CaiNoDisponibleError, DocumentoEmitidoError, NotaNoValidaError } from '@/lib/fiscal-document';
 import type { ApiError, ApiResponse, ApiSuccess } from '@/types/api';
 
 export function success<T>(data: T, status = 200): NextResponse<ApiSuccess<T>> {
@@ -70,6 +70,12 @@ export function handleApiError(error: unknown): NextResponse<ApiError> {
   // 409 también: falta un CAI utilizable, no un dato de la petición.
   if (error instanceof CaiNoDisponibleError) {
     return failure('FISCAL_CAI_UNAVAILABLE', error.message, 409);
+  }
+
+  // 409: el monto y el motivo son válidos; lo que no deja emitir es el estado de lo que
+  // se quiere corregir (ya acreditado, anulado, o es una nota).
+  if (error instanceof NotaNoValidaError) {
+    return failure('FISCAL_NOTA_INVALID', error.message, 409);
   }
 
   // 403 y no 400: el payload puede ser correcto; lo que falta es el permiso.

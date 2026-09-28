@@ -728,6 +728,10 @@ export default function PurchasesPanel() {
                       transactionId={transaction.id}
                       documento={fiscal.documentos[transaction.id] ?? null}
                       caiActivo={fiscal.caiActivo}
+                      caisActivos={fiscal.caisActivos}
+                      onImprimirNota={(documentoId) =>
+                        void impresion.imprimir('nota', documentoId, fiscal.formatoDefault)
+                      }
                       onChange={fiscal.refresh}
                     />
                   </div>

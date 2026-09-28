@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { businessDateOf, parseBusinessDate, todayBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { tipoDocumentoLabel } from '@/lib/fiscal';
+import { esNota, signoLibro, tipoDocumentoLabel } from '@/lib/fiscal';
 import { formatNumeroInterno } from '@/lib/build-invoice';
 import type { CsvColumn } from '@/lib/csv';
 import type {
@@ -35,9 +35,9 @@ export type FiscalBookKind = 'compras' | 'ventas';
 /**
  * Qué tipos de documento entran en cada libro.
  *
- * Las notas de crédito y débito **no** están todavía: no se pueden emitir (Fase 5).
- * Cuando existan hay que agregarlas acá y decidir su signo —una nota de crédito resta
- * del libro de ventas—, porque sumarlas como una factura infla el ingreso declarado.
+ * Las notas **no se listan acá**: una nota de crédito puede corregir una boleta de
+ * compra o una factura, así que el libro al que pertenece lo decide el documento que
+ * modifica, no su propio tipo. Se traen por su `documentoOrigen` (ver la consulta).
  */
 const TIPOS_POR_LIBRO: Record<FiscalBookKind, string[]> = {
   compras: ['boleta_compra'],
@@ -108,8 +108,10 @@ type DocumentoParaLibro = {
   isv15: Prisma.Decimal;
   isv18: Prisma.Decimal;
   anulacionMotivo: string | null;
+  notaMotivo: string | null;
   snapshot: Prisma.JsonValue;
   cai?: { codigo: string } | null;
+  documentoOrigen?: { numeroCompleto: string; tipoDocumento: string } | null;
 };
 
 function origenDe(doc: DocumentoParaLibro): 'compra' | 'venta' | 'molido' | null {
@@ -119,8 +121,17 @@ function origenDe(doc: DocumentoParaLibro): 'compra' | 'venta' | 'molido' | null
   return null;
 }
 
+/**
+ * Un renglón del libro, **con el signo ya aplicado**.
+ *
+ * Los montos de una nota de crédito salen negativos: es como entra al libro y como debe
+ * sumarse en Excel. En el documento impreso van en positivo —"nota de crédito por
+ * L 500.00"—, que es otra cosa y sale del snapshot, no de acá.
+ */
 function mapFilaLibro(doc: DocumentoParaLibro): FiscalBookRowDTO {
   const snapshot = leerSnapshot(doc.snapshot);
+  const signo = signoLibro(doc.tipoDocumento);
+  const firmado = (valor: Prisma.Decimal) => redondear(signo * Number(valor));
 
   return {
     id: doc.id,
@@ -136,17 +147,21 @@ function mapFilaLibro(doc: DocumentoParaLibro): FiscalBookRowDTO {
     clienteRtn: snapshot.clienteRtn,
     sucursalNombre: snapshot.sucursalNombre,
     origen: origenDe(doc),
-    importeExento: Number(doc.importeExento),
-    importeExonerado: Number(doc.importeExonerado),
-    importeGravado15: Number(doc.importeGravado15),
-    importeGravado18: Number(doc.importeGravado18),
-    isv15: Number(doc.isv15),
-    isv18: Number(doc.isv18),
-    total: Number(doc.total),
+    importeExento: firmado(doc.importeExento),
+    importeExonerado: firmado(doc.importeExonerado),
+    importeGravado15: firmado(doc.importeGravado15),
+    importeGravado18: firmado(doc.importeGravado18),
+    isv15: firmado(doc.isv15),
+    isv18: firmado(doc.isv18),
+    total: firmado(doc.total),
     estado: doc.estado,
     anulado: doc.estado === 'anulado',
     anulacionMotivo: doc.anulacionMotivo,
     emitidoPor: doc.emitidoPor,
+    esNota: esNota(doc.tipoDocumento),
+    signo,
+    notaMotivo: doc.notaMotivo,
+    documentoOrigenNumero: doc.documentoOrigen?.numeroCompleto ?? null,
   };
 }
 
@@ -213,11 +228,20 @@ export async function getFiscalBookReport(
 
   const documentos = (await db.fiscalDocument.findMany({
     where: {
-      tipoDocumento: { in: TIPOS_POR_LIBRO[libro] },
       emitidoEn: { gte: margenDesde, lt: margenHasta },
+      // El documento propio del libro, **o** una nota que corrige uno de ellos: una nota
+      // de crédito sobre una boleta de compra pertenece al libro de compras, no al de
+      // ventas, aunque su propio tipo sea el mismo en los dos casos.
+      OR: [
+        { tipoDocumento: { in: TIPOS_POR_LIBRO[libro] } },
+        { documentoOrigen: { tipoDocumento: { in: TIPOS_POR_LIBRO[libro] } } },
+      ],
     },
     orderBy: [{ emitidoEn: 'asc' }, { correlativo: 'asc' }],
-    include: { cai: { select: { codigo: true } } },
+    include: {
+      cai: { select: { codigo: true } },
+      documentoOrigen: { select: { numeroCompleto: true, tipoDocumento: true } },
+    },
   })) as DocumentoParaLibro[];
 
   const dentroDelRango = documentos.filter((doc) => {
@@ -383,7 +407,8 @@ export async function getFiscalPendingReport(
 
 /**
  * Columnas del libro para exportar. Los montos van como número —sin `L` ni separador
- * de miles— para que se puedan sumar en Excel sin limpiar la columna antes.
+ * de miles— para que se puedan sumar en Excel sin limpiar la columna antes, y con el
+ * signo del libro: una nota de crédito exporta importes negativos.
  *
  * Un documento anulado se exporta con su monto en la columna aparte `Anulado`: si
  * fuera en la misma columna que los demás, arrastrar la suma en Excel daría un total
@@ -395,6 +420,9 @@ export const fiscalBookCsvColumns: CsvColumn<FiscalBookRowDTO>[] = [
   { header: 'Tipo', value: (row) => row.tipoDocumentoLabel },
   { header: 'CAI', value: (row) => row.caiCodigo },
   { header: 'Estado', value: (row) => (row.anulado ? 'Anulado' : 'Emitido') },
+  // Qué documento corrige la nota: sin esto, un renglón negativo no se puede explicar.
+  { header: 'Modifica', value: (row) => row.documentoOrigenNumero },
+  { header: 'Motivo de la nota', value: (row) => row.notaMotivo },
   { header: 'Fecha operación', value: (row) => row.businessDate },
   { header: 'Control interno', value: (row) => row.numeroInterno },
   { header: 'Cliente', value: (row) => row.clienteNombre },

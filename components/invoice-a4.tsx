@@ -82,6 +82,10 @@ const CSS = `
    distingue un comprobante interno de una factura. */
 .invoice-interno { border-style: dashed; font-weight: 600; text-align: center; }
 
+/* Referencia de una nota al documento que corrige. Va arriba, junto al bloque fiscal:
+   los dos papeles se archivan juntos y es el dato que los empareja. */
+.invoice-referencia { margin-top: 6px; }
+
 /* Un documento anulado tiene que leerse como anulado de un vistazo, aunque alguien
    solo mire la hoja de lejos. */
 .invoice-anulado {
@@ -274,6 +278,22 @@ function FilaMolido({ linea }: { linea: InvoiceLinea }) {
   );
 }
 
+/**
+ * La única línea de una nota de crédito o débito: el motivo como concepto y el monto
+ * del ajuste. No hay pesaje ni precio por libra porque lo que se corrige es dinero.
+ */
+function FilaNota({ linea }: { linea: InvoiceLinea }) {
+  return (
+    <tr>
+      <td>
+        {linea.productoNombre}
+        {linea.descripcion ? <div className="invoice-linea-desc">{linea.descripcion}</div> : null}
+      </td>
+      <td>{lempiras(linea.total)}</td>
+    </tr>
+  );
+}
+
 /** Las dos copias que se imprimen del mismo comprobante. */
 const COPIAS = [
   { id: 'cliente', rotulo: 'Original — Cliente' },
@@ -284,11 +304,16 @@ const COPIAS = [
 function fechaOperacionLabel(kind: InvoiceData['kind']) {
   if (kind === 'compra') return 'Fecha de la compra';
   if (kind === 'molido') return 'Fecha del servicio';
+  // Una nota se emite hoy y no ampara ninguna operación anterior: su fecha es una sola.
+  if (kind === 'nota') return 'Fecha';
   return 'Fecha de la venta';
 }
 
 function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[number] }) {
-  const esCompra = data.kind === 'compra';
+  const esNota = data.kind === 'nota';
+  // La nota hereda a quién se le dice productor: se emite sobre el documento de una
+  // compra, y a quien se le compra café no se le llama cliente.
+  const esCompra = data.kind === 'compra' || (esNota && data.notaSobre === 'compra');
   const esMolido = data.kind === 'molido';
   const documento = data.documento ?? null;
   const anulado = documento?.estado === 'anulado';
@@ -384,6 +409,19 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
             con un CAI debajo: un código de autorización sobre un papel que no tiene
             correlativo autorizado. El CAI ahora lo trae el documento emitido. */}
 
+        {/* Una nota sin decir a qué documento corresponde no le sirve ni al cliente ni a
+            la contadora: es lo primero que se busca al emparejar los dos papeles. */}
+        {documento?.documentoOrigen ? (
+          <section className="invoice-fiscal invoice-referencia">
+            <p>
+              Modifica {documento.documentoOrigen.tipoDocumentoLabel} No.{' '}
+              <strong>{documento.documentoOrigen.numeroCompleto}</strong>, emitida el{' '}
+              {fechaLarga(documento.documentoOrigen.fechaEmision)}
+            </p>
+            {documento.notaMotivo ? <p>Motivo: {documento.notaMotivo}</p> : null}
+          </section>
+        ) : null}
+
         {anulado ? (
           <p className="invoice-anulado">
             Anulado{documento?.anulacionMotivo ? ` — ${documento.anulacionMotivo}` : ''}
@@ -401,7 +439,13 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
 
         <table className="invoice-lineas">
           <thead>
-            {esMolido ? (
+            {esNota ? (
+              // Una nota corrige un monto: concepto y valor, nada más.
+              <tr>
+                <th>Concepto del ajuste</th>
+                <th>Valor</th>
+              </tr>
+            ) : esMolido ? (
               // El molido no tiene pesaje ni rendimiento: es un servicio sobre café
               // que ni entra ni sale del inventario. Columnas de pesaje vacías solo
               // harían dudar de si falta un dato.
@@ -436,7 +480,9 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
           </thead>
           <tbody>
             {lineas.map((linea, indice) =>
-              esMolido ? (
+              esNota ? (
+                <FilaNota key={indice} linea={linea} />
+              ) : esMolido ? (
                 <FilaMolido key={indice} linea={linea} />
               ) : esCompra ? (
                 <FilaCompra key={indice} linea={linea} />
@@ -446,7 +492,12 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
             )}
           </tbody>
           <tfoot>
-            {esMolido ? (
+            {esNota ? (
+              <tr>
+                <td>Total</td>
+                <td>{lempiras(data.subtotal)}</td>
+              </tr>
+            ) : esMolido ? (
               <tr>
                 <td>Totales</td>
                 <td>{numero(data.totalLibras)}</td>

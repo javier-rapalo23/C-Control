@@ -745,9 +745,10 @@ de margen a cada lado y el recorte fino se hace con `businessDateOf`. Sin eso, u
 a las siete de la noche en Honduras —ya del día siguiente en UTC— caería en el mes equivocado.
 
 **Libro de compras** (`boleta_compra`) y **libro de ventas** (`factura`) son el mismo reporte con
-distinto tipo de documento. Las notas de crédito y débito **todavía no entran**: no se pueden emitir,
-y cuando existan hay que decidir su signo, porque sumar una nota de crédito como una factura infla
-el ingreso declarado.
+distinto tipo de documento. Las notas de crédito y débito entran **en el libro del documento que
+corrigen** —no en el de su propio tipo, porque la misma nota de crédito puede ser de compras o de
+ventas— y con el signo aplicado: la de crédito resta (§10.4). La columna `Modifica` dice a qué
+documento corresponde, porque un renglón en negativo sin referencia no se puede explicar.
 
 **Saltos de numeración.** El reporte informa los números del rango que no aparecen entre el primero y
 el último del período, por CAI. Con el contador bloqueado no deberían existir, pero en modo
@@ -1072,7 +1073,7 @@ middleware corre en Edge sin acceso a Prisma. El reparto queda así:
 no puedan divergir.
 
 **Permisos sin pantalla.** `ModuleDef.permissionOnly` marca entradas que autorizan una **acción** y
-no un módulo navegable: `fiscal_emitir` y `fiscal_anular` (§10.3). Aparecen en Mantenimiento → Roles
+no un módulo navegable: `fiscal_emitir`, `fiscal_anular` (§10.3) y `fiscal_nota` (§10.4). Aparecen en Mantenimiento → Roles
 para poder configurarlas, pero el sidenav las filtra porque no tienen a dónde llevar. Anular arranca
 con `defaultRoles: []`, o sea solo admin: destruye el valor de un número ya entregado.
 
@@ -1458,8 +1459,10 @@ los valores por defecto de Prisma, la cola que forma el bloqueo se abortaría al
 #### Anulación y bloqueo
 
 - `POST /api/fiscal-documents/:id/anular` con **motivo obligatorio**, y solo **el mismo día** de la
-  emisión (se compara en fecha de Honduras). Después hace falta una nota de crédito, que aún no
-  existe. Conserva el número: un correlativo emitido nunca se libera.
+  emisión (se compara en fecha de Honduras). Después se corrige con una nota (§10.4). Conserva el
+  número: un correlativo emitido nunca se libera.
+- **No anula un documento con notas emitidas**: dejaría las notas apuntando a algo que ya no declara
+  nada, y las notas siguen contando en el libro. Primero se anulan ellas.
 - Registra dónde queda archivada la copia física del anulado.
 - `assertSinDocumentoFiscal(db, origen, id)` es el gemelo de `assertCashOpen` y lo llaman las **cuatro
   rutas de baja** (compra y venta, completas y por línea): con documento emitido responden
@@ -1467,7 +1470,7 @@ los valores por defecto de Prisma, la cola que forma el bloqueo se abortaría al
   ya documentado.
 - Todo queda en `FiscalAuditLog`: emisión, anulación y cambios de CAI.
 
-**Permisos:** `fiscal_emitir` (editor por omisión) y `fiscal_anular` (solo admin), configurables en
+**Permisos:** `fiscal_emitir` (editor por omisión), `fiscal_anular` y `fiscal_nota` (solo admin), configurables en
 Mantenimiento → Roles (§8.5). El botón no se esconde a quien no tiene permiso: el control es el 403
 del servidor, y esconderlo haría creer que la función no existe.
 
@@ -1508,6 +1511,35 @@ Que los dos formatos sean el mismo documento tiene una consecuencia que conviene
 imprimen los dos, en la mano quedan **dos papeles con el mismo número**. Es una reimpresión, no dos
 documentos; ambos dicen `Original — Cliente` / `Copia — Control interno` según la copia, no según el
 formato.
+
+### 10.4 Notas de crédito y débito
+
+Fase 5 del plan. Son **la única forma de corregir un documento después del día de emisión**, porque
+anular está limitado al mismo día (§10.3).
+
+`POST /api/fiscal-documents/:id/nota` con `{ tipo, monto, motivo }`, donde `:id` es el documento que se
+corrige. Permiso propio **`fiscal_nota`**, por omisión solo admin: una nota de crédito rebaja un
+ingreso ya declarado, así que pesa lo mismo que anular.
+
+| Regla | Cómo |
+| --- | --- |
+| Una nota **no ampara una transacción**: modifica otro documento | `FiscalDocument.documentoOrigenId`, autorrelación con `RESTRICT`. Un `CHECK` exige *o* una transacción *o* un documento de origen, nunca las dos cosas ni ninguna |
+| Tiene **su propia serie** | El CAI de `nota_credito` es distinto del de `factura`: el número sale del contador de ese CAI, con el mismo `SELECT … FOR UPDATE` (`tomarCorrelativo`, compartido con la emisión) |
+| Motivo obligatorio | Validado en Zod y por un `CHECK`: una nota sin motivo no se explica en una revisión |
+| La de crédito **resta**, la de débito **suma** | `signoLibro`. Los montos se guardan **en positivo** —así se imprimen— y el signo se aplica al armar el libro |
+| No se puede acreditar más de lo facturado | El techo es `saldoAcreditable` = total + notas de débito − notas de crédito vigentes. Se comprueba **dentro** de la transacción, después de tomar el bloqueo: si se hiciera antes, dos notas simultáneas pasarían las dos |
+| Puede ser **parcial** | El desglose se prorratea desde el documento corregido (`desgloseNota`): si el original llevaba ISV, la nota lleva su parte, y el renglón más grande absorbe el centavo del redondeo |
+| No sobre otra nota, ni sobre un documento anulado | Corregir una corrección enredaría el libro; un documento anulado ya no declara nada |
+| Se imprime en los dos formatos | `/print/nota/:id` en A4 y `kind: 'nota'` en el ticket. La hoja dice **qué documento modifica**, con su número y su fecha, y el motivo |
+
+En el libro (§6.14) la nota entra **en el libro del documento que corrige**, no en el de su propio
+tipo: una nota de crédito sobre una boleta de compra es del libro de compras. Sus importes salen
+negativos, y la columna `Modifica` del CSV dice a qué documento corresponde, porque un renglón en
+negativo sin referencia no se puede explicar.
+
+Lo que **no** hace: las notas no tocan la transacción ni el inventario. Una devolución de café
+documentada con nota de crédito corrige el papel; el movimiento de inventario, si lo hubo, se registra
+aparte. Tampoco hay nota que agrupe varios documentos.
 
 ---
 
@@ -1564,7 +1596,7 @@ pnpm dev                    # http://localhost:3000
 
 ## 13. Migraciones de base de datos
 
-32 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
+37 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
 
 | Migración | Cambio |
 |---|---|
@@ -1600,9 +1632,11 @@ pnpm dev                    # http://localhost:3000
 | `20260920000000_add_sale_peso_bruto` | `Sale.pesoBruto`, `numeroSacos` y `taraPorSaco`: la venta se pesa como la compra (§6.5). Opcionales, porque las ventas anteriores solo guardaron el neto. |
 | `20260920010000_add_grinding_services` | `GrindingService`: servicio de molido (§6.12). |
 | `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
+| `20260923000000_add_purchase_bono_descuento` | `bono`, `bonoMotivo`, `descuento` y `descuentoMotivo` en la cabecera de la compra: los ajustes al pie de la factura (§6.4). |
 | `20260925000000_add_numero_interno` | `PurchaseTransaction.numeroInterno` y `SaleTransaction.numeroInterno`: correlativo interno por secuencia, con backfill en orden de creación (§10.2). |
 | `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Lleva un índice parcial y varios `CHECK` escritos a mano. |
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault`: con qué formato se imprime la factura por omisión (§10.3). |
+| `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo` en `FiscalDocument`, para las notas de crédito y débito (§10.4). **Reemplaza un `CHECK`**: el viejo exigía exactamente una transacción, y una nota no ampara ninguna. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1624,8 +1658,8 @@ Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/
 proyectos**:
 
 ```bash
-pnpm test              # unit: 19 suites, 184 pruebas. Sin base de datos.
-pnpm test:integration  # integration: 4 suites, 21 pruebas, contra Postgres de verdad
+pnpm test              # unit: 19 suites, 204 pruebas. Sin base de datos.
+pnpm test:integration  # integration: 5 suites, 27 pruebas, contra Postgres de verdad
 pnpm test:db:migrate   # aplica las migraciones a la base de pruebas
 ```
 
@@ -1650,7 +1684,8 @@ Cobertura del proyecto `unit`:
   guacuco y repaso **no** son uva, y que el modo oro se habilita también para `otros`.
 - `tests/lib/fiscal.test.ts` — reglas del CAI (§10.3): formato del número, ISV por clasificación,
   cuándo se agota el rango, que vence **al día siguiente** de la fecha límite y no el mismo día, y
-  los umbrales de aviso.
+  los umbrales de aviso. Y las notas (§10.4): el signo con el que entran al libro y el prorrateo del
+  desglose, incluido que la suma de los renglones dé exactamente el monto de la nota.
 - `tests/lib/build-invoice.test.ts` — datos de la factura A4: totales, venta libre sin producto, y
   que el bloque fiscal aparezca solo con CAI.
 - `tests/components/invoice-a4.test.tsx` — renderiza la hoja con `renderToStaticMarkup` y comprueba
@@ -1711,6 +1746,10 @@ después**, para que un fallo a medias no bloquee la corrida siguiente):
 - `fiscal-reportes.test.ts` — que `fiscalDocument: { is: null }` encuentre lo que no tiene documento
   y deje de listarlo al emitir, que el filtro por tipo separe los dos libros, y que un documento
   anulado de verdad salga en el libro sin sumar.
+- `fiscal-notas.test.ts` — las notas (§10.4): que tomen el número de **su propia serie**, el techo del
+  saldo acreditable (con dos notas sucesivas sobre la misma factura), que no se emita una nota sobre
+  otra ni sobre un documento anulado, que no se anule un documento con notas vigentes, y que los
+  `CHECK` nuevos rechacen una nota sin motivo o con referencia doble.
 
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
 `Request` estándar.

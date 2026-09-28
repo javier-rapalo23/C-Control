@@ -23,6 +23,9 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 export function useFiscal(businessDate: string, tipoDocumento: string) {
   const [documentos, setDocumentos] = useState<Record<string, FiscalDocumentDTO>>({});
   const [caiActivo, setCaiActivo] = useState<FiscalCaiDTO | null>(null);
+  // Los CAI activos por tipo: las notas de crédito y débito tienen su propia serie, así
+  // que la fila necesita saber si existe el CAI de la nota, no solo el de la factura.
+  const [caisActivos, setCaisActivos] = useState<Record<string, FiscalCaiDTO>>({});
   const [formatoDefault, setFormatoDefault] = useState<PrintFormat>(DEFAULT_PRINT_FORMAT);
 
   const refresh = useCallback(async () => {
@@ -45,7 +48,13 @@ export function useFiscal(businessDate: string, tipoDocumento: string) {
     }
 
     setDocumentos(porTransaccion);
-    setCaiActivo(cais.find((cai) => cai.tipoDocumento === tipoDocumento && cai.estado === 'activo') ?? null);
+
+    const activos: Record<string, FiscalCaiDTO> = {};
+    for (const cai of cais) {
+      if (cai.estado === 'activo') activos[cai.tipoDocumento] = cai;
+    }
+    setCaisActivos(activos);
+    setCaiActivo(activos[tipoDocumento] ?? null);
   }, [businessDate, tipoDocumento]);
 
   useEffect(() => {
@@ -54,8 +63,9 @@ export function useFiscal(businessDate: string, tipoDocumento: string) {
     void refresh().catch(() => {
       setDocumentos({});
       setCaiActivo(null);
+      setCaisActivos({});
     });
   }, [refresh]);
 
-  return { documentos, caiActivo, formatoDefault, refresh };
+  return { documentos, caiActivo, caisActivos, formatoDefault, refresh };
 }

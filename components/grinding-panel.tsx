@@ -332,6 +332,10 @@ export default function GrindingPanel() {
                           transactionId={service.id}
                           documento={documento}
                           caiActivo={fiscal.caiActivo}
+                          caisActivos={fiscal.caisActivos}
+                          onImprimirNota={(documentoId) =>
+                            void impresion.imprimir('nota', documentoId, fiscal.formatoDefault)
+                          }
                           onChange={fiscal.refresh}
                         />
                       </td>

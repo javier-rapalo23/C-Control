@@ -91,7 +91,7 @@ export const TIPO_DOCUMENTO_POR_ORIGEN: Record<OrigenDocumento, string> = {
 
 /**
  * Anular solo se permite **el mismo día de la emisión** (decisión del 27/09/2026).
- * Después hace falta una nota de crédito, que todavía no existe.
+ * Después hace falta una nota de crédito o de débito (`emitirNotaFiscal`).
  *
  * Se compara en fecha de negocio: con la hora del servidor, un documento emitido a
  * las 19:00 de Honduras ya contaría como "de ayer" a las 18:01 del día siguiente.
@@ -172,6 +172,86 @@ export function desgloseIsv(lineas: LineaFiscal[]): DesgloseIsv {
   }
 
   return desglose;
+}
+
+/**
+ * Los dos tipos que **modifican un documento ya emitido**, en vez de amparar una
+ * transacción. Son la única forma de corregir después del día de emisión, porque la
+ * anulación está limitada al mismo día (`puedeAnularse`).
+ */
+export const TIPOS_NOTA = ['nota_credito', 'nota_debito'] as const;
+export type TipoNota = (typeof TIPOS_NOTA)[number];
+
+export function esNota(tipoDocumento: string): boolean {
+  return (TIPOS_NOTA as readonly string[]).includes(tipoDocumento);
+}
+
+/**
+ * Con qué signo entra el documento al libro.
+ *
+ * La nota de crédito **resta**: devuelve o rebaja lo que la factura declaró. La de
+ * débito suma. Los montos se guardan siempre en positivo —es como se imprimen, "nota
+ * de crédito por L 500.00"— y el signo se aplica al sumar el libro. Guardarlos
+ * negativos haría ilegible el documento impreso.
+ */
+export function signoLibro(tipoDocumento: string): 1 | -1 {
+  return tipoDocumento === 'nota_credito' ? -1 : 1;
+}
+
+/**
+ * Desglose de una nota por `monto`, prorrateado desde el documento que modifica.
+ *
+ * Acreditar la mitad de una factura acredita la mitad de cada renglón: si el original
+ * llevaba ISV, la nota tiene que llevar su parte, o el impuesto declarado no cuadra.
+ *
+ * El renglón más grande del original **absorbe el resto** en vez de prorratearse: así
+ * la suma de los renglones da exactamente el monto de la nota, sin el centavo de
+ * diferencia que deja redondear cada parte por separado. Y como el total del original
+ * trae el ISV dentro, la parte gravada se descompone hacia atrás, igual que el molido.
+ */
+export function desgloseNota(origen: DesgloseIsv, monto: number): DesgloseIsv {
+  const total = redondear(monto);
+  const vacio: DesgloseIsv = {
+    importeExento: 0,
+    importeExonerado: 0,
+    importeGravado15: 0,
+    importeGravado18: 0,
+    isv15: 0,
+    isv18: 0,
+    total,
+  };
+
+  // Sin total original no hay proporción que aplicar. No debería ocurrir —un documento
+  // con total 0 no se emite— pero dejar el monto fuera del desglose sí sería un error.
+  if (origen.total <= 0) return { ...vacio, importeExento: total };
+
+  // Lo que cada clasificación aportó al total del original, con su ISV incluido.
+  const aportes = [
+    origen.importeExento,
+    origen.importeExonerado,
+    redondear(origen.importeGravado15 + origen.isv15),
+    redondear(origen.importeGravado18 + origen.isv18),
+  ];
+
+  const mayor = aportes.indexOf(Math.max(...aportes));
+  const ratio = total / origen.total;
+
+  const partes = aportes.map((aporte, indice) => (indice === mayor ? 0 : redondear(aporte * ratio)));
+  partes[mayor] = redondear(total - partes.reduce((suma, parte) => suma + parte, 0));
+
+  const [exento, exonerado, bruto15, bruto18] = partes;
+  const base15 = redondear(bruto15 / 1.15);
+  const base18 = redondear(bruto18 / 1.18);
+
+  return {
+    importeExento: exento,
+    importeExonerado: exonerado,
+    importeGravado15: base15,
+    importeGravado18: base18,
+    isv15: redondear(bruto15 - base15),
+    isv18: redondear(bruto18 - base18),
+    total,
+  };
 }
 
 export const MODOS_CAI = ['TALONARIO', 'SISTEMA'] as const;

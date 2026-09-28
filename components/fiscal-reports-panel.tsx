@@ -277,6 +277,11 @@ export default function FiscalReportsPanel({
                       <td>
                         {row.numeroCompleto}
                         {row.anulado ? <strong> · ANULADO</strong> : null}
+                        {/* Un renglón en negativo no se explica solo: al lado va el
+                            documento que corrige. */}
+                        {row.documentoOrigenNumero ? (
+                          <div style={{ color: 'var(--text-soft)' }}>modifica {row.documentoOrigenNumero}</div>
+                        ) : null}
                       </td>
                       <td>{row.numeroInterno ?? '—'}</td>
                       <td>{row.clienteNombre ?? '—'}</td>

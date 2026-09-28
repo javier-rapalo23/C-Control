@@ -286,6 +286,21 @@ export type FiscalCaiDTO = {
   };
 };
 
+/**
+ * Una nota que modifica un documento, vista desde el documento modificado. Lleva el
+ * monto en positivo, como se imprime; el signo lo pone el libro.
+ */
+export type FiscalNotaResumenDTO = {
+  id: string;
+  tipoDocumento: string;
+  tipoDocumentoLabel: string;
+  numeroCompleto: string;
+  estado: string;
+  total: number;
+  notaMotivo: string | null;
+  fechaEmision: string;
+};
+
 export type FiscalDocumentDTO = {
   id: string;
   caiId: string;
@@ -323,6 +338,26 @@ export type FiscalDocumentDTO = {
   copiaFisicaUbicacion: string | null;
   /** Derivado: solo se puede anular el mismo día de la emisión. */
   anulable: boolean;
+  /** `true` en notas de crédito y débito: modifican un documento, no una transacción. */
+  esNota: boolean;
+  /** Por qué se emitió la nota. Null en facturas y boletas. */
+  notaMotivo: string | null;
+  /** El documento que esta nota modifica. Null si no es nota. */
+  documentoOrigen: {
+    id: string;
+    numeroCompleto: string;
+    tipoDocumento: string;
+    tipoDocumentoLabel: string;
+    fechaEmision: string;
+  } | null;
+  /** Las notas emitidas sobre este documento, de la más nueva a la más vieja. */
+  notas: FiscalNotaResumenDTO[];
+  /**
+   * Cuánto queda por acreditar: el total del documento, más las notas de débito
+   * emitidas, menos las de crédito. Es el techo de la próxima nota de crédito, para que
+   * no se pueda devolver más de lo que se facturó. 0 en una nota.
+   */
+  saldoAcreditable: number;
 };
 
 export type ModuleAccessDTO = {
@@ -637,6 +672,9 @@ export type PayrollPreviewDTO = {
  * como quedaron al emitirlo. El nombre del cliente, su RTN y el correlativo interno
  * salen del `snapshot`, no de los registros vivos: el libro tiene que decir lo que
  * dice el papel que se entregó, aunque después le hayan corregido el RTN al cliente.
+ *
+ * Los importes vienen **con el signo del libro ya aplicado**: los de una nota de crédito
+ * son negativos, porque es así como se suman. En el documento impreso van en positivo.
  */
 export type FiscalBookRowDTO = {
   id: string;
@@ -665,6 +703,12 @@ export type FiscalBookRowDTO = {
   anulado: boolean;
   anulacionMotivo: string | null;
   emitidoPor: string;
+  /** Nota de crédito o débito: corrige el documento `documentoOrigenNumero`. */
+  esNota: boolean;
+  /** `-1` en una nota de crédito, `1` en todo lo demás. Ya aplicado a los importes. */
+  signo: 1 | -1;
+  notaMotivo: string | null;
+  documentoOrigenNumero: string | null;
 };
 
 /**

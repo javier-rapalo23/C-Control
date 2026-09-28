@@ -75,7 +75,7 @@ export type TicketData = {
    * Compra, venta o molido. La compra **no imprime el conteo de sacos**, igual que su
    * factura A4: la tara ya dice lo que se descuenta. En la venta sí sale.
    */
-  kind?: 'compra' | 'venta' | 'molido';
+  kind?: 'compra' | 'venta' | 'molido' | 'nota';
   /**
    * Documento fiscal emitido. El ticket de 80 mm y la hoja A4 son **el mismo
    * documento** en dos formatos, así que cuando existe, el ticket imprime lo mismo
@@ -96,6 +96,9 @@ export type TicketData = {
       isv18: number;
     };
     anulacionMotivo: string | null;
+    /** Solo en notas: por qué se emitió y qué documento corrige. */
+    notaMotivo?: string | null;
+    documentoOrigen?: { numeroCompleto: string; tipoDocumentoLabel: string; fechaEmision: string } | null;
   } | null;
 };
 
@@ -113,7 +116,39 @@ const pad8 = (valor: number) => String(valor).padStart(8, '0');
 function fechaOperacionLabel(kind: TicketData['kind']) {
   if (kind === 'compra') return 'Fecha compra';
   if (kind === 'molido') return 'Fecha servicio';
+  // Una nota se emite hoy y no ampara ninguna operación anterior.
+  if (kind === 'nota') return 'Fecha';
   return 'Fecha venta';
+}
+
+/**
+ * Parte un texto en líneas de 32 columnas sin cortar palabras.
+ *
+ * Hace falta para el motivo de una nota: es texto libre que escribe una persona y en la
+ * térmica no hay ajuste automático —lo que pasa de 32 caracteres se pierde—.
+ */
+function wrap(value: string, width = LINE_WIDTH): string[] {
+  const lineas: string[] = [];
+  let actual = '';
+
+  for (const palabra of value.split(/\s+/).filter(Boolean)) {
+    if (actual === '') {
+      actual = palabra;
+    } else if (`${actual} ${palabra}`.length <= width) {
+      actual = `${actual} ${palabra}`;
+    } else {
+      lineas.push(actual);
+      actual = palabra;
+    }
+    // Una palabra más larga que el ancho no tiene dónde partirse: se corta a lo ancho.
+    while (actual.length > width) {
+      lineas.push(actual.slice(0, width));
+      actual = actual.slice(width);
+    }
+  }
+
+  if (actual !== '') lineas.push(actual);
+  return lineas.length > 0 ? lineas : [''];
 }
 
 function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number]): Buffer[] {
@@ -156,6 +191,14 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
     if (documento.cai.fechaLimite) chunks.push(text(`Limite emision: ${documento.cai.fechaLimite}`));
     chunks.push(text(dash));
     chunks.push(text(`Emitida: ${documento.fechaEmision}`));
+
+    // Una nota tiene que decir a qué documento corresponde: es lo que empareja los dos
+    // papeles cuando se archivan.
+    if (documento.documentoOrigen) {
+      chunks.push(text(`Modifica ${documento.documentoOrigen.tipoDocumentoLabel}`));
+      chunks.push(text(`No. ${documento.documentoOrigen.numeroCompleto}`));
+      chunks.push(text(`del ${documento.documentoOrigen.fechaEmision}`));
+    }
   }
 
   if (data.sucursalNombre) chunks.push(text(`Sucursal: ${data.sucursalNombre}`));
@@ -175,6 +218,14 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
   chunks.push(text(dash));
 
   for (const item of data.items) {
+    // Una nota no tiene libras ni precio por libra: su línea es el concepto del ajuste
+    // —texto libre, así que se envuelve— y el monto.
+    if (data.kind === 'nota') {
+      for (const linea of wrap(item.productoNombre)) chunks.push(text(linea));
+      chunks.push(text(padLeft(`L ${item.total.toFixed(2)}`, LINE_WIDTH)));
+      continue;
+    }
+
     chunks.push(text(item.productoNombre));
 
     if (item.quintalesOro != null && item.precioPorQuintalOro != null) {
@@ -250,7 +301,8 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
   chunks.push(bold(false));
   chunks.push(align('center'));
   chunks.push(text());
-  chunks.push(text('Gracias por su visita'));
+  // Una nota de crédito no es una visita al mostrador: es la corrección de un papel.
+  if (data.kind !== 'nota') chunks.push(text('Gracias por su visita'));
   chunks.push(raw('\n\n\n'));
   chunks.push(cut());
 

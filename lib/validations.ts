@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
 import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
-import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS } from '@/lib/fiscal';
+import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS, TIPOS_NOTA } from '@/lib/fiscal';
 import { PRINT_FORMAT_KEYS } from '@/lib/print-formats';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
@@ -292,6 +292,17 @@ export const emitirFiscalDocumentSchema = z.object({
   origen: z.enum(['compra', 'venta', 'molido']),
   transactionId: z.string().min(1),
   // Solo en modo talonario: el número que trae el papel.
+  numeroManual: z.number().int().min(1).max(99_999_999).optional(),
+});
+
+export const emitirFiscalNotaSchema = z.object({
+  tipo: z.enum(TIPOS_NOTA),
+  // En positivo, como se imprime. El signo del libro lo pone `signoLibro`. El techo de
+  // una nota de crédito es el saldo del documento, y eso se comprueba en la emisión,
+  // dentro de la transacción: acá no se conoce el documento.
+  monto: z.number().positive().max(99_999_999),
+  // Obligatorio: una nota sin motivo no se puede explicar ante una revisión.
+  motivo: z.string().trim().min(4).max(250),
   numeroManual: z.number().int().min(1).max(99_999_999).optional(),
 });
 

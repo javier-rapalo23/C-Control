@@ -397,3 +397,90 @@ describe('InvoiceA4 — bono y descuento', () => {
     expect(html).toContain('22,514.00');
   });
 });
+
+/**
+ * Nota de crédito o débito. Corrige un documento ya emitido, así que la hoja tiene que
+ * decir cuál: es el dato con el que se archivan los dos papeles juntos.
+ */
+describe('InvoiceA4 — nota', () => {
+  const MOTIVO = 'Se devolvieron 200 libras por exceso de humedad';
+
+  const NOTA: InvoiceData = {
+    ...COMPRA,
+    kind: 'nota',
+    notaSobre: 'compra',
+    titulo: 'Nota de crédito',
+    numeroInterno: '',
+    numeroFactura: null,
+    metodoPago: null,
+    businessDate: '2026-09-28',
+    lineas: [
+      {
+        productoNombre: MOTIVO,
+        pesoBruto: null,
+        numeroSacos: null,
+        taraPorSaco: null,
+        libras: 0,
+        porcentajeOro: null,
+        quintalesOro: null,
+        precioPorLibra: null,
+        precioPorQuintalOro: null,
+        descripcion: 'Sobre Boleta de compra No. 001-001-04-00000123',
+        total: 500,
+      },
+    ],
+    subtotal: 500,
+    total: 500,
+    totalLibras: 0,
+    totalQuintalesOro: null,
+    documento: {
+      ...DOCUMENTO,
+      tipoDocumentoLabel: 'Nota de crédito',
+      numeroCompleto: '001-001-03-00000007',
+      desglose: { ...DOCUMENTO.desglose, importeExento: 500 },
+      notaMotivo: MOTIVO,
+      documentoOrigen: {
+        numeroCompleto: '001-001-04-00000123',
+        tipoDocumentoLabel: 'Boleta de compra',
+        fechaEmision: '2026-09-20',
+      },
+    },
+  };
+
+  const html = renderToStaticMarkup(<InvoiceA4 data={NOTA} />);
+
+  it('dice qué documento modifica, con su número y su fecha', () => {
+    expect(html).toContain('Modifica Boleta de compra');
+    expect(html).toContain('001-001-04-00000123');
+    expect(html).toContain('20/09/2026');
+    expect(html).toContain(MOTIVO);
+  });
+
+  // Lo que se corrige es dinero: no hay pesaje, ni rendimiento, ni libras molidas.
+  it('usa una tabla de dos columnas, sin pesaje', () => {
+    expect(html).toContain('Concepto del ajuste');
+    expect(html).not.toContain('Bruto (lb)');
+    expect(html).not.toContain('Libras molidas');
+
+    const encabezado = anchoDeFilas(html, 'th')[0];
+    const pies = anchoDeFilas(html, 'td').filter((ancho) => ancho !== 0);
+    expect(encabezado).toBe(2);
+    for (const ancho of pies) expect(ancho).toBe(encabezado);
+  });
+
+  // A quien se le compra café se le dice productor, y una nota sobre su compra también.
+  it('rotula al productor cuando la nota es sobre una compra', () => {
+    expect(html).toContain('Productor');
+    expect(renderToStaticMarkup(<InvoiceA4 data={{ ...NOTA, notaSobre: 'venta' }} />)).toContain('Cliente');
+  });
+
+  // La nota se emite hoy: no ampara un pesaje anterior, así que tiene una sola fecha.
+  it('no rotula una fecha de operación distinta de la de emisión', () => {
+    expect(html).not.toContain('Fecha de la compra');
+    expect(html).toContain('Fecha de emisión');
+  });
+
+  it('sale en las dos copias, como cualquier documento', () => {
+    expect(html.match(/001-001-03-00000007/g)).toHaveLength(2);
+  });
+});

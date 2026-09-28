@@ -154,3 +154,78 @@ describe('buildTicketBuffer — documento fiscal', () => {
     expect(texto).not.toContain('x L0.00');
   });
 });
+
+/**
+ * Nota de crédito o débito en 80 mm. Es el mismo documento que la hoja A4, así que tiene
+ * que llevar a qué factura corresponde: sin eso, el papel no se puede emparejar con el
+ * que corrige.
+ */
+describe('buildTicketBuffer — nota', () => {
+  const MOTIVO = 'Se devolvieron 200 libras de pergamino por exceso de humedad en la bodega';
+
+  const nota = (extra: Record<string, unknown> = {}) =>
+    buildTicketBuffer({
+      ...DATOS,
+      kind: 'nota',
+      numeroInterno: undefined,
+      businessDate: '2026-09-28',
+      items: [{ productoNombre: MOTIVO, libras: 0, precioPorLibra: 0, total: 500 }],
+      total: 500,
+      documento: {
+        numeroCompleto: '001-001-03-00000007',
+        tipoDocumentoLabel: 'Nota de crédito',
+        estado: 'emitido',
+        fechaEmision: '2026-09-28',
+        cai: { codigo: 'NC-1234', rangoDesde: 1, rangoHasta: 200, fechaLimite: '2027-12-31' },
+        desglose: {
+          importeExento: 500,
+          importeExonerado: 0,
+          importeGravado15: 0,
+          importeGravado18: 0,
+          isv15: 0,
+          isv18: 0,
+        },
+        anulacionMotivo: null,
+        notaMotivo: MOTIVO,
+        documentoOrigen: {
+          numeroCompleto: '001-001-01-00000123',
+          tipoDocumentoLabel: 'Factura',
+          fechaEmision: '2026-09-20',
+        },
+        ...extra,
+      },
+    }).toString('latin1');
+
+  it('dice qué documento modifica, con su número y su fecha', () => {
+    const texto = nota();
+
+    expect(texto).toContain('Nota de crédito');
+    expect(texto).toContain('Modifica Factura');
+    expect(texto).toContain('No. 001-001-01-00000123');
+    expect(texto).toContain('del 2026-09-20');
+  });
+
+  // El concepto es texto libre que escribe una persona: en la térmica no hay ajuste
+  // automático y lo que pasa de 32 columnas se pierde.
+  it('envuelve el concepto en líneas de 32 columnas', () => {
+    const lineas = nota()
+      .split('\n')
+      .filter((linea) => linea.includes('humedad') || linea.includes('devolvieron'));
+
+    expect(lineas.length).toBeGreaterThan(1);
+    for (const linea of lineas) expect(linea.length).toBeLessThanOrEqual(32);
+  });
+
+  // Una nota no tiene libras ni precio por libra: lo que se corrige es dinero.
+  it('no imprime pesaje ni precio por libra', () => {
+    const texto = nota();
+
+    expect(texto).not.toContain('0.00 lb');
+    expect(texto).not.toContain('x L0.00');
+    expect(texto).toContain('L 500.00');
+  });
+
+  it('no despide con "gracias por su visita"', () => {
+    expect(nota()).not.toContain('Gracias por su visita');
+  });
+});

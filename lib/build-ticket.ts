@@ -3,7 +3,12 @@ import { prisma } from '@/lib/prisma';
 import { toBusinessDateString } from '@/lib/business-date';
 import { buildTicketBuffer, buildSummaryBuffer, type TicketData } from '@/lib/thermal-printer';
 import { decimalToNumber, getLedgerByDate, resolveSucursalId } from '@/lib/ledger';
-import { buildInvoiceForOrigen, formatNumeroInterno, type InvoiceData } from '@/lib/build-invoice';
+import {
+  buildInvoiceForOrigen,
+  buildInvoiceFromDocument,
+  formatNumeroInterno,
+  type InvoiceData,
+} from '@/lib/build-invoice';
 import { getCashSession } from '@/lib/cash-session';
 
 /** Tara total en libras. Null cuando la línea no se pesó (ventas y compras viejas). */
@@ -218,10 +223,13 @@ export function ticketDataFromInvoice(data: InvoiceData): TicketData {
 /**
  * Ticket de 80 mm de una compra, una venta o un molido, con su documento fiscal si ya
  * se emitió. Es la contraparte de `/print/<origen>/:id`, que imprime lo mismo en A4.
+ *
+ * Con `origen = 'nota'`, el id es el **del documento** y no el de una transacción: una
+ * nota de crédito no ampara ninguna, así que se lee directo de su snapshot.
  */
-export async function buildTicketForOrigen(origen: 'compra' | 'venta' | 'molido', transactionId: string) {
+export async function buildTicketForOrigen(origen: 'compra' | 'venta' | 'molido' | 'nota', id: string) {
   const [data, company] = await Promise.all([
-    buildInvoiceForOrigen(origen, transactionId),
+    origen === 'nota' ? buildInvoiceFromDocument(id) : buildInvoiceForOrigen(origen, id),
     prisma.companySettings.upsert({ where: { id: 'singleton' }, update: {}, create: { id: 'singleton' } }),
   ]);
 
