@@ -7,6 +7,11 @@ export type ModuleDef = {
   label: string;
   defaultRoles: ConfigurableRole[];
   locked?: boolean;
+  /**
+   * Permiso sin pantalla propia: autoriza una acción (emitir, anular) y no aparece
+   * en la navegación, pero sí en Mantenimiento → Roles para poder configurarlo.
+   */
+  permissionOnly?: boolean;
 };
 
 // `locked` modules always require admin and cannot be reconfigured — this keeps
@@ -25,6 +30,22 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: 'bancos', href: '/bancos', label: 'Bancos', defaultRoles: [], locked: true },
   { key: 'personnel', href: '/personnel', label: 'Personal', defaultRoles: [] },
   { key: 'maintenance', href: '/maintenance', label: 'Mantenimiento', defaultRoles: [], locked: true },
+  // Permisos de facturación fiscal. Emitir es de la operación; anular destruye el
+  // valor de un número ya entregado, así que arranca solo para admin (roles vacíos).
+  {
+    key: 'fiscal_emitir',
+    href: '',
+    label: 'Facturación: emitir documento',
+    defaultRoles: ['editor'],
+    permissionOnly: true,
+  },
+  {
+    key: 'fiscal_anular',
+    href: '',
+    label: 'Facturación: anular documento',
+    defaultRoles: [],
+    permissionOnly: true,
+  },
 ];
 
 export function isRoleAllowed(moduleRoles: string[], role: string | null): boolean {

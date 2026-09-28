@@ -21,8 +21,6 @@ export type ProductoDTO = {
   nombre: string;
   categoria?: ProductoCategoria | null;
   taraPorSaco?: number | null;
-  /** Derivado de `categoria`: solo uva y pergamino entran en la facturación. */
-  facturable: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -243,6 +241,47 @@ export type CompanySettingsDTO = {
   facturaRangoHasta: string;
   facturaFechaLimite: string;
   updatedAt: string;
+};
+
+export type FiscalCaiDTO = {
+  id: string;
+  tipoDocumento: string;
+  /** Etiqueta del catálogo de `lib/fiscal.ts`, para no repetirla en el cliente. */
+  tipoDocumentoLabel: string;
+  codigo: string;
+  codigoEstablecimiento: string;
+  codigoPuntoEmision: string;
+  codigoTipoDocumento: string;
+  rangoDesde: number;
+  rangoHasta: number;
+  fechaLimite: string;
+  modo: string;
+  estado: string;
+  ultimoCorrelativo: number;
+  alertaPorcentaje: number;
+  alertaDiasPrevios: number;
+  notas: string | null;
+  /** Cuántos documentos se emitieron con este CAI: si hay alguno, la numeración se congela. */
+  documentosEmitidos: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Derivado, nunca guardado: se recalcula en cada lectura (`evaluarCai`). */
+  estadoRango: {
+    total: number;
+    usados: number;
+    disponibles: number;
+    porcentajeUsado: number;
+    diasParaVencer: number;
+    vencido: boolean;
+    agotado: boolean;
+    alertaRango: boolean;
+    alertaVencimiento: boolean;
+    puedeEmitir: boolean;
+    siguienteCorrelativo: number | null;
+    /** Cómo se vería el próximo número, para revisar los códigos antes de emitir. */
+    siguienteNumero: string | null;
+    motivoNoEmitible: string | null;
+  };
 };
 
 export type ModuleAccessDTO = {

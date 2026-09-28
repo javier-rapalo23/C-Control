@@ -47,9 +47,14 @@ model Sucursal {
 model Producto {
   id          String          @id @default(cuid())
   nombre      String          @unique
-  /// `uva`, `pergamino` u `otros`. Solo uva y pergamino se facturan.
+  /// `uva`, `pergamino` u `otros`. Agrupa el reporte de temporada y habilita el modo
+  /// oro; **no** decide qué se factura: se factura todo lo que se compra y se vende.
   categoria   String?
   taraPorSaco Decimal?        @db.Decimal(6, 2)
+  /// Clasificación para el ISV del documento fiscal, del catálogo de `lib/fiscal.ts`.
+  /// El café está exonerado, así que por defecto es `EXENTO`; es configurable por si
+  /// algún día se vende algo que no sea café.
+  clasificacionFiscal String  @default("EXENTO")
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   purchases   Purchase[]
@@ -149,6 +154,9 @@ model PurchaseTransaction {
   client       Client     @relation(fields: [clientId], references: [id], onDelete: Restrict)
   sucursal     Sucursal   @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   items        Purchase[]
+  /// Documento fiscal emitido por esta compra, si ya se emitió. Mientras exista, la
+  /// compra no se puede borrar ni editar.
+  fiscalDocument FiscalDocument?
 
   @@index([businessDate])
   @@index([clientId])
@@ -180,10 +188,127 @@ model GrindingService {
   updatedAt     DateTime @updatedAt
   client        Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   sucursal      Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  fiscalDocument FiscalDocument?
 
   @@index([businessDate])
   @@index([sucursalId])
   @@index([clientId])
+}
+
+/// CAI autorizado por el SAR, con su rango y su vigencia.
+///
+/// Toda la empresa emite con un solo CAI por tipo de documento, así que los códigos
+/// de establecimiento y punto de emisión son campos de aquí y no una tabla aparte.
+/// El código del tipo de documento (`TT`) también se configura: cuál autorizó el SAR
+/// lo dice el papel, no el programa.
+///
+/// El contador `ultimoCorrelativo` es lo que asigna los números, con un bloqueo de
+/// fila: una secuencia de Postgres no sirve porque un rollback se come el número y
+/// el rango del SAR no puede tener saltos.
+model FiscalCai {
+  id                    String   @id @default(cuid())
+  /// Catálogo cerrado de `lib/fiscal.ts`: boleta_compra, factura, nota_credito…
+  tipoDocumento         String
+  /// El CAI impreso en la autorización.
+  codigo                String   @unique
+  codigoEstablecimiento String
+  codigoPuntoEmision    String
+  /// Código de dos dígitos del tipo de documento, tal como lo autorizó el SAR.
+  codigoTipoDocumento   String
+  /// Solo el correlativo: los otros tres segmentos del número salen de los códigos.
+  rangoDesde            Int
+  rangoHasta            Int
+  fechaLimite           DateTime @db.Date
+  /// TALONARIO: el número se captura a mano, como hoy. SISTEMA: lo asigna la app.
+  modo                  String   @default("TALONARIO")
+  /// `activo` | `inactivo`. Agotado y vencido no se guardan: se derivan del rango y
+  /// de la fecha (`evaluarCai`), para que no puedan quedar desactualizados.
+  estado                String   @default("activo")
+  /// Último correlativo entregado. 0 en un CAI sin usar, aunque su rango no empiece en 1.
+  ultimoCorrelativo     Int      @default(0)
+  /// Umbrales de aviso: % de rango consumido y días antes de la fecha límite.
+  alertaPorcentaje      Int      @default(80)
+  alertaDiasPrevios     Int      @default(30)
+  notas                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  documentos            FiscalDocument[]
+
+  @@index([tipoDocumento, estado])
+}
+
+/// Documento fiscal emitido. Ampara **una** transacción: una compra, una venta o un
+/// servicio de molido, nunca varias.
+///
+/// `snapshot` es la copia inmutable de lo impreso. Reimprimir usa el snapshot y no
+/// los datos vivos: si mañana cambia el nombre de la empresa o del productor, el
+/// documento ya emitido tiene que seguir diciendo lo que decía.
+model FiscalDocument {
+  id                     String   @id @default(cuid())
+  caiId                  String
+  tipoDocumento          String
+  correlativo            Int
+  /// `EEE-PPP-TT-CCCCCCCC`, ya formateado.
+  numeroCompleto         String   @unique
+  /// `emitido` | `anulado`. Un número nunca se libera: anular lo conserva.
+  estado                 String   @default("emitido")
+  /// Fecha de negocio de la transacción que ampara (puede ser anterior a la emisión).
+  businessDate           DateTime @db.Date
+  /// Cuándo se emitió de verdad. No es editable: de eso depende que la numeración
+  /// salga en orden cronológico.
+  emitidoEn              DateTime @default(now())
+  emitidoPor             String
+  /// Exactamente uno de los tres, y cada transacción a lo sumo una vez. El
+  /// `Restrict` es lo que impide borrar en la base una transacción ya documentada,
+  /// aunque una ruta olvide comprobarlo.
+  purchaseTransactionId  String?  @unique
+  saleTransactionId      String?  @unique
+  grindingServiceId      String?  @unique
+  total                  Decimal  @db.Decimal(12, 2)
+  /// Previsto para una eventual factura de exportación; hoy siempre HNL.
+  moneda                 String   @default("HNL")
+  tipoCambio             Decimal? @db.Decimal(12, 6)
+  importeExento          Decimal  @default(0) @db.Decimal(12, 2)
+  importeExonerado       Decimal  @default(0) @db.Decimal(12, 2)
+  importeGravado15       Decimal  @default(0) @db.Decimal(12, 2)
+  importeGravado18       Decimal  @default(0) @db.Decimal(12, 2)
+  isv15                  Decimal  @default(0) @db.Decimal(12, 2)
+  isv18                  Decimal  @default(0) @db.Decimal(12, 2)
+  snapshot               Json
+  /// Versión de la maquetación con la que se emitió, para leer el snapshot viejo.
+  formatoVersion         String
+  anuladoEn              DateTime?
+  anuladoPor             String?
+  anulacionMotivo        String?
+  /// Resguardo de la copia física del documento anulado.
+  copiaFisicaResguardada Boolean  @default(false)
+  copiaFisicaUbicacion   String?
+  cai                    FiscalCai            @relation(fields: [caiId], references: [id], onDelete: Restrict)
+  purchaseTransaction    PurchaseTransaction? @relation(fields: [purchaseTransactionId], references: [id], onDelete: Restrict)
+  saleTransaction        SaleTransaction?     @relation(fields: [saleTransactionId], references: [id], onDelete: Restrict)
+  grindingService        GrindingService?     @relation(fields: [grindingServiceId], references: [id], onDelete: Restrict)
+
+  @@unique([caiId, correlativo])
+  @@index([businessDate])
+  @@index([estado])
+  @@index([emitidoEn])
+}
+
+/// Bitácora de lo que no puede quedar sin rastro: emisión, anulación, reimpresión y
+/// cambios de CAI. No se borra ni se edita.
+model FiscalAuditLog {
+  id               String   @id @default(cuid())
+  /// emision | anulacion | reimpresion | cai_alta | cai_cambio
+  accion           String
+  fiscalDocumentId String?
+  caiId            String?
+  usuario          String
+  detalle          Json?
+  createdAt        DateTime @default(now())
+
+  @@index([fiscalDocumentId])
+  @@index([caiId])
+  @@index([createdAt])
 }
 
 model CashEntry {
@@ -333,6 +458,7 @@ model SaleTransaction {
   client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   sucursal     Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   items        Sale[]
+  fiscalDocument FiscalDocument?
 
   @@index([businessDate])
   @@index([clientId])

@@ -43,16 +43,12 @@ export const PRODUCTO_CATEGORIA_LABELS: Record<ProductoCategoria, string> = {
 };
 
 /**
- * Solo uva y pergamino se facturan al cierre de temporada; requema, verde,
- * guacuco y repaso se compran y se pagan igual, pero quedan fuera de la
- * facturación.
- *
- * Es una función y no una columna del catálogo para que no puedan discrepar:
- * el dato se deriva de la categoría, que es lo que el negocio realmente decide.
+ * Acá vivía `esCategoriaFacturable`: uva y pergamino se facturaban, y requema,
+ * verde, guacuco y repaso quedaban fuera. **El negocio factura todo lo que compra y
+ * vende**, así que la distinción se eliminó en vez de dejarla como una función que
+ * siempre devuelve `true`. La categoría sigue existiendo para el reporte y para el
+ * modo oro; lo que se fue es la idea de que algunos tipos no se documentan.
  */
-export function esCategoriaFacturable(categoria: ProductoCategoria | null | undefined): boolean {
-  return categoria === 'uva' || categoria === 'pergamino';
-}
 
 /** Tupla no vacía, como la exige `z.enum` en `lib/validations.ts`. */
 export const COFFEE_TYPE_NOMBRES = COFFEE_TYPES.map((tipo) => tipo.nombre) as [string, ...string[]];

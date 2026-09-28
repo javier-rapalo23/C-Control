@@ -16,6 +16,9 @@ function fakeDb(options: {
   gastos?: number[];
   ingresos?: number[];
   salidas?: number[];
+  molido?: number[];
+  /** Compras de otros días liquidadas hoy en efectivo. */
+  pagosPendientes?: number[];
   trasladosRecibidos?: number[];
   trasladosEnviados?: number[];
 }) {
@@ -39,20 +42,25 @@ function fakeDb(options: {
       upsert: async () => balance,
       update: async ({ data }: { data: { saldoActual: number } }) => ({ ...balance, ...data }),
     },
-    purchase: {
-      // El filtro por `purchaseTransaction.metodoPago` es lo que distingue el
-      // agregado de compras en efectivo del de todas las compras.
-      aggregate: async ({ where }: { where: { purchaseTransaction?: { metodoPago: string } } }) => {
-        const metodo = where.purchaseTransaction?.metodoPago;
-        const seleccion = metodo
-          ? compras.filter((compra) => (compra.metodoPago ?? CASH_PAYMENT_METHOD) === metodo)
-          : compras;
-        return { _sum: { total: sum(seleccion.map((compra) => compra.total)) } };
+    purchaseTransaction: {
+      // El desglose por forma de pago sale de un `groupBy` sobre la cabecera: de
+      // ahí se saca tanto el total del día como la parte que restó de la gaveta.
+      // Una compra sin método registrado cuenta como efectivo.
+      groupBy: async () => {
+        const porMetodo = new Map<string, number>();
+        for (const compra of compras) {
+          const metodo = compra.metodoPago ?? CASH_PAYMENT_METHOD;
+          porMetodo.set(metodo, (porMetodo.get(metodo) ?? 0) + compra.total);
+        }
+        return [...porMetodo].map(([metodoPago, total]) => ({ metodoPago, _sum: { total } }));
       },
+      // La otra consulta a la cabecera: pendientes de otros días pagadas hoy.
+      aggregate: async () => ({ _sum: { total: sum(options.pagosPendientes ?? []) } }),
     },
     sale: { aggregate: async () => ({ _sum: { monto: sum(options.ventas ?? []) } }) },
     expense: { aggregate: async () => ({ _sum: { monto: sum(options.gastos ?? []) } }) },
     cashEntry: { aggregate: async () => ({ _sum: { monto: sum(options.ingresos ?? []) } }) },
+    grindingService: { aggregate: async () => ({ _sum: { monto: sum(options.molido ?? []) } }) },
     cashWithdrawal: { aggregate: async () => ({ _sum: { monto: sum(options.salidas ?? []) } }) },
     // Un mismo traslado cuenta como recibido o enviado según de qué lado esté la sucursal.
     cashTransfer: {
@@ -147,6 +155,37 @@ describe('recalculateDailyBalance', () => {
 
     expect(totals.totalComprasEfectivo).toBe(250);
     expect(totals.saldoActual).toBe(750);
+  });
+
+  it('suma el cobro del molido al saldo', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({ saldoInicial: 100, molido: [50, 25] }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalMolido).toBe(75);
+    expect(totals.saldoActual).toBe(175);
+  });
+
+  // Una compra pendiente no restó el día que se registró; resta el día que se paga.
+  it('resta las compras pendientes liquidadas hoy en efectivo', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({
+        saldoInicial: 1000,
+        compras: [{ total: 400, metodoPago: 'pendiente' }],
+        pagosPendientes: [300],
+      }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalCompras).toBe(400);
+    expect(totals.totalComprasPendientes).toBe(400);
+    // La compra de hoy no toca la gaveta; el pago de una pendiente vieja sí.
+    expect(totals.totalComprasEfectivo).toBe(0);
+    expect(totals.totalPagosPendientes).toBe(300);
+    expect(totals.saldoActual).toBe(700);
   });
 
   it('incluye el ajuste del arqueo en el saldo', async () => {

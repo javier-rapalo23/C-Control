@@ -51,6 +51,7 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
 };
 
 const MAINTENANCE_SUBLINKS = [
+  { href: '/maintenance/facturacion', label: 'Facturación' },
   { href: '/maintenance/users', label: 'Usuarios' },
   { href: '/maintenance/roles', label: 'Roles y permisos' },
   { href: '/clients', label: 'Clientes' },
@@ -237,6 +238,9 @@ export default function SiteHeader() {
         <nav id="main-navigation" className="sidenav-links">
           {MODULE_DEFS.filter(
             (def) =>
+              // Los permisos sin pantalla (emitir, anular) no son navegables: se
+              // configuran en Roles, pero no tienen a dónde llevar.
+              !def.permissionOnly &&
               def.key !== 'clients' &&
               def.key !== 'sucursales' &&
               def.key !== 'bancos' &&

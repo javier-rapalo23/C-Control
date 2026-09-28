@@ -34,19 +34,20 @@ describe('POST /api/productos', () => {
     });
 
     const response = await POST(request);
-    const body = (await response.json()) as { ok: boolean; data: { nombre: string; categoria: string; facturable: boolean } };
+    const body = (await response.json()) as { ok: boolean; data: { nombre: string; categoria: string } };
 
     expect(response.status).toBe(201);
     expect(body.ok).toBe(true);
     expect(body.data.nombre).toBe('Pergamino seco');
     expect(body.data.categoria).toBe('pergamino');
-    expect(body.data.facturable).toBe(true);
     expect(mockedPrisma.producto.create).toHaveBeenCalledWith({
       data: { nombre: 'Pergamino seco', categoria: 'pergamino', taraPorSaco: undefined },
     });
   });
 
-  it('marca como no facturable lo que no es uva ni pergamino', async () => {
+  // La categoría no viaja en la petición: la pone el catálogo, también para los
+  // tipos que no son uva ni pergamino.
+  it('deriva la categoría "otros" del catálogo', async () => {
     mockedPrisma.producto.create.mockResolvedValue({
       id: 'prod_2',
       nombre: 'Guacuco',
@@ -62,9 +63,12 @@ describe('POST /api/productos', () => {
       body: JSON.stringify({ nombre: 'Guacuco' }),
     });
 
-    const body = (await (await POST(request)).json()) as { data: { facturable: boolean } };
+    const body = (await (await POST(request)).json()) as { data: { categoria: string } };
 
-    expect(body.data.facturable).toBe(false);
+    expect(body.data.categoria).toBe('otros');
+    expect(mockedPrisma.producto.create).toHaveBeenCalledWith({
+      data: { nombre: 'Guacuco', categoria: 'otros', taraPorSaco: undefined },
+    });
   });
 
   // El catálogo es cerrado: si esto pasara, dos sucursales podrían inventar

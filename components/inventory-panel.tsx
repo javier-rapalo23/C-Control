@@ -180,7 +180,6 @@ export default function InventoryPanel() {
               <tr>
                 <th>Tipo</th>
                 <th>Categoría</th>
-                <th>Facturación</th>
                 <th>Tara / saco</th>
                 <th>Acciones</th>
               </tr>
@@ -201,9 +200,7 @@ export default function InventoryPanel() {
                         ))}
                       </select>
                     </td>
-                    <td colSpan={2} style={{ color: 'var(--text-soft)' }}>
-                      Se ajusta sola al tipo elegido
-                    </td>
+                    <td style={{ color: 'var(--text-soft)' }}>Se ajusta sola al tipo elegido</td>
                     <td>
                       <input
                         value={editingProducto.taraPorSaco}
@@ -226,7 +223,6 @@ export default function InventoryPanel() {
                   <tr key={m.id}>
                     <td>{m.nombre}</td>
                     <td>{m.categoria ? PRODUCTO_CATEGORIA_LABELS[m.categoria as ProductoCategoria] : '—'}</td>
-                    <td>{m.facturable ? 'Se factura' : 'No se factura'}</td>
                     <td>{m.taraPorSaco !== null && m.taraPorSaco !== undefined ? `${m.taraPorSaco.toFixed(2)} lb` : '—'}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <button

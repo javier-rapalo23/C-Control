@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
 import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
+import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS } from '@/lib/fiscal';
 
 const businessDateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'businessDate must use YYYY-MM-DD',
@@ -240,6 +241,51 @@ export const companySettingsSchema = z.object({
   facturaRangoDesde: z.string().trim().max(40).optional().or(z.literal('')),
   facturaRangoHasta: z.string().trim().max(40).optional().or(z.literal('')),
   facturaFechaLimite: z.string().trim().max(40).optional().or(z.literal('')),
+});
+
+/**
+ * Alta de un CAI. Todo se valida de entrada porque lo carga la contadora a mano y
+ * de estos datos cuelga toda la numeración: un dígito de más en el rango no se nota
+ * hasta que el SAR lo reclama.
+ */
+export const createFiscalCaiSchema = z
+  .object({
+    tipoDocumento: z.enum(TIPO_DOCUMENTO_KEYS),
+    codigo: z.string().trim().min(4).max(50),
+    // Los códigos son posicionales y se imprimen tal cual, así que solo dígitos y
+    // con la longitud exacta del formato del SAR.
+    codigoEstablecimiento: z.string().trim().regex(/^\d{3}$/, 'Debe ser 3 dígitos'),
+    codigoPuntoEmision: z.string().trim().regex(/^\d{3}$/, 'Debe ser 3 dígitos'),
+    codigoTipoDocumento: z.string().trim().regex(/^\d{2}$/, 'Debe ser 2 dígitos'),
+    rangoDesde: z.number().int().min(1).max(99_999_999),
+    rangoHasta: z.number().int().min(1).max(99_999_999),
+    fechaLimite: businessDateField,
+    modo: z.enum(MODOS_CAI),
+    alertaPorcentaje: z.number().int().min(1).max(100).optional(),
+    alertaDiasPrevios: z.number().int().min(0).max(365).optional(),
+    notas: z.string().trim().max(250).optional(),
+  })
+  .refine((data) => data.rangoHasta >= data.rangoDesde, {
+    message: 'El rango "hasta" no puede ser menor que el "desde"',
+    path: ['rangoHasta'],
+  });
+
+/**
+ * Cambios sobre un CAI ya guardado. **No incluye rango, códigos ni tipo**: un CAI
+ * con documentos emitidos no puede cambiar de numeración, y la ruta además lo
+ * rechaza. Lo que sí se corrige es su vigencia operativa y los avisos.
+ */
+export const updateFiscalCaiSchema = z.object({
+  estado: z.enum(ESTADOS_CAI).optional(),
+  modo: z.enum(MODOS_CAI).optional(),
+  fechaLimite: businessDateField.optional(),
+  alertaPorcentaje: z.number().int().min(1).max(100).optional(),
+  alertaDiasPrevios: z.number().int().min(0).max(365).optional(),
+  notas: z.string().trim().max(250).optional(),
+});
+
+export const updateProductoFiscalSchema = z.object({
+  clasificacionFiscal: z.enum(CLASIFICACION_FISCAL_KEYS),
 });
 
 export const createUserSchema = z.object({

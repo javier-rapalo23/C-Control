@@ -5,10 +5,9 @@ import type { ProductoDTO } from '@/types/domain';
  * sin inferencia por nombre: el oro va a la facturación de fin de temporada y no
  * conviene que dependa de cómo se escribió un nombre.
  *
- * Incluye `otros` —requema, verde, guacuco, repaso—: esos tipos no se facturan,
- * pero el rendimiento se captura y se guarda igual. Lo que decide qué entra en la
- * facturación es `esCategoriaFacturable`, al armar el reporte de temporada, no la
- * captura.
+ * Incluye `otros` —requema, verde, guacuco, repaso—: el rendimiento se captura para
+ * todos. Antes esos tipos además quedaban fuera de la facturación; ya no, el negocio
+ * factura todo lo que compra y vende.
  *
  * Aquí vivían además `classifyProducto` y `groupProductos`, que partían el
  * catálogo en "En Uva", "En Pergamino" y "Otros" para la parrilla de Compras y

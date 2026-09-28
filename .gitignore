@@ -39,6 +39,8 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+# Base de pruebas de integración; el ejemplo versionado es .env.test.example
+.env.test
 .env.development.local
 .env.test.local
 .env.production.local

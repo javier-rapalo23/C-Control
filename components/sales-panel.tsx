@@ -458,9 +458,6 @@ export default function SalesPanel() {
                   <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
                     {producto.nombre}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 3 }}>
-                    {producto.facturable ? 'Se factura' : 'No se factura'}
-                  </div>
                   <div
                     style={{
                       fontSize: 13,

@@ -253,8 +253,8 @@ movimientos. Si no existe ninguna, `getDefaultSucursalId()` crea automáticament
 `nombre` (único), `categoria?` (`uva` | `pergamino` | `otros`), `taraPorSaco?`.
 
 El nombre solo puede salir del **catálogo cerrado** de `lib/coffee-types.ts` (§6.6), y la categoría
-se deriva de él: la API no la acepta desde la petición. Solo `uva` y `pergamino` se facturan al
-cierre de temporada.
+se deriva de él: la API no la acepta desde la petición. La categoría agrupa el reporte de temporada y
+habilita el modo oro; **no** decide qué se factura.
 
 **No lleva precio ni factor de conversión a oro.** El café se paga a un precio distinto por cliente
 y por día, y el rendimiento varía por lote y por productor: los dos se capturan a mano en cada línea
@@ -536,9 +536,10 @@ Vive en código y no como filas editables porque los tipos no cambian de una tem
 dejarlos abiertos permitía que una sucursal escribiera "seco" y otra "Pergamino Seco": dos productos
 distintos para el mismo café, que los acumulados de temporada contaban por separado.
 
-`esCategoriaFacturable(categoria)` es una función y no una columna del catálogo para que no puedan
-discrepar: se deriva de la categoría, que es lo que el negocio realmente decide. La API la expone en
-cada `ProductoDTO` como `facturable`, calculada al serializar.
+Aquí estuvo `esCategoriaFacturable(categoria)`, que marcaba cada `ProductoDTO` como `facturable`:
+uva y pergamino entraban a la facturación y los demás tipos no. **Se eliminó el 27/09/2026**, cuando
+el negocio confirmó que se factura todo lo que se compra y se vende. No quedó como una función que
+siempre devuelve `true` porque eso solo habría escondido la regla vieja.
 
 La tabla `Producto` sigue existiendo —compras, ventas y cargas apuntan a ella por id y el histórico
 no se puede reescribir—. `pnpm seed-coffee-types` crea las filas que falten y alinea las categorías;
@@ -1010,11 +1011,17 @@ middleware corre en Edge sin acceso a Prisma. El reparto queda así:
 |---|---|
 | `middleware.ts` (Edge) | Que haya sesión válida y que el rol alcance para el método HTTP. |
 | `requireModuleAccess` (páginas, Node) | Que el rol tenga permitido **ese módulo** según `ModuleAccess`. |
+| `requireApiModuleAccess` (rutas de API, Node) | Lo mismo, pero lanzando `ModulePermissionError` → **403 `FORBIDDEN`**. Existe porque el de páginas responde con `redirect`, que a un cliente que espera JSON no le sirve. |
 | Sidenav (`site-header.tsx`) | Solo oculta enlaces. Es presentación, no control. |
 
 `lib/module-access.ts` concentra la resolución de roles efectivos (`getModuleAccess`,
-`getModuleRoles`) y la comparten el guard y `GET/PATCH /api/settings/module-access`, para que no
-puedan divergir.
+`getModuleRoles`) y la comparten los dos guards y `GET/PATCH /api/settings/module-access`, para que
+no puedan divergir.
+
+**Permisos sin pantalla.** `ModuleDef.permissionOnly` marca entradas que autorizan una **acción** y
+no un módulo navegable: `fiscal_emitir` y `fiscal_anular` (§10.3). Aparecen en Mantenimiento → Roles
+para poder configurarlas, pero el sidenav las filtra porque no tienen a dónde llevar. Anular arranca
+con `defaultRoles: []`, o sea solo admin: destruye el valor de un número ya entregado.
 
 ### 8.6 Usuarios de fallback
 
@@ -1306,6 +1313,44 @@ En el CSS de impresión, el que se saca del flujo es el **contenedor** `.invoice
 hoja: posicionando cada `.invoice-sheet` por separado, las dos caían una encima de la otra. El salto
 entre copias es un `break-before: page` sobre la segunda hoja.
 
+### 10.3 Base de la facturación fiscal (SAR) — **modelo listo, todavía no emite**
+
+Primera fase del plan de `docs/facturacion-sar-plan.md`. **Nada emite documentos fiscales todavía**:
+esto registra el CAI y deja el modelo en su lugar. Mientras no haya CAI activo, la operación se
+comporta exactamente como antes (§10.2).
+
+| Modelo | Para qué |
+| --- | --- |
+| `FiscalCai` | El CAI autorizado: códigos de establecimiento, punto de emisión y tipo de documento, rango de correlativos, fecha límite, modo y contador |
+| `FiscalDocument` | El documento emitido, con su número, el desglose de ISV y el `snapshot` inmutable de lo impreso |
+| `FiscalAuditLog` | Bitácora de emisión, anulación, reimpresión y cambios de CAI. Sin llaves foráneas, para que sobreviva a lo que menciona |
+
+`lib/fiscal.ts` tiene los catálogos y las reglas sin base de datos: tipos de documento,
+clasificaciones de ISV (`EXENTO` para el café, `GRAVADO_15` para el molido), el formato
+`EEE-PPP-TT-CCCCCCCC` y `evaluarCai`, que decide si un CAI puede emitir.
+
+**Lo que el SAR puede cambiar es configuración, no código:** el tipo de documento autorizado, su
+código de dos dígitos, los códigos de establecimiento y punto de emisión, el rango y la vigencia se
+cargan en **Mantenimiento → Facturación**. La contadora es quien los trae, así que el formulario
+valida de entrada —tres dígitos, dos dígitos, rango numérico, fecha real— y muestra **cómo quedaría
+el primer número** antes de guardar: un dígito mal tecleado se arrastraría a todos los documentos.
+
+Decisiones que conviene no deshacer sin leer el plan:
+
+- **El estado del rango se deriva, no se guarda.** Agotado, vencido, usados y disponibles se
+  recalculan en cada lectura (`evaluarCai`). En una columna quedarían desactualizados el día que pasa
+  la fecha límite sin que nadie escriba nada.
+- **El vencimiento se compara en fecha de negocio** (`America/Tegucigalpa`). Con la hora del servidor,
+  que corre en UTC, un CAI vencido seguiría aceptando documentos las primeras horas del día siguiente.
+- **Un solo CAI activo por tipo de documento**, garantizado con un índice parcial de Postgres. Dar de
+  alta uno nuevo desactiva el anterior en la misma transacción.
+- **El contador vive en la fila del CAI, no en una secuencia.** Una secuencia se come el número si la
+  transacción hace rollback, y el rango del SAR no puede tener saltos. El correlativo se asignará con
+  bloqueo de fila en la Fase 2; `@@unique([caiId, correlativo])` queda como red.
+- **`onDelete: Restrict`** en las tres relaciones de `FiscalDocument`: es lo que impedirá borrar una
+  transacción ya documentada aunque una ruta olvide comprobarlo.
+- **Un CAI con documentos no se borra**, se desactiva; es historial fiscal.
+
 ---
 
 ## 11. Configuración y variables de entorno
@@ -1398,6 +1443,7 @@ pnpm dev                    # http://localhost:3000
 | `20260920010000_add_grinding_services` | `GrindingService`: servicio de molido (§6.12). |
 | `20260920020000_add_purchase_pending_payment` | `PurchaseTransaction.pagoFecha`, `pagoMetodo`, `pagoRegistradoPor` y `pagadoEn`: liquidación de compras pendientes (§6.13). |
 | `20260925000000_add_numero_interno` | `PurchaseTransaction.numeroInterno` y `SaleTransaction.numeroInterno`: correlativo interno por secuencia, con backfill en orden de creación (§10.2). |
+| `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Aditiva; todavía no emite nada. Lleva un índice parcial y varios `CHECK` escritos a mano. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1425,12 +1471,15 @@ Cobertura actual (9 suites, 73 pruebas):
 
 - `tests/api/health.test.ts` — invoca el handler `GET` y verifica `status: 'ok'`.
 - `tests/api/productos.test.ts` — mockea `@/lib/prisma` y verifica que `POST /api/productos` deriva la
-  categoría del catálogo, marca `facturable` y rechaza un nombre que no está en él.
+  categoría del catálogo —también la de `otros`— y rechaza un nombre que no está en él.
 - `tests/lib/oro.test.ts` — la conversión a quintales oro, con el caso que verificó el negocio
   (11.37 qq al 54 % = 4.91 qq oro).
 - `tests/lib/oro-preview.test.ts` — que la previsualización del carrito no se separe del servidor.
 - `tests/lib/coffee-types.test.ts` — el catálogo cerrado: los ocho tipos, que verde, requema,
-  guacuco y repaso **no** son uva, y que solo uva y pergamino se facturan.
+  guacuco y repaso **no** son uva, y que el modo oro se habilita también para `otros`.
+- `tests/lib/fiscal.test.ts` — reglas del CAI (§10.3): formato del número, ISV por clasificación,
+  cuándo se agota el rango, que vence **al día siguiente** de la fecha límite y no el mismo día, y
+  los umbrales de aviso.
 - `tests/lib/build-invoice.test.ts` — datos de la factura A4: totales, venta libre sin producto, y
   que el bloque fiscal aparezca solo con CAI.
 - `tests/components/invoice-a4.test.tsx` — renderiza la hoja con `renderToStaticMarkup` y comprueba
@@ -1712,9 +1761,11 @@ De la misma reunión salieron tres aclaraciones más, todas sobre el producto:
 **Los tipos de café son ocho y son fijos** (§6.6). La clasificación por palabras clave que había
 metía verde, requema, guacuco y repaso dentro de *uva*; son tipos por su cuenta.
 
-**Solo uva y pergamino se facturan.** No cambia la captura —los ocho tipos se compran, se pagan y
-guardan su rendimiento igual—; es un filtro del reporte de fin de temporada (§19.4). Por eso
-`facturable` se deriva de la categoría al serializar y no es una columna.
+**Se factura todo lo que se compra y se vende.** Durante un tiempo solo uva y pergamino "se
+facturaban" y el `ProductoDTO` traía un `facturable` derivado de la categoría. El negocio lo aclaró
+el 27/09/2026 —se factura todo— y la distinción se **eliminó** del código, del DTO y de las
+parrillas. La categoría se quedó para lo que sí decide: agrupar el reporte de temporada y habilitar
+el modo oro.
 
 **El café no lleva precio.** Varía demasiado por cliente y por día para vivir en el catálogo, donde
 lo único que garantizaba era estar desactualizado. `Producto.precioPorLibra` se eliminó y la casilla

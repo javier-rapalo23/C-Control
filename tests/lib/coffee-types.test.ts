@@ -1,4 +1,4 @@
-import { COFFEE_TYPES, COFFEE_TYPE_NOMBRES, esCategoriaFacturable, findCoffeeType } from '@/lib/coffee-types';
+import { COFFEE_TYPES, COFFEE_TYPE_NOMBRES, findCoffeeType } from '@/lib/coffee-types';
 import { isCafeCategoria } from '@/lib/producto-groups';
 import type { ProductoDTO } from '@/types/domain';
 
@@ -8,7 +8,6 @@ function producto(nombre: string, categoria: ProductoDTO['categoria'] = null): P
     nombre,
     categoria,
     taraPorSaco: null,
-    facturable: esCategoriaFacturable(categoria),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
@@ -29,7 +28,7 @@ describe('catálogo de tipos de café', () => {
   });
 
   // Antes la clasificación por palabras clave metía estos cuatro dentro de "uva".
-  // No lo son: son tipos por su cuenta y no se facturan.
+  // No lo son: son tipos por su cuenta.
   it.each(['Requema', 'Verde', 'Guacuco', 'Repaso'])('%s es de categoría otros', (nombre) => {
     expect(findCoffeeType(nombre)?.categoria).toBe('otros');
   });
@@ -49,28 +48,10 @@ describe('catálogo de tipos de café', () => {
   });
 });
 
-describe('esCategoriaFacturable', () => {
-  it('solo uva y pergamino entran en la facturación de temporada', () => {
-    const facturables = COFFEE_TYPES.filter((tipo) => esCategoriaFacturable(tipo.categoria));
-    expect(facturables.map((tipo) => tipo.nombre)).toEqual([
-      'Pergamino húmedo',
-      'Pergamino mojado',
-      'Pergamino seco',
-      'Uva',
-    ]);
-  });
-
-  it('un producto sin categoría no se factura', () => {
-    expect(esCategoriaFacturable(null)).toBe(false);
-  });
-});
-
 describe('isCafeCategoria', () => {
-  // El rendimiento se captura para todo el café, incluido lo que no se factura:
-  // quien decide qué entra en la facturación es esCategoriaFacturable.
-  it('habilita el modo oro también para los tipos que no se facturan', () => {
+  // El rendimiento se captura para todo el café, sin importar la categoría.
+  it('habilita el modo oro también para la categoría "otros"', () => {
     expect(isCafeCategoria(producto('Guacuco', 'otros'))).toBe(true);
-    expect(esCategoriaFacturable('otros')).toBe(false);
   });
 
   it('no lo habilita para un producto sin categoría', () => {

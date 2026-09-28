@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const tabs = [
   { href: '/maintenance', label: 'Empresa' },
+  { href: '/maintenance/facturacion', label: 'Facturación' },
   { href: '/maintenance/users', label: 'Usuarios' },
   { href: '/maintenance/roles', label: 'Roles y permisos' },
   { href: '/clients', label: 'Clientes' },
