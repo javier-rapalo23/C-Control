@@ -25,6 +25,7 @@ const CLIENTE = {
   direccion: null,
   claveIhcafe: '12345',
   nombreFinca: 'El Rosal',
+  registroExonerado: null,
 };
 
 const COMPRA: InvoiceData = {
@@ -261,11 +262,28 @@ describe('InvoiceA4 — documento fiscal', () => {
     expect(html).toContain('00000500');
   });
 
-  it('imprime el desglose de totales del documento', () => {
+  // El formato del SAR lleva los siete renglones preimpresos, así que salen todos aunque
+  // el monto sea cero (requisito de la contadora del 29/09/2026).
+  it('imprime los siete renglones del desglose, incluso en cero', () => {
     const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
-    expect(html).toContain('Importe exento');
-    // Los renglones que no aplican no se imprimen: con café exonerado, no hay ISV.
-    expect(html).not.toContain('ISV 15');
+
+    for (const etiqueta of [
+      'Importe exento',
+      'Importe exonerado',
+      'Importe gravado 15 %',
+      'ISV 15 %',
+      'Importe gravado 18 %',
+      'ISV 18 %',
+    ]) {
+      expect(html).toContain(etiqueta);
+    }
+    // El total no se repite dentro del desglose: el del pie va en la misma columna y lo
+    // cierra. Impreso dos veces seguidas se leía como un error.
+    expect(html).toContain('invoice-total');
+    // Seis renglones en cada una de las dos copias; se quita el CSS, que también menciona
+    // la clase.
+    const sinEstilos = html.replace(/<style[\s\S]*?<\/style>/g, '');
+    expect(sinEstilos.match(/invoice-desglose-fila/g)).toHaveLength(12);
   });
 
   it('un documento anulado lo dice con su motivo', () => {
@@ -482,5 +500,46 @@ describe('InvoiceA4 — nota', () => {
 
   it('sale en las dos copias, como cualquier documento', () => {
     expect(html.match(/001-001-03-00000007/g)).toHaveLength(2);
+  });
+});
+
+/**
+ * Bloque del adquiriente exonerado. Son los datos con los que se sustenta una operación
+ * exonerada: quién es, su RTN, su constancia de registro y la orden de compra exenta.
+ */
+describe('InvoiceA4 — adquiriente exonerado', () => {
+  const CLIENTE_EXONERADO = { ...CLIENTE, rtn: '0801-1990-999999', registroExonerado: 'REG-EXO-4455' };
+
+  it('no imprime el bloque cuando el cliente no está exonerado', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
+    expect(html).not.toContain('Adquiriente exonerado');
+  });
+
+  it('imprime constancia y orden de compra exenta cuando aplican', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceA4
+        data={{
+          ...COMPRA,
+          cliente: CLIENTE_EXONERADO,
+          documento: { ...DOCUMENTO, ordenCompraExenta: 'OC-2026-118' },
+        }}
+      />,
+    );
+
+    expect(html).toContain('Adquiriente exonerado');
+    expect(html).toContain('REG-EXO-4455');
+    expect(html).toContain('OC-2026-118');
+    expect(html).toContain('0801-1990-999999');
+  });
+
+  // La constancia es del cliente y vale sin orden: una venta exonerada puede no tener
+  // orden de compra, y el bloque tiene que salir igual.
+  it('imprime el bloque con la constancia aunque no haya orden de compra', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceA4 data={{ ...COMPRA, cliente: CLIENTE_EXONERADO, documento: DOCUMENTO }} />,
+    );
+
+    expect(html).toContain('Adquiriente exonerado');
+    expect(html).toContain('REG-EXO-4455');
   });
 });

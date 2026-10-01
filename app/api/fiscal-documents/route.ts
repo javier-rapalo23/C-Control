@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       transactionId: payload.transactionId,
       usuario: userId,
       numeroManual: payload.numeroManual,
+      ordenCompraExenta: payload.ordenCompraExenta,
     });
 
     return success(documento, 201);

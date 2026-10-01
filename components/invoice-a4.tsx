@@ -1,3 +1,4 @@
+import { RENGLONES_DESGLOSE } from '@/lib/fiscal';
 import type { InvoiceData, InvoiceLinea } from '@/lib/build-invoice';
 
 /**
@@ -85,6 +86,22 @@ const CSS = `
 /* Referencia de una nota al documento que corrige. Va arriba, junto al bloque fiscal:
    los dos papeles se archivan juntos y es el dato que los empareja. */
 .invoice-referencia { margin-top: 6px; }
+
+/* Bloque del adquiriente exonerado. Enmarcado porque es un bloque que se revisa como
+   unidad: o están los cuatro datos o la exoneración no se puede sustentar. */
+.invoice-exonerado {
+  margin-top: 8px;
+  border: 1px solid #111;
+  padding: 5px 8px;
+}
+.invoice-exonerado-titulo {
+  margin: 0 0 3px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.invoice-exonerado .invoice-cliente { margin-top: 0; border-top: none; padding-top: 0; }
 
 /* Un documento anulado tiene que leerse como anulado de un vistazo, aunque alguien
    solo mire la hoja de lejos. */
@@ -437,6 +454,22 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
           <Campo etiqueta="Dirección" valor={cliente.direccion} />
         </section>
 
+        {/* Bloque del adquiriente exonerado. Sale cuando el cliente tiene constancia de
+            registro o cuando la operación trae orden de compra exenta: es lo que dice de
+            quién es la exoneración y con qué documento se amparó. Repite nombre y RTN a
+            propósito —ya salen arriba— porque el bloque tiene que poder leerse solo. */}
+        {cliente.registroExonerado || documento?.ordenCompraExenta ? (
+          <section className="invoice-exonerado">
+            <p className="invoice-exonerado-titulo">Adquiriente exonerado</p>
+            <div className="invoice-cliente">
+              <Campo etiqueta="Nombre o razón social" valor={cliente.nombre} />
+              <Campo etiqueta="RTN" valor={cliente.rtn} />
+              <Campo etiqueta="Constancia de registro" valor={cliente.registroExonerado} />
+              <Campo etiqueta="Orden de compra exenta" valor={documento?.ordenCompraExenta ?? null} />
+            </div>
+          </section>
+        ) : null}
+
         <table className="invoice-lineas">
           <thead>
             {esNota ? (
@@ -559,35 +592,21 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
           </div>
         ) : null}
 
-        {/* Desglose fiscal: solo con documento emitido, y solo los renglones que
-            aplican. Con el café exonerado, casi siempre es "importe exento" y nada
-            más; el molido es el que trae ISV de verdad. */}
+        {/* Desglose fiscal, solo con documento emitido. **Los siete renglones salen
+            siempre, incluso en cero** (requisito de la contadora del 29/09/2026): el
+            formato del SAR los lleva preimpresos, y una factura sin el renglón del ISV no
+            se lee como completa aunque el monto sea cero. La lista vive en `lib/fiscal.ts`
+            para que la hoja y el ticket no puedan discrepar. */}
         {documento ? (
           <div className="invoice-desglose">
-            {documento.desglose.importeExento > 0 ? (
-              <div className="invoice-desglose-fila">
-                <span className="invoice-desglose-label">Importe exento</span>
-                <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeExento)}</span>
+            {RENGLONES_DESGLOSE.map((renglon) => (
+              <div className="invoice-desglose-fila" key={renglon.key}>
+                <span className="invoice-desglose-label">{renglon.label}</span>
+                <span className="invoice-desglose-monto">{lempiras(documento.desglose[renglon.key])}</span>
               </div>
-            ) : null}
-            {documento.desglose.importeExonerado > 0 ? (
-              <div className="invoice-desglose-fila">
-                <span className="invoice-desglose-label">Importe exonerado</span>
-                <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeExonerado)}</span>
-              </div>
-            ) : null}
-            {documento.desglose.importeGravado15 > 0 ? (
-              <>
-                <div className="invoice-desglose-fila">
-                  <span className="invoice-desglose-label">Importe gravado 15 %</span>
-                  <span className="invoice-desglose-monto">{lempiras(documento.desglose.importeGravado15)}</span>
-                </div>
-                <div className="invoice-desglose-fila">
-                  <span className="invoice-desglose-label">ISV 15 %</span>
-                  <span className="invoice-desglose-monto">{lempiras(documento.desglose.isv15)}</span>
-                </div>
-              </>
-            ) : null}
+            ))}
+            {/* El total no se repite acá: el de abajo va alineado en la misma columna y
+                cierra el desglose. Impreso dos veces seguidas se leía como un error. */}
           </div>
         ) : null}
 

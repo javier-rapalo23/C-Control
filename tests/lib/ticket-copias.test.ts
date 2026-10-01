@@ -119,16 +119,42 @@ describe('buildTicketBuffer — documento fiscal', () => {
     expect(texto).toContain('00000500');
   });
 
-  it('imprime el desglose, y solo los renglones que aplican', () => {
+  // Los siete renglones salen siempre, aunque vayan en cero: el formato del SAR los
+  // lleva preimpresos (requisito de la contadora del 29/09/2026).
+  it('imprime los siete renglones del desglose, incluso en cero', () => {
     const texto = conDocumento();
-    expect(texto).toContain('Importe exento:');
-    expect(texto).not.toContain('ISV 15%');
+
+    for (const etiqueta of [
+      'Importe exento:',
+      'Importe exonerado:',
+      'Gravado 15%:',
+      'ISV 15%:',
+      'Gravado 18%:',
+      'ISV 18%:',
+    ]) {
+      expect(texto).toContain(etiqueta);
+    }
+    // Los que no aplican salen en cero, no ausentes.
+    expect(texto).toContain('ISV 15%:');
+    expect(texto).toMatch(/ISV 15%:\s+L 0\.00/);
+    expect(texto).toContain('TOTAL: L 25014.00');
 
     const gravado = conDocumento({
       desglose: { ...DOCUMENTO.desglose, importeExento: 0, importeGravado15: 86.96, isv15: 13.04 },
     });
-    expect(gravado).toContain('Gravado 15%:');
-    expect(gravado).toContain('ISV 15%:');
+    expect(gravado).toMatch(/Gravado 15%:\s+L 86\.96/);
+    expect(gravado).toMatch(/ISV 15%:\s+L 13\.04/);
+  });
+
+  // 32 columnas: un renglón más largo se parte y deja el monto en otra línea.
+  it('ningún renglón del desglose pasa de 32 columnas', () => {
+    const lineas = conDocumento()
+      .split('\n')
+      .filter((linea) => /Importe |Gravado |ISV /.test(linea));
+
+    // Seis renglones en cada una de las dos copias.
+    expect(lineas.length).toBe(12);
+    for (const linea of lineas) expect(linea.length).toBeLessThanOrEqual(32);
   });
 
   it('un documento anulado lo dice con su motivo', () => {
@@ -227,5 +253,102 @@ describe('buildTicketBuffer — nota', () => {
 
   it('no despide con "gracias por su visita"', () => {
     expect(nota()).not.toContain('Gracias por su visita');
+  });
+});
+
+/** El bloque del exonerado también va en 80 mm: los dos formatos son el mismo documento. */
+describe('buildTicketBuffer — adquiriente exonerado', () => {
+  const ticket = (extra: Record<string, unknown>) =>
+    buildTicketBuffer({
+      ...DATOS,
+      kind: 'venta',
+      clientRtn: '0801-1990-999999',
+      ...extra,
+    }).toString('latin1');
+
+  it('no imprime el bloque cuando no hay exoneración', () => {
+    expect(ticket({})).not.toContain('ADQUIRIENTE EXONERADO');
+  });
+
+  it('imprime la constancia del cliente y la orden de compra exenta', () => {
+    const texto = ticket({
+      registroExonerado: 'REG-EXO-4455',
+      documento: {
+        numeroCompleto: '001-001-01-00000045',
+        tipoDocumentoLabel: 'Factura',
+        estado: 'emitido',
+        fechaEmision: '2026-09-29',
+        cai: { codigo: 'ABCD-1234', rangoDesde: 1, rangoHasta: 500, fechaLimite: '2027-12-31' },
+        desglose: {
+          importeExento: 25_014,
+          importeExonerado: 0,
+          importeGravado15: 0,
+          importeGravado18: 0,
+          isv15: 0,
+          isv18: 0,
+        },
+        anulacionMotivo: null,
+        ordenCompraExenta: 'OC-2026-118',
+      },
+    });
+
+    expect(texto).toContain('ADQUIRIENTE EXONERADO');
+    expect(texto).toContain('REG-EXO-4455');
+    expect(texto).toContain('OC-2026-118');
+    // "RTN cliente" y no "RTN": el de la empresa ya salió en el encabezado.
+    expect(texto).toContain('RTN cliente: 0801-1990-999999');
+  });
+});
+
+/**
+ * Ancho del papel. La térmica no ajusta: lo que pasa de 32 columnas se pierde, y en un
+ * documento fiscal una razón social o un monto cortado a la mitad es un defecto.
+ */
+describe('buildTicketBuffer — ancho de 32 columnas', () => {
+  it('ninguna línea se pasa del ancho, ni con nombre largo y desglose completo', () => {
+    const texto = buildTicketBuffer({
+      ...DATOS,
+      kind: 'venta',
+      clientNombre: 'Exportadora de Café del Norte de Honduras S. de R.L. de C.V.',
+      clientRtn: '0801-1995-777777',
+      registroExonerado: 'REG-EXO-4455-2026',
+      items: [
+        {
+          ...DATOS.items[0],
+          pesoBruto: 1200,
+          numeroSacos: 4,
+          taraTotal: 63,
+          quintalesOro: 6.14,
+        },
+      ],
+      documento: {
+        numeroCompleto: '001-001-01-00000045',
+        tipoDocumentoLabel: 'Factura',
+        estado: 'emitido',
+        fechaEmision: '2026-09-29',
+        cai: { codigo: 'ABCD-1234-EFGH-5678', rangoDesde: 1, rangoHasta: 500, fechaLimite: '2027-12-31' },
+        desglose: {
+          importeExento: 0,
+          importeExonerado: 25_014,
+          importeGravado15: 0,
+          importeGravado18: 0,
+          isv15: 0,
+          isv18: 0,
+        },
+        anulacionMotivo: null,
+        ordenCompraExenta: 'OC-2026-118',
+      },
+    }).toString('latin1');
+
+    // Se quitan los comandos ESC/POS: no ocupan columnas en el papel.
+    const lineas = texto
+      .replace(/\u001b[@!aE][\u0000-\u0002]?/g, '')
+      .replace(/\u001d[V][\u0000]?/g, '')
+      .split('\n');
+
+    for (const linea of lineas) expect(linea.length).toBeLessThanOrEqual(32);
+    // Y el nombre largo sale completo: se reparte en varias líneas, no se corta. Al
+    // volver a unirlas con un espacio tiene que aparecer entero.
+    expect(lineas.join(' ')).toContain('Exportadora de Café del Norte de Honduras S. de R.L. de C.V.');
   });
 });

@@ -5,6 +5,7 @@ import type { ApiResponse } from '@/types/api';
 import type { FiscalBookReportDTO, FiscalCaiDTO, FiscalPendingReportDTO } from '@/types/domain';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
+import { descargarArchivo } from '@/lib/download-file';
 
 /**
  * Reportes fiscales, dentro de la pestaña Fiscal de Reportes.
@@ -29,28 +30,6 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-/**
- * Descarga el CSV sin navegar.
- *
- * Apuntar un enlace directo al endpoint sería más corto, pero si la petición falla el
- * navegador reemplazaría la página por el JSON del error. Así el fallo cae en el
- * mismo aviso que el resto del panel.
- */
-async function descargarCsv(url: string, nombre: string) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
-    throw new Error(body && !body.ok ? body.error.message : 'No se pudo generar el archivo.');
-  }
-
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const enlace = document.createElement('a');
-  enlace.href = objectUrl;
-  enlace.download = nombre;
-  enlace.click();
-  URL.revokeObjectURL(objectUrl);
-}
 
 export default function FiscalReportsPanel({
   from,
@@ -72,10 +51,13 @@ export default function FiscalReportsPanel({
   const libroKind = vista === 'libro-ventas' ? 'ventas' : 'compras';
 
   const urlActual = useCallback(
-    (formato?: 'csv') => {
+    (formato?: 'csv' | 'xlsx') => {
       const params = new URLSearchParams({ from, to });
       if (formato) params.set('formato', formato);
 
+      // El estado del CAI no depende del período, pero se pide por el mismo camino para
+      // que también exija el módulo de Reportes.
+      if (vista === 'cais') return `/api/reports/fiscal/cais?${params}`;
       if (esLibro) {
         params.set('libro', libroKind);
         return `/api/reports/fiscal/libro?${params}`;
@@ -83,7 +65,7 @@ export default function FiscalReportsPanel({
       if (sucursalId) params.set('sucursalId', sucursalId);
       return `/api/reports/fiscal/pendientes?${params}`;
     },
-    [esLibro, from, libroKind, sucursalId, to],
+    [esLibro, from, libroKind, sucursalId, to, vista],
   );
 
   const consultar = useCallback(async () => {
@@ -91,9 +73,7 @@ export default function FiscalReportsPanel({
       setLoading(true);
 
       if (vista === 'cais') {
-        // El estado del CAI no depende del período: es el rango autorizado y lo que
-        // queda de él hoy, así que se lee del mismo endpoint que Mantenimiento.
-        setCais(await parseApiResponse<FiscalCaiDTO[]>(await fetch('/api/fiscal-cais', { cache: 'no-store' })));
+        setCais(await parseApiResponse<FiscalCaiDTO[]>(await fetch(urlActual(), { cache: 'no-store' })));
       } else if (esLibro) {
         setLibro(await parseApiResponse<FiscalBookReportDTO>(await fetch(urlActual(), { cache: 'no-store' })));
       } else {
@@ -113,10 +93,15 @@ export default function FiscalReportsPanel({
     void consultar();
   }, [consultar]);
 
-  async function exportar() {
+  /** Base del nombre del archivo; la extensión la pone `exportar`. */
+  function nombreBase() {
+    if (vista === 'cais') return 'estado-cai';
+    return esLibro ? `libro-${libroKind}-${from}-a-${to}` : `pendientes-de-emitir-${from}-a-${to}`;
+  }
+
+  async function exportar(formato: 'csv' | 'xlsx') {
     try {
-      const nombre = esLibro ? `libro-${libroKind}-${from}-a-${to}.csv` : `pendientes-de-emitir-${from}-a-${to}.csv`;
-      await descargarCsv(urlActual('csv'), nombre);
+      await descargarArchivo(urlActual(formato), `${nombreBase()}.${formato === 'xlsx' ? 'xlsx' : 'csv'}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
     }
@@ -138,9 +123,14 @@ export default function FiscalReportsPanel({
           <button type="button" className={vista === 'cais' ? 'btn-primary' : ''} onClick={() => setVista('cais')}>
             Estado del CAI
           </button>
+          <button type="button" onClick={() => void exportar('xlsx')} style={{ marginLeft: 'auto' }}>
+            Exportar a Excel
+          </button>
+          {/* El CSV se mantiene solo acá: el libro es lo que se carga en otro sistema
+              contable, y para eso el CSV sirve mejor que un .xlsx. */}
           {vista === 'cais' ? null : (
-            <button type="button" onClick={() => void exportar()} style={{ marginLeft: 'auto' }}>
-              Descargar CSV
+            <button type="button" className="btn-secondary" onClick={() => void exportar('csv')}>
+              CSV
             </button>
           )}
         </div>

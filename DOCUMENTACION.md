@@ -88,6 +88,7 @@ cerrado con un conteo distinto al esperado (§6.9). Los pagos y anticipos de per
 | `@prisma/client` / `prisma` | ^6.16.2 | ORM y migraciones |
 | `zod` | ^4.1.12 | Validación de payloads de la API |
 | `lucide-react` | ^1.27.0 | Iconografía del sidenav |
+| `exceljs` | ^4.4.0 | Exportación de reportes a Excel (§6.15). Solo en el servidor: no entra en lo que carga el navegador |
 | `dotenv` | ^17.2.3 | Carga de variables de entorno |
 
 ### Dependencias de desarrollo
@@ -624,7 +625,8 @@ producto, no de efectivo.
 ### 6.10 Reportes por rango
 
 `lib/reports.ts` expone cuatro reportes con la misma forma —rango `from`/`to` y `groupBy=day|week`—
-que el panel `/reports` presenta en pestañas: **compras**, **ventas**, **molido** y **gastos**.
+que el panel `/reports` presenta en pestañas: **compras**, **ventas**, **molido** y **gastos**. Los
+cuatro se exportan a Excel (§6.15).
 
 Dos reglas comunes a todos:
 
@@ -760,15 +762,44 @@ documento fiscal, ordenados por antigüedad y con los días que llevan sin emiti
 falta antes de cerrar el mes. Acepta `sucursalId`; el libro no, porque un documento fiscal no tiene
 sucursal propia: el CAI es de la empresa, y el nombre de la bodega queda dentro del snapshot.
 
-**Estado del CAI** no tiene endpoint propio: la vista lee `GET /api/fiscal-cais`, que ya deriva el
-rango consumido, los días para vencer y el próximo número (§10.3).
+**Estado del CAI** (`GET /api/reports/fiscal/cais`) — los mismos datos que el endpoint de
+Mantenimiento, pero por la ruta de reportes: así pide el módulo `reports` como los otros dos y se
+puede exportar. No lleva rango: el estado del rango es el de hoy, no el de un período.
 
-**Exportación.** `lib/csv.ts` arma el archivo. Los montos van como número —sin `L` ni separador de
-miles— para que se puedan sumar en Excel sin limpiar la columna. Tres detalles que el archivo lleva
-por razones concretas: **BOM** (sin él Excel en Windows rompe los acentos), fin de línea `\r\n`, y
-comillas en todo campo con coma, comilla o salto de línea. Un texto que empiece con `=`, `+`, `-` o
-`@` se prefija con `'`: Excel lo ejecutaría como fórmula, y el nombre del cliente lo escribe una
-persona. Los números nunca se prefijan, para que un monto negativo siga siendo número.
+**Exportación.** Ver §6.15: los dos libros y los pendientes se exportan a Excel, y además a CSV,
+porque el libro es lo que se carga en otro sistema contable.
+
+### 6.15 Exportación de reportes a Excel
+
+Todos los reportes se descargan con **`?formato=xlsx`** en su propio endpoint, y el botón
+**Exportar a Excel** de cada pantalla pide exactamente esa URL con el mismo rango que la consulta que
+se está viendo. Es deliberado: si el archivo se calculara aparte, podría no coincidir con lo que la
+pantalla muestra, que es el peor defecto en algo que se manda a la contadora.
+
+| Archivo | Qué hace |
+| --- | --- |
+| `lib/xlsx.ts` | Escribe el libro con `exceljs`. Los reportes declaran **columnas con su formato** (`moneda`, `numero`, `entero`, `porcentaje`, `texto`), no celdas |
+| `lib/report-exports.ts` | Qué hojas lleva cada reporte. Funciones puras sobre el DTO que ya devuelve la API |
+| `lib/report-download.ts` | El nombre del archivo y la respuesta, para que las seis rutas no repitan el bloque |
+| `lib/download-file.ts` | En el cliente: descarga por `fetch` + blob, para que un 403 caiga en el aviso del panel y no reemplace la página con el JSON del error |
+
+**Una hoja por tabla**, y la primera es siempre **Totales**: un reporte de negocio no es una tabla sino
+varias, y en un CSV quedarían una debajo de la otra. Arriba de cada tabla va una nota con el período, y
+la fila de encabezados queda fija al desplazar.
+
+Tres decisiones que conviene conocer:
+
+- **Los montos son números con formato**, no texto: se pueden sumar en Excel sin limpiar la columna.
+- **Las fechas van como texto ISO** (`2026-09-28`), no como fecha de Excel. Las fechas de negocio son
+  del huso de Honduras, y convertirlas expondría al archivo a que el huso de la máquina las corra un
+  día; en texto ISO ordenan igual de bien.
+- **En .xlsx no hace falta proteger contra fórmulas.** Una cadena se escribe como celda de texto y
+  Excel no la evalúa; en un CSV sí, porque todo es texto y Excel decide al abrirlo (de ahí el prefijo
+  `'` de `lib/csv.ts`).
+
+Pestañas por reporte: compras y ventas llevan Totales, Por día/semana, Por producto y Por cliente;
+molido Totales, Por día/semana y Por cliente; gastos agrega Por banco **solo si hubo** pagos a bancos;
+el libro fiscal lleva Totales, Documentos y —solo si existen— Números que faltan.
 
 Base: `/api`. Todas las respuestas usan `ApiResponse<T>`.
 
@@ -846,8 +877,12 @@ en un traslado basta con que esté cerrada la del origen o la del destino.
 | GET | `/api/reports/sales` | Mismos parámetros. Añade `promedioPorQuintalOro` a los totales. |
 | GET | `/api/reports/grinding` | Mismos parámetros. Libras, lempiras y servicios de molido, con desglose por cliente y `promedioPorLibra` (§6.12). |
 | GET | `/api/reports/expenses` | Mismos parámetros. Desglosa por categoría y por banco. |
-| GET | `/api/reports/fiscal/libro` | `?libro=compras\|ventas&from&to&formato=csv`. Sin rango, el mes en curso. Un renglón por documento, anulados incluidos (§6.14). Exige el módulo `reports`. |
-| GET | `/api/reports/fiscal/pendientes` | `?from&to&sucursalId&formato=csv`. Transacciones sin documento fiscal. Exige el módulo `reports`. |
+| GET | `/api/reports/fiscal/libro` | `?libro=compras\|ventas&from&to`. Sin rango, el mes en curso. Un renglón por documento, anulados incluidos (§6.14). Exige el módulo `reports`. |
+| GET | `/api/reports/fiscal/pendientes` | `?from&to&sucursalId`. Transacciones sin documento fiscal. Exige el módulo `reports`. |
+| GET | `/api/reports/fiscal/cais` | Estado de los CAI, sin rango de fechas. Exige el módulo `reports`. |
+
+**Los seis aceptan `?formato=xlsx`** y devuelven el Excel del reporte en vez del JSON (§6.15). Los dos
+libros y los pendientes aceptan además `?formato=csv`.
 
 Los cuatro primeros se apoyan solo en el middleware (sesión válida, §8.3) y en el control de la
 página. Los dos fiscales comprueban además el módulo `reports` con `requireApiModuleAccess`: entregan
@@ -1161,7 +1196,7 @@ servidor autorizó la navegación.
 | `cash-session-panel.tsx` | ~740 | Apertura y cierre de caja, ingresos, salidas y traslados. |
 | `pending-payments-section.tsx` | ~220 | Sección de Caja: compras pendientes, pago y deshacer (§6.13). |
 | `invoice-a4.tsx` | ~420 | Hoja de factura A4 con su CSS de impresión, en dos copias (§10.2). Se renderiza en el servidor. |
-| `fiscal-reports-panel.tsx` | ~420 | Pestaña Fiscal de Reportes: libro de compras, libro de ventas, pendientes de emitir, estado del CAI y descarga CSV (§6.14). Recibe el rango del panel de reportes. |
+| `fiscal-reports-panel.tsx` | ~440 | Pestaña Fiscal de Reportes: libro de compras, libro de ventas, pendientes de emitir, estado del CAI, y descarga en Excel o CSV (§6.14, §6.15). Recibe el rango del panel de reportes. |
 | `invoice-toolbar.tsx` | 22 | Botón de imprimir de la página de factura; el CSS de impresión lo oculta. |
 | `clients-panel.tsx` | 457 | Clientes y clientes originales IHCAFE. |
 | `dashboard-home.tsx` | 382 | Resumen diario y agrupación por producto. |
@@ -1451,6 +1486,7 @@ dispara con el botón **Emitir documento fiscal** de cada fila.
 | Modo `TALONARIO` | El número lo escribe quien factura; se valida contra el rango y contra los ya usados |
 | Modo `SISTEMA` | Lo asigna la aplicación (autoimpresor) |
 | Desglose de ISV | Café exonerado; el **molido** es `GRAVADO_15` y su monto ya trae el ISV dentro, así que la base sale hacia atrás (`monto ÷ 1.15`) y el impuesto es la diferencia |
+| Orden de compra exenta | Opcional en el cuerpo (`ordenCompraExenta`). Se pide en la fila **solo si el cliente tiene constancia de registro de exonerado**: en una operación normal sería un campo más que estorba (§10.5) |
 
 **El snapshot se arma antes de abrir la transacción**, para que el CAI quede bloqueado el menor tiempo
 posible; adentro solo quedan cinco consultas. La transacción usa `maxWait` 10 s y `timeout` 20 s: con
@@ -1480,10 +1516,22 @@ Las páginas de factura reciben el id de la **transacción**, como siempre, y de
 (`buildInvoiceForOrigen`): con documento fiscal emitido imprimen su **snapshot**; sin documento, los
 datos vivos. Así los enlaces de siempre siguen valiendo y la hoja pasa a ser fiscal en cuanto se emite.
 
+**El pie fiscal lleva los siete renglones, siempre, incluso en cero** (requisito de la contadora del
+29/09/2026): importe exento, importe exonerado, importe gravado 15 %, ISV 15 %, importe gravado 18 %,
+ISV 18 % y total. El formato del SAR los trae preimpresos, y una factura sin el renglón del ISV no se
+lee como completa aunque el monto sea cero. La lista vive en `RENGLONES_DESGLOSE` (`lib/fiscal.ts`)
+con una etiqueta para la hoja y otra corta para el ticket, para que los dos formatos no puedan
+discrepar: un renglón nuevo entra en ambos o en ninguno.
+
+**Bloque del adquiriente exonerado.** Sale cuando el cliente tiene constancia de registro o cuando la
+operación trae orden de compra exenta, con los cuatro datos que sustentan la exoneración: nombre o
+razón social, RTN, constancia de registro y orden de compra exenta. Repite nombre y RTN a propósito
+—ya salen en el bloque del cliente— porque el bloque tiene que poder leerse solo.
+
 | Estado | Qué sale en la hoja |
 | --- | --- |
 | Sin documento | `Comprobante interno — no es documento fiscal`, y el correlativo interno como número |
-| Emitido | El número fiscal encabeza, el interno queda rotulado debajo, el bloque del CAI con el que se emitió, **las dos fechas** (emisión y operación) y el desglose de totales |
+| Emitido | El número fiscal encabeza, el interno queda rotulado debajo, el bloque del CAI con el que se emitió, **las dos fechas** (emisión y operación), el bloque del exonerado si aplica y los siete renglones del desglose |
 | Anulado | Todo lo anterior más un recuadro `ANULADO` con el motivo |
 
 `/print/molido/:id` es la hoja del servicio de molido, con **tabla propia** —concepto, libras molidas,
@@ -1541,6 +1589,23 @@ Lo que **no** hace: las notas no tocan la transacción ni el inventario. Una dev
 documentada con nota de crédito corrige el papel; el movimiento de inventario, si lo hubo, se registra
 aparte. Tampoco hay nota que agrupe varios documentos.
 
+### 10.5 Adquiriente exonerado
+
+Requisito de la contadora del 29/09/2026. Son **dos datos con dueños distintos**, y de ahí que vivan
+en tablas distintas:
+
+| Dato | Dónde | Por qué ahí |
+| --- | --- | --- |
+| Constancia de registro de exonerado | `Client.registroExonerado`, en Clientes | La emite el SAR a nombre del cliente y vale para todas sus operaciones: se registra una vez |
+| Orden de compra exenta | `FiscalDocument.ordenCompraExenta`, al emitir | Ampara **una** operación y cambia en cada una |
+
+En la fila de Compras o Ventas, el campo de la orden de compra exenta **aparece solo si el cliente
+tiene constancia**: en una operación normal sería un campo más que estorba en cada fila. El bloque
+impreso sale con cualquiera de los dos datos, porque una venta exonerada puede no llevar orden.
+
+La constancia viaja en el `snapshot` del documento, como el resto de los datos del cliente: si mañana
+al cliente se le retira la exoneración, el papel ya emitido sigue diciendo con qué se sustentó.
+
 ---
 
 ## 11. Configuración y variables de entorno
@@ -1596,7 +1661,7 @@ pnpm dev                    # http://localhost:3000
 
 ## 13. Migraciones de base de datos
 
-37 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
+38 migraciones versionadas en `prisma/migrations/`, en orden cronológico:
 
 | Migración | Cambio |
 |---|---|
@@ -1637,6 +1702,7 @@ pnpm dev                    # http://localhost:3000
 | `20260927000000_add_fiscal_base` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog` y `Producto.clasificacionFiscal`: base de la facturación fiscal (§10.3). Lleva un índice parcial y varios `CHECK` escritos a mano. |
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault`: con qué formato se imprime la factura por omisión (§10.3). |
 | `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo` en `FiscalDocument`, para las notas de crédito y débito (§10.4). **Reemplaza un `CHECK`**: el viejo exigía exactamente una transacción, y una nota no ampara ninguna. |
+| `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta`: los datos del adquiriente exonerado (§10.5). Aditiva. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1658,8 +1724,8 @@ Jest con preset `ts-jest`, `testEnvironment: 'node'`, raíz `tests/` y alias `@/
 proyectos**:
 
 ```bash
-pnpm test              # unit: 19 suites, 204 pruebas. Sin base de datos.
-pnpm test:integration  # integration: 5 suites, 27 pruebas, contra Postgres de verdad
+pnpm test              # unit: 22 suites, 237 pruebas. Sin base de datos.
+pnpm test:integration  # integration: 6 suites, 29 pruebas, contra Postgres de verdad
 pnpm test:db:migrate   # aplica las migraciones a la base de pruebas
 ```
 
@@ -1690,7 +1756,8 @@ Cobertura del proyecto `unit`:
   que el bloque fiscal aparezca solo con CAI.
 - `tests/components/invoice-a4.test.tsx` — renderiza la hoja con `renderToStaticMarkup` y comprueba
   que el pie de la tabla cuadre en columnas con el encabezado, que es lo que se rompe al agregar
-  una columna y olvidar el `colSpan`.
+  una columna y olvidar el `colSpan`. Además el documento fiscal, la nota, los **siete renglones del
+  desglose en cero** y el bloque del adquiriente exonerado (§10.5).
 - `tests/lib/password.test.ts` — formato scrypt, sal distinta por llamada, verificación correcta/incorrecta,
   entradas vacías y hashes malformados, compatibilidad con contraseñas legacy y `needsRehash`.
 - `tests/lib/session.test.ts` — firma y recuperación del rol, `userId` no ASCII, rechazo de payload
@@ -1719,7 +1786,9 @@ Cobertura del proyecto `unit`:
 
 - `tests/lib/ticket-copias.test.ts` — que el comprobante térmico salga en dos copias (`CLIENTE` y
   `CONTROL INTERNO`) dentro del mismo buffer, con el mismo correlativo interno y **un corte `GS V`
-  por copia**: sin el segundo corte las dos salen pegadas en una sola tira.
+  por copia**: sin el segundo corte las dos salen pegadas en una sola tira. También el bloque fiscal,
+  los siete renglones del desglose, la nota, el bloque del exonerado y —lo que cuida el papel— que
+  **ninguna línea pase de 32 columnas** ni con una razón social larga (§10.5).
 
 - `tests/lib/fiscal-reports.test.ts` — el libro (§6.14): orden por fecha de emisión, el recorte por
   **fecha de negocio** y no por la fecha UTC del instante —un documento emitido a las 22:00 de
@@ -1729,6 +1798,14 @@ Cobertura del proyecto `unit`:
   correlativo interno y los días sin emitir.
 - `tests/lib/csv.test.ts` — el archivo que abre Excel: BOM, `\r\n`, comillas, el texto que Excel
   tomaría por fórmula y que un monto negativo siga siendo número.
+- `tests/lib/xlsx.test.ts` — el libro de Excel, **leído de vuelta** con `exceljs`: una hoja por tabla,
+  que los montos lleguen como número y con su formato, el encabezado fijo, y que un nombre de hoja
+  inválido se limpie (un nombre con `:` o `/` no falla al escribir, rompe el archivo al abrirlo).
+- `tests/lib/report-exports.test.ts` — qué hojas lleva cada reporte (§6.15): el orden, que la de bancos
+  solo exista si hubo pagos a bancos, que una nota de crédito salga negativa con el documento que
+  modifica, y que lo anulado sume cero y vaya a su columna.
+- `tests/api/reports-xlsx.test.ts` — el contrato de la descarga: tipo de contenido, nombre del archivo
+  con el período, `no-store`, y que sin `formato=xlsx` la ruta siga devolviendo el JSON de siempre.
 
 `payroll`, `reports` y `fiscal-reports` usan un doble de Prisma para fijar las reglas sin base de
 datos; `summary-ticket` y `ticket-copias` inspeccionan el buffer ESC/POS como texto.
@@ -1750,6 +1827,8 @@ después**, para que un fallo a medias no bloquee la corrida siguiente):
   saldo acreditable (con dos notas sucesivas sobre la misma factura), que no se emita una nota sobre
   otra ni sobre un documento anulado, que no se anule un documento con notas vigentes, y que los
   `CHECK` nuevos rechacen una nota sin motivo o con referencia doble.
+- `reportes-xlsx.test.ts` — la cadena completa del Excel: compra guardada → consulta real → libro, para
+  atrapar un desajuste entre lo que devuelve la consulta y lo que las hojas esperan (§6.15).
 
 Los route handlers se importan y ejecutan directamente (sin levantar servidor), pasando un
 `Request` estándar.

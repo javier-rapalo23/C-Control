@@ -91,6 +91,7 @@ type FiscalDocumentRow = {
   copiaFisicaUbicacion: string | null;
   documentoOrigenId: string | null;
   notaMotivo: string | null;
+  ordenCompraExenta: string | null;
   cai?: { codigo: string } | null;
   documentoOrigen?: { id: string; numeroCompleto: string; tipoDocumento: string; emitidoEn: Date } | null;
   notas?: NotaRow[];
@@ -144,6 +145,7 @@ export function mapFiscalDocument(doc: FiscalDocumentRow): FiscalDocumentDTO {
     anulable: doc.estado === 'emitido' && puedeAnularse(doc.emitidoEn),
     esNota: esNota(doc.tipoDocumento),
     notaMotivo: doc.notaMotivo,
+    ordenCompraExenta: doc.ordenCompraExenta,
     documentoOrigen: doc.documentoOrigen
       ? {
           id: doc.documentoOrigen.id,
@@ -332,6 +334,8 @@ export type EmitirInput = {
   usuario: string;
   /** Solo en modo TALONARIO: el número que trae el papel. */
   numeroManual?: number;
+  /** Orden de compra exenta que ampara la operación, si va exonerada. */
+  ordenCompraExenta?: string;
 };
 
 /** El CAI tal como lo devuelve el `SELECT … FOR UPDATE`, sin pasar por Prisma. */
@@ -462,6 +466,7 @@ export async function emitirDocumentoFiscal(
         businessDate,
         emitidoPor: input.usuario,
         [CAMPO_ORIGEN[input.origen]]: input.transactionId,
+        ordenCompraExenta: input.ordenCompraExenta?.trim() || null,
         total: totalTransaccion,
         importeExento: desglose.importeExento,
         importeExonerado: desglose.importeExonerado,

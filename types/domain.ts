@@ -35,6 +35,8 @@ export type ClientDTO = {
   telefono?: string | null;
   direccion?: string | null;
   rtn?: string | null;
+  /** Constancia de registro de exonerado del SAR; identifica al adquiriente exonerado. */
+  registroExonerado?: string | null;
   cuentaBancaria?: string | null;
   notas?: string | null;
   esGeneral: boolean;
@@ -342,6 +344,8 @@ export type FiscalDocumentDTO = {
   esNota: boolean;
   /** Por qué se emitió la nota. Null en facturas y boletas. */
   notaMotivo: string | null;
+  /** Orden de compra exenta que amparó la operación; se imprime en el bloque del exonerado. */
+  ordenCompraExenta: string | null;
   /** El documento que esta nota modifica. Null si no es nota. */
   documentoOrigen: {
     id: string;

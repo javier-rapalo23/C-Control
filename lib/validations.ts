@@ -47,6 +47,9 @@ export const createClientSchema = z.object({
   direccion: z.string().trim().min(2).max(250).optional(),
   rtn: z.string().trim().min(2).max(50).optional(),
   cuentaBancaria: z.string().trim().min(2).max(120).optional(),
+  // Constancia de registro de exonerado del SAR. Se admite vacía para poder borrarla:
+  // un cliente puede dejar de estar exonerado.
+  registroExonerado: z.string().trim().max(60).optional(),
   notas: z.string().trim().max(500).optional(),
 });
 
@@ -293,6 +296,9 @@ export const emitirFiscalDocumentSchema = z.object({
   transactionId: z.string().min(1),
   // Solo en modo talonario: el número que trae el papel.
   numeroManual: z.number().int().min(1).max(99_999_999).optional(),
+  // Número de la orden de compra exenta, cuando la operación va amparada por una. Es de
+  // la operación y no del cliente, así que se captura al emitir.
+  ordenCompraExenta: z.string().trim().max(60).optional(),
 });
 
 export const emitirFiscalNotaSchema = z.object({

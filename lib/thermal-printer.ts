@@ -1,4 +1,5 @@
 import { Socket } from 'net';
+import { RENGLONES_DESGLOSE } from '@/lib/fiscal';
 
 const ESC = 0x1b;
 const GS = 0x1d;
@@ -48,6 +49,10 @@ export type TicketData = {
   businessDate: string;
   sucursalNombre?: string;
   clientNombre: string;
+  /** RTN del cliente. Va impreso porque lo pide el formato del SAR. */
+  clientRtn?: string | null;
+  /** Constancia de registro de exonerado del cliente, si la tiene. */
+  registroExonerado?: string | null;
   items: Array<{
     productoNombre: string;
     libras: number;
@@ -96,6 +101,8 @@ export type TicketData = {
       isv18: number;
     };
     anulacionMotivo: string | null;
+    /** Orden de compra exenta de la operación, para el bloque del exonerado. */
+    ordenCompraExenta?: string | null;
     /** Solo en notas: por qué se emitió y qué documento corrige. */
     notaMotivo?: string | null;
     documentoOrigen?: { numeroCompleto: string; tipoDocumentoLabel: string; fechaEmision: string } | null;
@@ -203,7 +210,26 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
 
   if (data.sucursalNombre) chunks.push(text(`Sucursal: ${data.sucursalNombre}`));
   chunks.push(text(`${documento ? fechaOperacionLabel(data.kind) : 'Fecha'}: ${data.businessDate}`));
-  chunks.push(text(`Cliente: ${data.clientNombre}`));
+  // El nombre se envuelve: una razón social entera no cabe en 32 columnas, y en un
+  // documento fiscal un nombre cortado a la mitad es un defecto, no un detalle.
+  for (const linea of wrap(`Cliente: ${data.clientNombre}`)) chunks.push(text(linea));
+  // "RTN cliente" y no "RTN": el RTN de la empresa ya salió en el encabezado.
+  if (data.clientRtn) chunks.push(text(`RTN cliente: ${data.clientRtn}`));
+
+  // Bloque del adquiriente exonerado, igual que en la hoja A4: sin la constancia y la
+  // orden, la exoneración no se puede sustentar.
+  if (data.registroExonerado || documento?.ordenCompraExenta) {
+    chunks.push(text(dash));
+    chunks.push(text('ADQUIRIENTE EXONERADO'));
+    if (data.registroExonerado) {
+      chunks.push(text('Constancia registro:'));
+      for (const linea of wrap(data.registroExonerado)) chunks.push(text(` ${linea}`.slice(0, LINE_WIDTH)));
+    }
+    if (documento?.ordenCompraExenta) {
+      chunks.push(text('Orden compra exenta:'));
+      for (const linea of wrap(documento.ordenCompraExenta)) chunks.push(text(` ${linea}`.slice(0, LINE_WIDTH)));
+    }
+  }
 
   if (documento?.estado === 'anulado') {
     chunks.push(text(dash));
@@ -255,8 +281,12 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
           ? `${item.numeroSacos} sacos`
           : '';
       const oro = item.quintalesOro ? `Qq oro ${item.quintalesOro.toFixed(2)}` : '';
-      // Una sola línea de 32 caracteres no aguanta las tres cosas juntas.
-      for (const linea of [[bruto, tara].filter(Boolean).join('  '), oro].filter(Boolean)) {
+      // Una sola línea de 32 caracteres no aguanta las tres cosas juntas. Bruto y tara
+      // van juntos solo si caben: con el conteo de sacos se pasan, y partir "Tara" de su
+      // monto se lee peor que ponerlos en dos líneas.
+      const pesaje = [bruto, tara].filter(Boolean).join('  ');
+      const lineasPesaje = pesaje.length <= LINE_WIDTH ? [pesaje] : [bruto, tara].filter(Boolean);
+      for (const linea of [...lineasPesaje, oro].filter(Boolean)) {
         chunks.push(text(linea));
       }
     }
@@ -281,18 +311,12 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
     }
   }
 
-  // Desglose fiscal: los mismos renglones que la hoja A4, y solo los que aplican.
+  // Desglose fiscal: los mismos siete renglones que la hoja A4, **todos y siempre**,
+  // aunque vayan en cero. La lista sale de `lib/fiscal.ts` para que los dos formatos no
+  // puedan discrepar.
   if (documento) {
-    const { desglose } = documento;
-    if (desglose.importeExento > 0) {
-      chunks.push(text(twoColumns('Importe exento:', `L ${desglose.importeExento.toFixed(2)}`)));
-    }
-    if (desglose.importeExonerado > 0) {
-      chunks.push(text(twoColumns('Importe exonerado:', `L ${desglose.importeExonerado.toFixed(2)}`)));
-    }
-    if (desglose.importeGravado15 > 0) {
-      chunks.push(text(twoColumns('Gravado 15%:', `L ${desglose.importeGravado15.toFixed(2)}`)));
-      chunks.push(text(twoColumns('ISV 15%:', `L ${desglose.isv15.toFixed(2)}`)));
+    for (const renglon of RENGLONES_DESGLOSE) {
+      chunks.push(text(twoColumns(renglon.labelTicket, `L ${documento.desglose[renglon.key].toFixed(2)}`)));
     }
   }
 

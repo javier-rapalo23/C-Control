@@ -345,7 +345,10 @@ interno`) va por copia, no por formato.
 - Libro de compras y libro de ventas por período, con anulados.
 - Pendientes de emitir y estado de CAI.
 - Exportación en **CSV**, sin dependencia nueva: `exceljs` habría sido 8 MB para un archivo que Excel
-  abre igual.
+  abre igual. **Revisado el 29/09/2026:** el negocio pidió Excel en todos los reportes y ahí sí paga la
+  dependencia, porque un reporte de negocio son varias tablas y en un CSV quedan una debajo de la otra.
+  Entró `exceljs` y el CSV se conservó en los dos libros, que es lo que se carga en otro sistema
+  contable (§6.15 de `DOCUMENTACION.md`).
 
 **Cómo quedó:**
 
@@ -441,6 +444,56 @@ de integración de notas en verde contra Postgres real (6 pruebas, incluidos los
 **Lo que hay que confirmar con la contadora:** el código `TT` de las notas, y si una **boleta de
 compra** se corrige con nota de crédito o de otra forma. El sistema lo permite; que sea lo correcto
 ante el SAR no lo puedo verificar desde acá.
+
+### Fase 6 — Formato que pidió la contadora (29/09/2026) — **hecha**
+
+Tres puntos, revisados con ella:
+
+1. El documento tiene que llevar, además del total, **los siete renglones del desglose**: importe
+   exonerado, exento, gravado 15 %, gravado 18 %, ISV 15 %, ISV 18 % y total.
+2. **Datos del adquiriente exonerado.**
+3. Las **boletas de compra** son para las compras y las facturas para las ventas, cada una con su CAI
+   y su rango autorizado.
+
+**Cómo quedó:**
+
+| Pieza | Dónde |
+| --- | --- |
+| Los siete renglones, con etiqueta para hoja y para ticket | `RENGLONES_DESGLOSE` en `lib/fiscal.ts`, consumido por `components/invoice-a4.tsx` y `lib/thermal-printer.ts` |
+| Constancia de registro de exonerado | `Client.registroExonerado`, columna nueva en Clientes |
+| Orden de compra exenta | `FiscalDocument.ordenCompraExenta`, capturada al emitir y solo visible si el cliente tiene constancia |
+| Bloque impreso del exonerado | `components/invoice-a4.tsx` (recuadro) y `lib/thermal-printer.ts` (bloque de 32 columnas) |
+| Resumen de autorizaciones por tipo | `components/maintenance-fiscal-panel.tsx`: qué documento se usa en qué y si tiene CAI activo |
+| Migración | `20260930000000_add_adquiriente_exonerado`, aditiva |
+| Pruebas | `tests/components/invoice-a4.test.tsx` (+4), `tests/lib/ticket-copias.test.ts` (+4), `tests/integration/fiscal-emision.test.ts` (+1) |
+
+Verificado: `pnpm test` 19 suites / 211 pruebas, `pnpm build`, typecheck y lint sin errores, y el
+ticket renderizado en 32 columnas para revisar el papel.
+
+**Decisiones de esta fase:**
+
+- **Los siete renglones se imprimen siempre, aunque vayan en cero.** Es lo contrario del criterio del
+  rendimiento, que se imprime con guion para no afirmar un `0 %` falso, y a propósito: el formato del
+  SAR trae los renglones preimpresos y una factura sin el del ISV no se lee como completa.
+- **La lista de renglones vive en `lib/fiscal.ts`**, con una etiqueta larga para la hoja y una corta
+  para el ticket. Tenerla en cada maquetación era la forma de que un renglón nuevo entrara en un
+  formato y no en el otro.
+- **La constancia es del cliente y la orden de compra de la operación.** El SAR emite la constancia a
+  nombre del cliente y vale para todas sus operaciones; la orden ampara una sola. Guardar las dos en el
+  mismo lugar habría hecho que todos los documentos de un cliente salieran con la misma orden.
+- **La orden solo se pide si el cliente tiene constancia.** Un campo más en cada fila de Compras y
+  Ventas, para algo que casi nunca aplica, es fricción diaria.
+- **El bloque del exonerado repite nombre y RTN**, que ya salen arriba: es un bloque que se revisa como
+  unidad, y tiene que poder leerse solo.
+- **Las boletas de compra ya funcionaban así**: un CAI por tipo de documento, con su rango. Lo que
+  faltaba era que se viera: el panel ahora abre con el resumen de qué autorización hace falta y cuál
+  está sin registrar.
+
+**Encontrado al revisar el papel renderizado:** tres líneas del ticket se pasaban de 32 columnas y la
+impresora las habría cortado —el nombre del cliente, el pesaje con el conteo de sacos y los datos del
+exonerado—. El nombre y los datos del exonerado ahora se envuelven; el pesaje se parte en dos líneas
+cuando no cabe, porque separar "Tara" de su monto se lee peor. Hay una prueba que falla si cualquier
+línea del ticket vuelve a pasarse del ancho.
 
 ---
 

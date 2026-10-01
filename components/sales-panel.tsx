@@ -615,6 +615,7 @@ export default function SalesPanel() {
                       documento={fiscal.documentos[transaction.id] ?? null}
                       caiActivo={fiscal.caiActivo}
                       caisActivos={fiscal.caisActivos}
+                      clienteExonerado={Boolean(transaction.client.registroExonerado)}
                       onImprimirNota={(documentoId) =>
                         void impresion.imprimir('nota', documentoId, fiscal.formatoDefault)
                       }

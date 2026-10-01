@@ -254,6 +254,27 @@ export function desgloseNota(origen: DesgloseIsv, monto: number): DesgloseIsv {
   };
 }
 
+/**
+ * Los renglones del pie fiscal, en el orden en que van impresos.
+ *
+ * **Se imprimen todos, siempre, incluso en cero** (requisito de la contadora del
+ * 29/09/2026): el formato del SAR los lleva preimpresos, y una factura a la que le falta
+ * el renglón de ISV no se lee como completa aunque el monto fuera cero.
+ *
+ * Están acá y no en cada maquetación porque el ticket de 80 mm y la hoja A4 son el mismo
+ * documento: si cada uno tuviera su lista, un renglón nuevo entraría en uno y no en el
+ * otro. El `label` es para la hoja, que tiene espacio; el `labelTicket` cabe en 32
+ * columnas.
+ */
+export const RENGLONES_DESGLOSE = [
+  { key: 'importeExento', label: 'Importe exento', labelTicket: 'Importe exento:' },
+  { key: 'importeExonerado', label: 'Importe exonerado', labelTicket: 'Importe exonerado:' },
+  { key: 'importeGravado15', label: 'Importe gravado 15 %', labelTicket: 'Gravado 15%:' },
+  { key: 'isv15', label: 'ISV 15 %', labelTicket: 'ISV 15%:' },
+  { key: 'importeGravado18', label: 'Importe gravado 18 %', labelTicket: 'Gravado 18%:' },
+  { key: 'isv18', label: 'ISV 18 %', labelTicket: 'ISV 18%:' },
+] as const satisfies ReadonlyArray<{ key: keyof Omit<DesgloseIsv, 'total'>; label: string; labelTicket: string }>;
+
 export const MODOS_CAI = ['TALONARIO', 'SISTEMA'] as const;
 export type ModoCai = (typeof MODOS_CAI)[number];
 

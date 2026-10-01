@@ -7,6 +7,7 @@ import { useSucursal } from '@/lib/use-sucursal';
 import ErrorToast from '@/components/error-toast';
 import FiscalReportsPanel from '@/components/fiscal-reports-panel';
 import LoadingOverlay from '@/components/loading-overlay';
+import { descargarArchivo } from '@/lib/download-file';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -98,6 +99,29 @@ export default function ReportsPanel() {
   useEffect(() => {
     void fetchReport();
   }, [fetchReport]);
+
+  /**
+   * Descarga el Excel de la pestaña visible. Pide el **mismo endpoint con el mismo
+   * rango** que la consulta de pantalla, así que el archivo no puede decir algo distinto
+   * de lo que se está viendo.
+   */
+  async function exportar() {
+    if (!sucursalId) return;
+    const nombres: Record<typeof tab, string> = {
+      purchases: 'compras',
+      sales: 'ventas',
+      grinding: 'molido',
+      expenses: 'gastos',
+      fiscal: 'fiscal',
+    };
+
+    try {
+      const params = new URLSearchParams({ from, to, groupBy, sucursalId, formato: 'xlsx' });
+      await descargarArchivo(`/api/reports/${tab}?${params}`, `${nombres[tab]}-${from}-a-${to}.xlsx`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error');
+    }
+  }
 
   function setPreset(preset: 'thisWeek' | 'lastWeek' | 'last30' | 'thisMonth' | 'lastMonth') {
     if (preset === 'thisMonth') {
@@ -193,6 +217,13 @@ export default function ReportsPanel() {
           <button onClick={() => setPreset('last30')}>Últimos 30 días</button>
           <button onClick={() => setPreset('thisMonth')}>Este mes</button>
           <button onClick={() => setPreset('lastMonth')}>Mes pasado</button>
+          {/* La pestaña fiscal tiene su propio botón: sus tres vistas se exportan
+              distinto, y una de ellas además en CSV. */}
+          {tab === 'fiscal' ? null : (
+            <button type="button" onClick={() => void exportar()} style={{ marginLeft: 'auto' }}>
+              Exportar a Excel
+            </button>
+          )}
         </div>
       </section>
 

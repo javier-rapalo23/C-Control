@@ -29,6 +29,12 @@ type Props = {
   caiActivo: FiscalCaiDTO | null;
   /** CAI activos por tipo: las notas tienen su propia serie. */
   caisActivos?: Record<string, FiscalCaiDTO>;
+  /**
+   * El cliente de esta transacción tiene constancia de registro de exonerado. Solo
+   * entonces se pide la orden de compra exenta: en una operación normal sería un campo
+   * más que estorba en cada fila.
+   */
+  clienteExonerado?: boolean;
   /** Imprime una nota ya emitida, en el formato configurado. */
   onImprimirNota?: (documentoId: string) => void;
   onChange: () => void | Promise<void>;
@@ -40,10 +46,12 @@ export default function FiscalDocumentActions({
   documento,
   caiActivo,
   caisActivos,
+  clienteExonerado,
   onImprimirNota,
   onChange,
 }: Props) {
   const [numeroManual, setNumeroManual] = useState('');
+  const [ordenCompraExenta, setOrdenCompraExenta] = useState('');
   const [motivo, setMotivo] = useState('');
   const [ubicacion, setUbicacion] = useState('');
   const [anulando, setAnulando] = useState(false);
@@ -108,9 +116,11 @@ export default function FiscalDocumentActions({
           origen,
           transactionId,
           ...(pideNumero ? { numeroManual: Number(numeroManual) } : {}),
+          ...(ordenCompraExenta.trim() ? { ordenCompraExenta: ordenCompraExenta.trim() } : {}),
         }),
       }).then(parseApiResponse);
       setNumeroManual('');
+      setOrdenCompraExenta('');
       await onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error emitiendo el documento');
@@ -303,6 +313,16 @@ export default function FiscalDocumentActions({
               onChange={(event) => setNumeroManual(event.target.value)}
               placeholder={`No. del talonario (${caiActivo.rangoDesde}–${caiActivo.rangoHasta})`}
               inputMode="numeric"
+              style={{ maxWidth: 200 }}
+            />
+          ) : null}
+          {/* Solo si el cliente está exonerado: la orden de compra exenta ampara esta
+              operación y va impresa en el bloque del adquiriente exonerado. */}
+          {clienteExonerado ? (
+            <input
+              value={ordenCompraExenta}
+              onChange={(event) => setOrdenCompraExenta(event.target.value)}
+              placeholder="Orden de compra exenta"
               style={{ maxWidth: 200 }}
             />
           ) : null}

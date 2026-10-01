@@ -23,6 +23,7 @@ type EditingClient = {
   rtn: string;
   telefono: string;
   cuentaBancaria: string;
+  registroExonerado: string;
   notas: string;
 };
 
@@ -120,6 +121,7 @@ export default function ClientsPanel() {
           rtn: editingClient.rtn || undefined,
           telefono: editingClient.telefono || undefined,
           cuentaBancaria: editingClient.cuentaBancaria || undefined,
+          registroExonerado: editingClient.registroExonerado || undefined,
           notas: editingClient.notas || undefined,
         }),
       }).then(parseApiResponse);
@@ -232,6 +234,7 @@ export default function ClientsPanel() {
                 <th>Dirección</th>
                 <th>RTN</th>
                 <th>Teléfono</th>
+                <th>Constancia exonerado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -282,6 +285,19 @@ export default function ClientsPanel() {
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, telefono: e.target.value })}
                       />
                     </td>
+                    {/* Constancia de registro de exonerado: es del cliente y vale para
+                        todas sus operaciones, así que se guarda una vez acá. La orden de
+                        compra exenta, que cambia en cada operación, se escribe al emitir
+                        el documento. */}
+                    <td>
+                      <input
+                        value={editingClient.registroExonerado}
+                        onChange={(e) =>
+                          setEditingClient((prev) => prev && { ...prev, registroExonerado: e.target.value })
+                        }
+                        placeholder="Solo si está exonerado"
+                      />
+                    </td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <button className="btn-primary" type="button" onClick={() => void updateClient(client.id)}>
                         Guardar
@@ -301,6 +317,7 @@ export default function ClientsPanel() {
                       <td>{client.direccion ?? '—'}</td>
                       <td>{client.rtn ?? '—'}</td>
                       <td>{client.telefono ?? '—'}</td>
+                      <td>{client.registroExonerado ?? '—'}</td>
                       <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button
                           className="btn-secondary"
@@ -316,6 +333,7 @@ export default function ClientsPanel() {
                               rtn: client.rtn ?? '',
                               telefono: client.telefono ?? '',
                               cuentaBancaria: client.cuentaBancaria ?? '',
+                              registroExonerado: client.registroExonerado ?? '',
                               notas: client.notas ?? '',
                             })
                           }
@@ -334,7 +352,7 @@ export default function ClientsPanel() {
                     </tr>
                     {expandedClientId === client.id ? (
                       <tr>
-                        <td colSpan={8} style={{ background: 'var(--surface-alt)' }}>
+                        <td colSpan={9} style={{ background: 'var(--surface-alt)' }}>
                           <div style={{ padding: '8px 4px' }}>
                             <strong style={{ fontSize: 13 }}>Productores originales de {client.nombre}</strong>
                             <ErrorToast message={originalesError} onClose={() => setOriginalesError(null)} />
@@ -418,7 +436,7 @@ export default function ClientsPanel() {
               )}
               {clients.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={8}>No hay clientes registrados.</td>
+                  <td colSpan={9}>No hay clientes registrados.</td>
                 </tr>
               ) : null}
             </tbody>

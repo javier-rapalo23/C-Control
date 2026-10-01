@@ -23,6 +23,18 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 
 const TIPOS_SELECCIONABLES = TIPOS_DOCUMENTO_FISCAL.filter((tipo) => tipo.aplicaA.length > 0);
 
+/**
+ * En qué parte de la operación se usa cada documento. Es información del negocio, no del
+ * catálogo: la boleta de compra es la que se le entrega al productor y la factura la del
+ * comprador, y cada una lleva su propia autorización y su propio rango.
+ */
+const USO_POR_TIPO: Record<string, string> = {
+  boleta_compra: 'Compras',
+  factura: 'Ventas y molido',
+  nota_credito: 'Correcciones que restan',
+  nota_debito: 'Correcciones que suman',
+};
+
 const formInicial = {
   tipoDocumento: TIPOS_SELECCIONABLES[0]?.key ?? 'factura',
   codigo: '',
@@ -197,6 +209,48 @@ export default function MaintenanceFiscalPanel() {
             El ticket necesita la IP de la impresora y el agente corriendo (Mantenimiento → Empresa).
           </p>
         ) : null}
+      </section>
+
+      {/* Cada tipo de documento tiene su propia autorización y su propio rango: la boleta
+          de compra es para las compras y la factura para las ventas. Sin este resumen no
+          era evidente que faltaba registrar una de las dos. */}
+      <section className="card" style={{ marginTop: 12 }}>
+        <h3>Qué autorización hace falta</h3>
+        <table className="table-like" style={{ marginTop: 8 }}>
+          <thead>
+            <tr>
+              <th>Tipo de documento</th>
+              <th>Se usa en</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {TIPOS_SELECCIONABLES.map((tipo) => {
+              const activo = cais.find((cai) => cai.tipoDocumento === tipo.key && cai.estado === 'activo') ?? null;
+
+              return (
+                <tr key={tipo.key} style={activo ? undefined : { color: 'var(--text-soft)' }}>
+                  <td>{tipo.label}</td>
+                  <td>{USO_POR_TIPO[tipo.key] ?? '—'}</td>
+                  <td>
+                    {activo ? (
+                      <>
+                        CAI <strong>{activo.codigo}</strong>, rango {activo.rangoDesde}–{activo.rangoHasta}
+                        {activo.estadoRango.motivoNoEmitible ? (
+                          <strong> · {activo.estadoRango.motivoNoEmitible}</strong>
+                        ) : (
+                          <> · quedan {activo.estadoRango.disponibles}</>
+                        )}
+                      </>
+                    ) : (
+                      'Sin CAI activo: no se puede emitir este documento'
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </section>
 
       <section className="card" style={{ marginTop: 12 }}>

@@ -194,6 +194,8 @@ export function ticketDataFromInvoice(data: InvoiceData): TicketData {
     businessDate: data.businessDate,
     sucursalNombre: data.sucursalNombre,
     clientNombre: data.cliente.nombre,
+    clientRtn: data.cliente.rtn,
+    registroExonerado: data.cliente.registroExonerado,
     kind: data.kind,
     numeroInterno: data.numeroInterno || undefined,
     title: data.titulo,

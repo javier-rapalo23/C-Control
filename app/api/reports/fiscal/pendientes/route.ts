@@ -2,6 +2,8 @@ import type { NextRequest } from 'next/server';
 import { handleApiError, success } from '@/lib/api-response';
 import { buildCsv, csvResponse } from '@/lib/csv';
 import { fiscalPendingCsvColumns, getFiscalPendingReport } from '@/lib/fiscal-reports';
+import { fiscalPendingSheets } from '@/lib/report-exports';
+import { pideXlsx, xlsxReportResponse } from '@/lib/report-download';
 import { prisma } from '@/lib/prisma';
 import { requireApiModuleAccess } from '@/lib/require-api-module-access';
 import { todayBusinessDate } from '@/lib/business-date';
@@ -29,6 +31,10 @@ export async function GET(request: NextRequest) {
       to,
       sucursalId: searchParams.get('sucursalId'),
     });
+
+    if (pideXlsx(searchParams)) {
+      return xlsxReportResponse('pendientes-de-emitir', report, fiscalPendingSheets(report));
+    }
 
     if (searchParams.get('formato') === 'csv') {
       return csvResponse(`pendientes-de-emitir-${from}-a-${to}.csv`, buildCsv(fiscalPendingCsvColumns, report.rows));

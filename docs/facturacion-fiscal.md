@@ -154,8 +154,9 @@ autorización sobre un papel sin correlativo autorizado.
 | Encabezado | Nombre de la empresa, RTN, dirección, teléfono, correo | De `CompanySettings`. Si falta el nombre, imprime "Empresa sin nombre" |
 | Identificación | Rótulo de la copia, título, `No.` interno, `Factura No.`, fecha, sucursal | El interno va primero y siempre |
 | Bloque fiscal | CAI, rango autorizado, fecha límite | Solo con documento emitido; si no, el rótulo de comprobante interno |
-| Desglose | Importe exento, exonerado, gravado 15/18 % e ISV | Solo con documento emitido, y solo los renglones que aplican |
+| Desglose | Importe exento, exonerado, gravado 15 %, ISV 15 %, gravado 18 %, ISV 18 % y total | Solo con documento emitido, y **los siete renglones siempre, aunque vayan en cero** |
 | Cliente | Nombre, finca, clave IHCAFE, RTN, teléfono, dirección | Cada dato sale solo si existe. Se rotula **Productor** en compras y **Cliente** en ventas |
+| Adquiriente exonerado | Nombre o razón social, RTN, constancia de registro, orden de compra exenta | Solo si el cliente tiene constancia o la operación trae orden (§6) |
 | Líneas (compra) | Tipo de café, bruto, tara, neto, quintales oro, precio, valor | **Sin sacos ni rendimiento**: la tara ya explica el descuento y el rendimiento es una estimación del beneficio |
 | Líneas (venta) | Concepto, bruto, sacos, tara, neto, rendimiento, quintales oro, precio, valor | Detalle completo; lo revisa un comprador. Lo que no se pesó sale con guion, no con cero |
 | Ajustes al pie | Subtotal café, bono (+) y descuento (−) con su motivo | **Solo en compras**, y solo si hubo alguno |
@@ -163,12 +164,18 @@ autorización sobre un papel sin correlativo autorizado.
 | Forma de pago | Efectivo, depósito, cheque, pendiente | **Solo en compras** |
 | Firmas | "Entregué conforme" / "Recibí conforme" | En las dos copias |
 
-Dos criterios de impresión que vale la pena conocer:
+Cuatro criterios de impresión que vale la pena conocer:
 
 - **El rendimiento vacío se imprime con guion, no con cero.** Un `0 %` impreso se lee como "no
   rindió", y lo cierto es que todavía no se sabe.
 - **En ventas, el precio por quintal oro se rotula distinto** (`L 3,200.00 / qq oro` frente a
   `L 22.00 / lb`), para que nadie lea un precio por quintal como si fuera por libra.
+- **El desglose imprime los siete renglones en cero.** Es lo contrario del criterio anterior y a
+  propósito: el formato del SAR los trae preimpresos, y una factura sin el renglón del ISV no se lee
+  como completa. Un rendimiento en cero, en cambio, afirma algo falso.
+- **En el ticket de 80 mm las líneas se envuelven.** La térmica no ajusta: lo que pasa de 32 columnas
+  se pierde, y una razón social cortada a la mitad en un documento fiscal es un defecto. El nombre del
+  cliente, el concepto de una nota y los datos del exonerado se reparten en varias líneas.
 
 ---
 
@@ -184,6 +191,33 @@ reporte de temporada y habilitar el modo oro.
 
 El **servicio de molido** también se factura, y es el único ingreso que no está exonerado del ISV: el
 monto que se captura ya lo incluye, así que el desglose se calcula hacia atrás (base = monto ÷ 1.15).
+
+### Con qué documento
+
+Cada parte de la operación tiene **su propio documento, su propio CAI y su propio rango**:
+
+| Operación | Documento | Dónde se registra su CAI |
+| --- | --- | --- |
+| Compras a productores | Boleta de compra | Mantenimiento → Facturación, tipo "Boleta de compra" |
+| Ventas y molido | Factura | Mantenimiento → Facturación, tipo "Factura" |
+| Correcciones | Nota de crédito o de débito | Igual, un CAI por tipo de nota (§9) |
+
+El panel arranca con un resumen de **qué autorización hace falta** y el estado de cada una: sin el CAI
+de boleta de compra no se puede documentar una compra, aunque el de factura esté cargado.
+
+### Adquiriente exonerado
+
+Cuando el comprador está exonerado, el documento tiene que decir de quién es la exoneración y con qué
+se amparó. Son dos datos con dueños distintos:
+
+- La **constancia de registro de exonerado** la emite el SAR a nombre del cliente y vale para todas sus
+  operaciones: se registra una vez en **Clientes**, columna "Constancia exonerado".
+- La **orden de compra exenta** ampara una sola operación, así que se escribe **al emitir**. El campo
+  aparece en la fila solo si el cliente tiene constancia.
+
+El bloque impreso sale con cualquiera de los dos datos: una venta exonerada puede no llevar orden de
+compra. La constancia queda en el snapshot, así que si después se le retira la exoneración al cliente,
+el papel ya emitido sigue diciendo con qué se sustentó.
 
 ---
 
@@ -239,8 +273,10 @@ Tres cosas que conviene saber al leer el libro:
   necesariamente un error —una hoja dañada del talonario lo explica— pero es lo primero que se
   pregunta en una revisión.
 
-Los dos libros y los pendientes se **descargan en CSV**, con los montos como número para poder
-sumarlos en Excel sin limpiar la columna.
+Las cuatro vistas se **exportan a Excel** con el botón *Exportar a Excel*: un archivo con una hoja por
+tabla —Totales primero—, los montos como número para poder sumarlos, y la fila de encabezados fija. Los
+dos libros y los pendientes se pueden descargar **también en CSV**, que es el formato que se carga en
+otro sistema contable.
 
 Las notas de crédito y débito **sí entran al libro**, con su signo: la de crédito resta y la de débito
 suma. Cada una entra al libro del documento que corrige, y la columna `Modifica` dice a cuál, porque un
@@ -309,7 +345,8 @@ implica además un movimiento de bodega, ese se registra aparte.
 | `lib/fiscal-cai.ts` | DTO del CAI con el estado del rango derivado en cada lectura |
 | `lib/fiscal-document.ts` | Emisión (con el bloqueo de fila), notas de crédito y débito, anulación, bitácora, bloqueo de edición (`assertSinDocumentoFiscal`) |
 | `lib/fiscal-reports.ts` | Libro de compras y ventas, pendientes de emitir, saltos de numeración, columnas del CSV |
-| `lib/csv.ts` | El archivo que abre Excel: BOM, comillas, protección de fórmulas |
+| `lib/csv.ts` | El CSV: BOM, comillas, protección de fórmulas |
+| `lib/xlsx.ts`, `lib/report-exports.ts` | El Excel: una hoja por tabla, con el formato de cada columna |
 | `lib/build-invoice.ts` | Datos de la factura: desde el snapshot si el documento está emitido, si no de los datos vivos. Formatea el correlativo interno |
 | `lib/build-ticket.ts` | Convierte esos mismos datos al ticket: los dos formatos leen una sola fuente |
 | `lib/thermal-printer.ts` | Buffers ESC/POS: ticket (dos copias, bloque fiscal) y resumen del día |
@@ -320,7 +357,7 @@ implica además un movimiento de bodega, ese se registra aparte.
 | `components/maintenance-fiscal-panel.tsx` | Mantenimiento → Facturación: CAI y formato por omisión |
 | `components/fiscal-reports-panel.tsx` | Reportes → Fiscal: los dos libros, pendientes, estado del CAI y la descarga |
 | `app/api/fiscal-cais/*`, `app/api/fiscal-documents/*` | Administración del CAI, emisión, anulación y notas (`:id/nota`) |
-| `app/api/reports/fiscal/libro`, `.../pendientes` | Los reportes, en JSON o CSV |
+| `app/api/reports/fiscal/libro`, `.../pendientes`, `.../cais` | Los reportes, en JSON, Excel (`formato=xlsx`) o CSV |
 | `app/print/{compra,venta,molido}/[id]/page.tsx` | Las páginas de factura A4, con su control de acceso |
 | `app/print/nota/[id]/page.tsx` | La hoja A4 de una nota. El id es el del **documento**, no de una transacción |
 | `app/api/print/ticket/route.ts` | Encola el `PrintJob` del ticket y registra la reimpresión |
@@ -336,6 +373,7 @@ implica además un movimiento de bodega, ese se registra aparte.
 | `20260927000000_add_fiscal_base` | Las tres tablas fiscales, el índice parcial de un CAI activo por tipo, los `CHECK` y los `RESTRICT` |
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault` |
 | `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo`, con el `CHECK` de referencia reemplazado: o una transacción, o un documento corregido |
+| `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta` |
 
 **Pruebas:** `tests/lib/fiscal.test.ts` (reglas del CAI, desglose y notas), `tests/lib/fiscal-reports.test.ts`
 y `tests/lib/csv.test.ts` (libro, pendientes y exportación), `tests/lib/build-invoice.test.ts`,
@@ -348,8 +386,9 @@ verdad `tests/integration/fiscal-{constraints,emision,reportes,notas}.test.ts`.
 
 - **Las migraciones fiscales deben aplicarse a la base de la operación** (`prisma migrate deploy`):
   `20260925000000_add_numero_interno`, `20260927000000_add_fiscal_base`,
-  `20260928000000_add_print_format` y `20260929000000_add_fiscal_notas`. La primera crea una columna
-  `NOT NULL`, así que sin ella fallan las consultas de compras y ventas.
+  `20260928000000_add_print_format`, `20260929000000_add_fiscal_notas` y
+  `20260930000000_add_adquiriente_exonerado`. La primera crea una columna `NOT NULL`, así que sin ella
+  fallan las consultas de compras y ventas.
 - **La contadora tiene que confirmar** el tipo de documento que corresponde a las compras y su código
   de dos dígitos (`TT`), además del formato y las leyendas exactas que exige el SAR. Lo mismo para las
   notas: su código `TT` y si una **boleta de compra** se corrige con nota de crédito o de otra forma.

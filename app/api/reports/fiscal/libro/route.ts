@@ -2,6 +2,8 @@ import type { NextRequest } from 'next/server';
 import { handleApiError, success } from '@/lib/api-response';
 import { buildCsv, csvResponse } from '@/lib/csv';
 import { fiscalBookCsvColumns, getFiscalBookReport, isFiscalBookKind } from '@/lib/fiscal-reports';
+import { fiscalBookSheets } from '@/lib/report-exports';
+import { pideXlsx, xlsxReportResponse } from '@/lib/report-download';
 import { prisma } from '@/lib/prisma';
 import { requireApiModuleAccess } from '@/lib/require-api-module-access';
 import { todayBusinessDate } from '@/lib/business-date';
@@ -30,6 +32,12 @@ export async function GET(request: NextRequest) {
 
     const report = await getFiscalBookReport(prisma, { libro, from, to });
 
+    if (pideXlsx(searchParams)) {
+      return xlsxReportResponse(`libro-${libro}`, report, fiscalBookSheets(report));
+    }
+
+    // El CSV se mantiene además del Excel: es el formato que se puede cargar en otro
+    // sistema contable, y el libro es justo lo que se lleva de un sistema a otro.
     if (searchParams.get('formato') === 'csv') {
       return csvResponse(`libro-${libro}-${from}-a-${to}.csv`, buildCsv(fiscalBookCsvColumns, report.rows));
     }

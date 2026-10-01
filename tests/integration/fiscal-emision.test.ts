@@ -348,6 +348,32 @@ conBase('emisión de documentos fiscales', () => {
     });
   });
 
+  // Los datos del adquiriente exonerado, pedidos por la contadora el 29/09/2026: la
+  // constancia es del cliente y la orden de compra exenta de la operación, así que se
+  // captura al emitir y tiene que llegar a lo que se imprime.
+  it('guarda la orden de compra exenta y la constancia del cliente llega a la impresión', async () => {
+    await prisma.client.update({ where: { id: clientId }, data: { registroExonerado: `REG-${SUFIJO}` } });
+    await crearCaiActivo();
+    const venta = await crearVenta();
+
+    const documento = await emitirDocumentoFiscal(prisma, {
+      origen: 'venta',
+      transactionId: venta.id,
+      usuario: 'tester',
+      ordenCompraExenta: `OC-${SUFIJO}`,
+    });
+
+    expect(documento.ordenCompraExenta).toBe(`OC-${SUFIJO}`);
+
+    const impreso = await buildInvoiceForOrigen('venta', venta.id);
+    expect(impreso?.documento?.ordenCompraExenta).toBe(`OC-${SUFIJO}`);
+    // La constancia viaja en el snapshot del cliente: si mañana se la quitan, el papel ya
+    // emitido sigue diciendo con qué se sustentó.
+    expect(impreso?.cliente.registroExonerado).toBe(`REG-${SUFIJO}`);
+
+    await prisma.client.update({ where: { id: clientId }, data: { registroExonerado: null } });
+  });
+
   it('el desglose del molido deja el ISV dentro del monto cobrado', async () => {
     await crearCaiActivo();
     const servicio = await prisma.grindingService.create({

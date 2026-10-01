@@ -38,6 +38,11 @@ export type InvoiceCliente = {
   direccion: string | null;
   claveIhcafe: string | null;
   nombreFinca: string | null;
+  /**
+   * Constancia de registro de exonerado del SAR. Cuando viene, el documento imprime el
+   * bloque del **adquiriente exonerado**: es lo que identifica de quién es la exoneración.
+   */
+  registroExonerado: string | null;
 };
 
 export type InvoiceLinea = {
@@ -108,6 +113,7 @@ export async function buildInvoiceForGrinding(grindingServiceId: string): Promis
       direccion: servicio.client.direccion,
       claveIhcafe: servicio.client.claveIhcafe,
       nombreFinca: servicio.client.nombreFinca,
+      registroExonerado: servicio.client.registroExonerado,
     },
     lineas,
     subtotal: monto,
@@ -135,6 +141,8 @@ export type InvoiceDocumentoFiscal = {
   cai: { codigo: string; rangoDesde: number; rangoHasta: number; fechaLimite: string };
   /** Por qué se emitió la nota. Null en facturas y boletas. */
   notaMotivo?: string | null;
+  /** Orden de compra exenta que amparó la operación; va en el bloque del exonerado. */
+  ordenCompraExenta?: string | null;
   /**
    * El documento que esta nota modifica. Va impreso: una nota de crédito sin decir a
    * qué factura corresponde no sirve ni al cliente ni a la contadora.
@@ -269,6 +277,7 @@ export async function buildInvoiceForPurchase(transactionId: string): Promise<In
       direccion: transaction.client.direccion,
       claveIhcafe: transaction.client.claveIhcafe,
       nombreFinca: transaction.client.nombreFinca,
+      registroExonerado: transaction.client.registroExonerado,
     },
     lineas,
     subtotal: lineas.reduce((suma, linea) => suma + linea.total, 0),
@@ -320,6 +329,7 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
       direccion: transaction.client.direccion,
       claveIhcafe: transaction.client.claveIhcafe,
       nombreFinca: transaction.client.nombreFinca,
+      registroExonerado: transaction.client.registroExonerado,
     },
     lineas,
     // Las ventas no llevan ajustes al pie: el bono y el descuento son de la compra.
@@ -374,6 +384,7 @@ export async function buildInvoiceFromDocument(documentId: string): Promise<Invo
         fechaLimite: '',
       },
       notaMotivo: documento.notaMotivo,
+      ordenCompraExenta: documento.ordenCompraExenta,
       documentoOrigen: documento.documentoOrigen
         ? {
             numeroCompleto: documento.documentoOrigen.numeroCompleto,

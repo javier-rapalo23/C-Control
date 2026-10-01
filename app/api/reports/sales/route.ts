@@ -1,5 +1,7 @@
 import { handleApiError, success } from '@/lib/api-response';
 import { getSaleReport, type PurchaseReportGroupBy } from '@/lib/reports';
+import { saleReportSheets } from '@/lib/report-exports';
+import { pideXlsx, xlsxReportResponse } from '@/lib/report-download';
 import { prisma } from '@/lib/prisma';
 import { endOfBusinessWeek, startOfBusinessWeek, todayBusinessDate } from '@/lib/business-date';
 
@@ -20,6 +22,10 @@ export async function GET(request: Request) {
       groupBy,
       sucursalId: searchParams.get('sucursalId'),
     });
+
+    if (pideXlsx(searchParams)) {
+      return xlsxReportResponse('ventas', report, saleReportSheets(report));
+    }
 
     return success(report);
   } catch (error) {
