@@ -240,6 +240,47 @@ function sumar(lineas: InvoiceLinea[]) {
   return { totalLibras, totalQuintalesOro };
 }
 
+/** Un decimal de Prisma o un número: los dos pasan por `Number()` igual. */
+type Numerico = number | { toString(): string };
+
+/**
+ * Lo que hace falta para armar la boleta de una compra. Lo cumple la fila guardada y
+ * también la compra calculada antes de guardarse, que es lo que permite que la vista
+ * previa salga de la misma función que el documento.
+ */
+export type CompraParaFactura = {
+  numeroInterno: string;
+  numeroFactura: string | null;
+  businessDate: string;
+  sucursalNombre: string;
+  metodoPago: string;
+  client: {
+    nombre: string;
+    rtn: string | null;
+    telefono: string | null;
+    direccion: string | null;
+    claveIhcafe: string | null;
+    nombreFinca: string | null;
+    registroExonerado: string | null;
+  };
+  items: Array<{
+    productoNombre: string;
+    pesoBruto: Numerico | null;
+    numeroSacos: number | null;
+    taraPorSaco: Numerico | null;
+    libras: Numerico;
+    porcentajeOro: Numerico | null;
+    quintalesOro: Numerico | null;
+    precioPorLibra: Numerico;
+    total: Numerico;
+  }>;
+  bono: Numerico;
+  bonoMotivo: string | null;
+  descuento: Numerico;
+  descuentoMotivo: string | null;
+  total: Numerico;
+};
+
 export async function buildInvoiceForPurchase(transactionId: string): Promise<InvoiceData | null> {
   const transaction = await prisma.purchaseTransaction.findUnique({
     where: { id: transactionId },
@@ -247,6 +288,29 @@ export async function buildInvoiceForPurchase(transactionId: string): Promise<In
   });
   if (!transaction) return null;
 
+  return invoiceDataForCompra(
+    {
+      ...transaction,
+      numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
+      businessDate: toBusinessDateString(transaction.businessDate),
+      sucursalNombre: transaction.sucursal.nombre,
+    },
+    await getEmpresa(),
+  );
+}
+
+/**
+ * Boleta de una compra que todavía no se guardó, para la vista previa. Sin número
+ * interno —lo asigna la base al guardar— y sin documento fiscal: eso lo agrega quien
+ * llama, si corresponde.
+ */
+export async function buildInvoiceForPurchaseDraft(
+  compra: Omit<CompraParaFactura, 'numeroInterno'>,
+): Promise<InvoiceData> {
+  return invoiceDataForCompra({ ...compra, numeroInterno: '' }, await getEmpresa());
+}
+
+function invoiceDataForCompra(transaction: CompraParaFactura, empresa: InvoiceEmpresa): InvoiceData {
   const lineas: InvoiceLinea[] = transaction.items.map((item) => ({
     productoNombre: item.productoNombre,
     pesoBruto: item.pesoBruto !== null ? Number(item.pesoBruto) : null,
@@ -264,12 +328,12 @@ export async function buildInvoiceForPurchase(transactionId: string): Promise<In
   return {
     kind: 'compra',
     titulo: 'Comprobante de Compra',
-    numeroInterno: formatNumeroInterno('compra', transaction.numeroInterno),
+    numeroInterno: transaction.numeroInterno,
     numeroFactura: transaction.numeroFactura,
-    businessDate: toBusinessDateString(transaction.businessDate),
-    sucursalNombre: transaction.sucursal.nombre,
+    businessDate: transaction.businessDate,
+    sucursalNombre: transaction.sucursalNombre,
     metodoPago: paymentMethodLabel(transaction.metodoPago),
-    empresa: await getEmpresa(),
+    empresa,
     cliente: {
       nombre: transaction.client.nombre,
       rtn: transaction.client.rtn,

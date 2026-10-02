@@ -17,7 +17,12 @@ import {
   tipoDocumentoLabel,
   type TipoNota,
 } from '@/lib/fiscal';
-import { buildInvoiceForGrinding, buildInvoiceForPurchase, buildInvoiceForSale } from '@/lib/build-invoice';
+import {
+  buildInvoiceForGrinding,
+  buildInvoiceForPurchase,
+  buildInvoiceForSale,
+  type InvoiceDocumentoFiscal,
+} from '@/lib/build-invoice';
 import type { FiscalDocumentDTO, FiscalNotaResumenDTO } from '@/types/domain';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
@@ -504,6 +509,73 @@ export async function emitirDocumentoFiscal(
   // Prisma (2 s de espera, 5 s de transacción) abortarían esa cola con dos cajas
   // emitiendo a la vez.
   { maxWait: 10_000, timeout: 20_000 });
+}
+
+export type VistaPreviaFiscal = {
+  /** Cómo saldría el documento si se emitiera ahora; null si no se va a emitir. */
+  documento: InvoiceDocumentoFiscal | null;
+  /** Por qué no se va a emitir al guardar, listo para mostrar. Null si sí. */
+  motivoNoEmite: string | null;
+};
+
+/**
+ * Cómo saldría el documento fiscal de una transacción que todavía no se guardó.
+ *
+ * **No bloquea ni consume nada**: lee el CAI sin `FOR UPDATE`, así que el número es el
+ * que toca *ahora*. Si otra caja emite entre la vista previa y la confirmación, el
+ * documento sale con el siguiente; por eso la vista previa lo rotula como próximo y no
+ * como asignado. El número de verdad lo pone `emitirDocumentoFiscal`.
+ *
+ * Solo ofrece emitir en modo `SISTEMA`: en `TALONARIO` el número lo trae el papel y se
+ * captura después, desde la fila de la transacción.
+ */
+export async function vistaPreviaDocumentoFiscal(
+  db: DbClient,
+  origen: OrigenDocumento,
+  lineas: LineaFiscal[],
+  totalTransaccion: number,
+): Promise<VistaPreviaFiscal> {
+  const tipoDocumento = TIPO_DOCUMENTO_POR_ORIGEN[origen];
+  const etiqueta = tipoDocumentoLabel(tipoDocumento);
+  const hoy = todayBusinessDate();
+
+  const cai = await db.fiscalCai.findFirst({ where: { tipoDocumento, estado: 'activo' } });
+  if (!cai) {
+    return {
+      documento: null,
+      motivoNoEmite: `No hay un CAI activo para ${etiqueta}. Regístrelo en Mantenimiento → Facturación.`,
+    };
+  }
+
+  if (cai.modo === 'TALONARIO') {
+    return {
+      documento: null,
+      motivoNoEmite: `El CAI de ${etiqueta} está en modo talonario: se emite después, desde la fila, con el número del papel.`,
+    };
+  }
+
+  const estadoCai = evaluarCai(cai, hoy);
+  const motivo = motivoNoEmitible(estadoCai, true);
+  if (motivo || estadoCai.siguienteCorrelativo === null) {
+    return { documento: null, motivoNoEmite: motivo ?? 'El CAI no puede emitir.' };
+  }
+
+  return {
+    documento: {
+      id: '',
+      numeroCompleto: formatNumeroFiscal({ ...cai, correlativo: estadoCai.siguienteCorrelativo }),
+      tipoDocumentoLabel: etiqueta,
+      estado: 'emitido',
+      fechaEmision: hoy,
+      cai: caiDelSnapshot(cai),
+      notaMotivo: null,
+      ordenCompraExenta: null,
+      documentoOrigen: null,
+      desglose: ajustarDesgloseAlTotal(desgloseIsv(lineas), totalTransaccion),
+      anulacionMotivo: null,
+    },
+    motivoNoEmite: null,
+  };
 }
 
 /** Una nota que no se puede emitir por el estado de lo que pretende corregir. */

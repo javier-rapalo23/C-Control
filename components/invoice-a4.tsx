@@ -171,6 +171,19 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
 
 .invoice-pie { margin-top: 10px; font-size: 9.5pt; }
 
+/* Aviso de la vista previa. Solo existe en pantalla: la hoja de verdad se imprime
+   desde /print, nunca desde la vista previa. */
+.invoice-vista-previa {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1.5px dashed #b45309;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 9pt;
+  font-weight: 600;
+  text-align: center;
+}
+
 .invoice-firmas { margin-top: 26mm; display: flex; justify-content: space-between; gap: 30px; }
 .invoice-firma { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 9pt; color: #444; }
 
@@ -326,7 +339,14 @@ function fechaOperacionLabel(kind: InvoiceData['kind']) {
   return 'Fecha de la venta';
 }
 
-function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[number] }) {
+type HojaProps = {
+  data: InvoiceData;
+  copia: (typeof COPIAS)[number];
+  /** Compra todavía sin guardar: el número fiscal es el próximo, no uno asignado. */
+  vistaPrevia?: boolean;
+};
+
+function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
   const esNota = data.kind === 'nota';
   // La nota hereda a quién se le dice productor: se emite sobre el documento de una
   // compra, y a quien se le compra café no se le llama cliente.
@@ -338,6 +358,14 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
 
   return (
       <article className="invoice-sheet">
+        {vistaPrevia ? (
+          <p className="invoice-vista-previa">
+            Vista previa — todavía no se guardó.{' '}
+            {documento
+              ? 'El número es el próximo del CAI; si otra caja emite antes, sale con el siguiente.'
+              : 'Esta compra no lleva documento fiscal al guardarse.'}
+          </p>
+        ) : null}
         <header className="invoice-top">
           <div>
             <p className="invoice-empresa-nombre">{empresa.nombre || 'Empresa sin nombre'}</p>
@@ -358,13 +386,14 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
                 que casa las dos copias y lo que se busca dentro del sistema. */}
             {documento ? (
               <div className="invoice-meta-fila invoice-folio">
-                <dt>No.</dt>
+                <dt>{vistaPrevia ? 'Próximo No.' : 'No.'}</dt>
                 <dd>{documento.numeroCompleto}</dd>
               </div>
             ) : (
               <div className="invoice-meta-fila invoice-folio">
                 <dt>No.</dt>
-                <dd>{data.numeroInterno}</dd>
+                {/* Una compra sin guardar todavía no tiene correlativo interno. */}
+                <dd>{data.numeroInterno || 'Se asigna al guardar'}</dd>
               </div>
             )}
             {documento && data.numeroInterno ? (
@@ -504,7 +533,7 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
                 <th>Sacos</th>
                 <th>Tara (lb)</th>
                 <th>Neto (lb)</th>
-                <th>Rend.</th>
+                <th>Factor</th>
                 <th>QQ oro</th>
                 <th>Precio</th>
                 <th>Valor</th>
@@ -625,13 +654,18 @@ function Hoja({ data, copia }: { data: InvoiceData; copia: (typeof COPIAS)[numbe
   );
 }
 
-export default function InvoiceA4({ data }: { data: InvoiceData }) {
+/**
+ * Con `vistaPrevia` sale solo la copia del cliente: las dos son el mismo documento, y
+ * lo que se revisa antes de guardar es el contenido, no el rótulo.
+ */
+export default function InvoiceA4({ data, vistaPrevia = false }: { data: InvoiceData; vistaPrevia?: boolean }) {
+  const copias = vistaPrevia ? COPIAS.slice(0, 1) : COPIAS;
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="invoice-copias">
-        {COPIAS.map((copia) => (
-          <Hoja key={copia.id} data={data} copia={copia} />
+        {copias.map((copia) => (
+          <Hoja key={copia.id} data={data} copia={copia} vistaPrevia={vistaPrevia} />
         ))}
       </div>
     </>

@@ -30,6 +30,12 @@ type OpcionesImpresion = {
   emitir?: boolean;
   /** Se llama tras emitir, para que el panel recargue los documentos. */
   onEmitido?: () => void | Promise<void>;
+  /**
+   * Pestaña ya abierta para la hoja A4. La pasa quien tiene que esperar algo antes de
+   * imprimir —guardar la compra, por ejemplo—: abierta después de ese `await`, el
+   * navegador la tomaría por un popup y la bloquearía.
+   */
+  pestana?: Window | null;
 };
 
 async function emitirDocumento(origen: 'compra' | 'venta' | 'molido', transactionId: string) {
@@ -59,12 +65,13 @@ export function usePrintInvoice() {
       if (formato === 'a4') {
         const url = `/print/${origen}/${transactionId}`;
         if (!debeEmitir) {
-          window.open(url, '_blank', 'noopener');
+          if (opciones.pestana) opciones.pestana.location.href = url;
+          else window.open(url, '_blank', 'noopener');
           return;
         }
         // La pestaña se abre ya, dentro del clic: abierta después del `await` el
         // navegador la toma por un popup y la bloquea.
-        const pestana = window.open('', '_blank');
+        const pestana = opciones.pestana !== undefined ? opciones.pestana : window.open('', '_blank');
         if (pestana) pestana.opener = null;
         try {
           setImprimiendoId(transactionId);

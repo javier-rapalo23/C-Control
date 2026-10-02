@@ -23,7 +23,7 @@ type CartItem = {
   numeroSacos: string;
   taraPorSaco: string;
   precioPorLibra: string;
-  /** Rendimiento del lote en porcentaje; vacío si todavía no se conoce. */
+  /** Factor oro del lote: el porcentaje que se resta a las libras. Vacío si todavía no se conoce. */
   porcentajeOro: string;
 };
 
@@ -464,10 +464,10 @@ export default function SalesPanel() {
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
-            {/* El rendimiento no bloquea la venta: sin él la línea se guarda sin
+            {/* El factor oro no bloquea la venta: sin él la línea se guarda sin
                 quintales oro y el monto sale igual. */}
             <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
-              Rendimiento (%)
+              Factor oro (%)
               <input
                 value={itemPorcentajeOro}
                 onChange={(event) => setItemPorcentajeOro(event.target.value)}
@@ -561,7 +561,7 @@ export default function SalesPanel() {
                         />
                       </label>
                       <label style={{ flex: '1 1 80px' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Rend. %</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Factor %</span>
                         <input
                           value={item.porcentajeOro}
                           onChange={(event) => updateCartItem(item.id, 'porcentajeOro', event.target.value)}
@@ -654,7 +654,7 @@ export default function SalesPanel() {
                       <th>Sacos</th>
                       <th>Peso neto</th>
                       <th>Precio</th>
-                      <th>Rend. / Qq oro</th>
+                      <th>Factor / Qq oro</th>
                       <th>Subtotal</th>
                     </tr>
                   </thead>

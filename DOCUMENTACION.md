@@ -509,15 +509,21 @@ ventas viejas conservan su `precioPorQuintalOro` y así se imprimen.
 #### La conversión a oro
 
 ```
-quintalesOro = (libras / 100) × (porcentajeOro / 100) / 1.25
+librasOro    = (libras − libras × factorOro / 100) / 1.25
+quintalesOro = librasOro / 100
 ```
 
 `lib/oro.ts` es la **única** implementación, compartida por compras y ventas. El divisor `1.25` es
-el factor de rendimiento de pergamino a oro del negocio, y `porcentajeOro` es el rendimiento del
-lote en porcentaje (`54` = 54 %), capturado por línea.
+el de pergamino a oro del negocio. El **factor oro** es el porcentaje que **se resta** a las libras
+(`60` = se va el 60 %), capturado por línea en el campo *Factor oro (%)*. La columna se sigue
+llamando `porcentajeOro`, pero guarda este factor.
 
-El caso con el que el negocio verificó la fórmula: **11.37 qq al 54 % = 4.91 qq oro**. Está como
-prueba en `tests/lib/oro.test.ts`.
+El caso con el que el negocio explicó la fórmula (02/10/2026): **428 lb con factor 60 → 428 − 60 % =
+171.2; 171.2 / 1.25 = 136.96 lb oro = 1.3696 qq oro**. Está como prueba en `tests/lib/oro.test.ts`.
+
+Hasta esa fecha la fórmula multiplicaba por el porcentaje en vez de restarlo:
+`(libras / 100) × (porcentajeOro / 100) / 1.25`. Con el mismo 60, el ejemplo daba 2.0544 qq. Las
+líneas guardadas antes conservan el `quintalesOro` que se calculó entonces: no se recalcularon.
 
 `lib/oro-preview.ts` repite la fórmula en punto flotante para las previsualizaciones del carrito:
 `lib/oro.ts` importa `Prisma.Decimal` y arrastraría el cliente de Prisma al bundle del navegador.

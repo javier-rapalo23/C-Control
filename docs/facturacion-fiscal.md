@@ -20,6 +20,16 @@ el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembr
 > `SISTEMA` ese número lo asigna la aplicación; en modo `TALONARIO` se teclea el del papel y el
 > sistema lo valida contra el rango. Emitir exige el permiso `fiscal_emitir`; anular, `fiscal_anular`.
 
+> **En Compras, guardar pasa por una vista previa.** El botón *"Revisar y guardar"* no escribe
+> nada: muestra la boleta tal como va a salir, en A4 o en ticket de 80 mm (se puede cambiar ahí
+> mismo), con el próximo número del CAI. *"Guardar e imprimir"* guarda la compra, emite la boleta
+> y la imprime en el formato elegido; *"Corregir"* vuelve al formulario sin consumir nada. Si no se
+> puede emitir —sin CAI activo, en `TALONARIO`, con el CAI vencido o agotado, o sin
+> `fiscal_emitir`— la vista previa lo dice antes y el botón pasa a *"Guardar sin boleta"*: la
+> compra queda en *Pendientes de emitir*. La vista previa sale de
+> `POST /api/purchase-transactions/preview`, que calcula con la misma función que el guardado
+> (`lib/purchase-draft.ts`) y arma con la misma que el documento (`lib/build-invoice.ts`).
+
 ---
 
 ## 1. Un documento, dos formatos de impresión

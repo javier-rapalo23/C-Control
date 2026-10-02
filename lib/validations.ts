@@ -33,7 +33,7 @@ export const createProductoSchema = z.object({
 });
 
 /**
- * Rendimiento del lote **en porcentaje** (54 = 54 %). El tope es 99.9999 porque
+ * Factor oro del lote **en porcentaje** (60 = se resta el 60 %; ver `lib/oro.ts`). El tope es 99.9999 porque
  * la columna es `Decimal(6, 4)` y no cabe un número mayor.
  */
 export const porcentajeOroSchema = z.number().positive().max(99.9999);

@@ -2,10 +2,9 @@ import { Prisma } from '@prisma/client';
 import { createPurchaseTransactionSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
-import { computeQuintalesOro } from '@/lib/oro';
+import { recalculateDailyBalance } from '@/lib/ledger';
+import { calcularCompra } from '@/lib/purchase-draft';
 import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 import { formatNumeroInterno } from '@/lib/build-invoice';
 
@@ -137,73 +136,9 @@ export async function POST(request: Request) {
     const payload = createPurchaseTransactionSchema.parse(await request.json());
 
     const transaction = await prisma.$transaction(async (tx) => {
-      const client = await tx.client.findUnique({ where: { id: payload.clientId } });
-      if (!client) {
-        throw new Error('Client not found');
-      }
-
-      const sucursalId = await resolveSucursalId(tx, payload.sucursalId);
-      await assertCashOpen(tx, payload.businessDate, sucursalId);
-
-      const items = await Promise.all(
-        payload.items.map(async (item) => {
-          const producto = await tx.producto.findUnique({ where: { id: item.productoId } });
-          if (!producto) {
-            throw new Error(`Producto not found: ${item.productoId}`);
-          }
-
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra);
-
-          let pesoBruto: Prisma.Decimal | null = null;
-          let numeroSacos: number | null = null;
-          let taraPorSaco: Prisma.Decimal | null = null;
-          let libras: Prisma.Decimal;
-
-          if (item.pesoBruto !== undefined) {
-            pesoBruto = new Prisma.Decimal(item.pesoBruto);
-            numeroSacos = item.numeroSacos ?? 0;
-            taraPorSaco = new Prisma.Decimal(item.taraPorSaco ?? Number(producto.taraPorSaco ?? 0));
-            const taraTotal = taraPorSaco.mul(numeroSacos);
-            libras = pesoBruto.sub(taraTotal);
-          } else {
-            libras = new Prisma.Decimal(item.libras ?? 0);
-          }
-
-          // El oro es solo una cifra de referencia para la facturación de fin de
-          // temporada: sin rendimiento capturado la línea no lo reporta, y el pago
-          // al productor —libras × precio— sale igual.
-          const porcentajeOro = item.porcentajeOro !== undefined ? new Prisma.Decimal(item.porcentajeOro) : null;
-          const quintalesOro = porcentajeOro !== null ? computeQuintalesOro(libras, porcentajeOro) : null;
-
-          const total = precioPorLibra.mul(libras);
-
-          return {
-            businessDate: parseBusinessDate(payload.businessDate),
-            sucursalId,
-            productoId: producto.id,
-            productoNombre: producto.nombre,
-            precioPorLibra,
-            pesoBruto,
-            numeroSacos,
-            taraPorSaco,
-            porcentajeOro,
-            quintalesOro,
-            libras,
-            total,
-          };
-        }),
-      );
-
-      // El café por su cuenta: es lo que reportan compras por producto y por cliente.
-      const subtotal = items.reduce((accumulator, item) => accumulator.add(item.total), new Prisma.Decimal(0));
-      const bono = new Prisma.Decimal(payload.bono ?? 0);
-      const descuento = new Prisma.Decimal(payload.descuento ?? 0);
-      // Lo que se le paga al productor, y por tanto lo que sale de la caja.
-      const total = subtotal.add(bono).sub(descuento);
-
-      if (total.isNegative()) {
-        throw new Error('NEGATIVE_TOTAL');
-      }
+      // El cálculo es el mismo que usa la vista previa de la boleta: lo que se revisó en
+      // pantalla es lo que se guarda.
+      const { client, sucursalId, items, bono, descuento, total } = await calcularCompra(tx, payload);
 
       const createdTransaction = await tx.purchaseTransaction.create({
         data: {

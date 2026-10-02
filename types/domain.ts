@@ -64,7 +64,7 @@ export type PurchaseDTO = {
   pesoBruto?: number | null;
   numeroSacos?: number | null;
   taraPorSaco?: number | null;
-  /** Rendimiento del lote en porcentaje (54 = 54 %), capturado por línea. */
+  /** Factor oro del lote en porcentaje (60 = se resta el 60 %), capturado por línea. Ver `lib/oro.ts`. */
   porcentajeOro?: number | null;
   quintalesOro?: number | null;
   libras: number;

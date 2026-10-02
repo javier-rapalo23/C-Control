@@ -419,7 +419,7 @@ model Purchase {
   pesoBruto             Decimal?             @db.Decimal(10, 2)
   numeroSacos           Int?
   taraPorSaco           Decimal?             @db.Decimal(6, 2)
-  // Rendimiento del lote en porcentaje (54.0000), igual que en `Sale.porcentajeOro`.
+  // Factor oro del lote en porcentaje (60.0000): lo que se resta a las libras. Igual que en `Sale.porcentajeOro`.
   porcentajeOro         Decimal?             @db.Decimal(6, 4)
   quintalesOro          Decimal?             @db.Decimal(10, 2)
   libras                Decimal              @db.Decimal(10, 2)

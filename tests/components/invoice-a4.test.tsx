@@ -200,9 +200,9 @@ describe('InvoiceA4 — venta', () => {
 
   // Lo que se quitó es de la compra: la venta es a un comprador que sí revisa el
   // detalle del lote.
-  it('conserva sacos y rendimiento, que la compra ya no imprime', () => {
+  it('conserva sacos y factor oro, que la compra ya no imprime', () => {
     expect(html).toContain('Sacos');
-    expect(html).toContain('Rend.');
+    expect(html).toContain('<th>Factor</th>');
   });
 
   it('el pie de la tabla cuadra en columnas con el encabezado', () => {
@@ -541,5 +541,58 @@ describe('InvoiceA4 — adquiriente exonerado', () => {
 
     expect(html).toContain('Adquiriente exonerado');
     expect(html).toContain('REG-EXO-4455');
+  });
+});
+
+describe('InvoiceA4 — vista previa', () => {
+  const DOCUMENTO = {
+    id: '',
+    numeroCompleto: '001-001-04-00000042',
+    tipoDocumentoLabel: 'Boleta de compra',
+    estado: 'emitido',
+    fechaEmision: '2026-09-14',
+    cai: { codigo: 'ABC123-DEF456', rangoDesde: 1, rangoHasta: 500, fechaLimite: '2099-12-31' },
+    desglose: {
+      importeExento: 25014,
+      importeExonerado: 0,
+      importeGravado15: 0,
+      importeGravado18: 0,
+      isv15: 0,
+      isv18: 0,
+    },
+    anulacionMotivo: null,
+  };
+
+  // Las dos copias son el mismo documento: antes de guardar se revisa el contenido.
+  it('muestra una sola copia, con el aviso de que no se guardó', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} vistaPrevia />);
+
+    expect(html.match(/class="invoice-sheet"/g)).toHaveLength(1);
+    expect(html).toContain('Original — Cliente');
+    expect(html).not.toContain('Copia — Control interno');
+    expect(html).toContain('Vista previa — todavía no se guardó');
+  });
+
+  // El número puede cambiar si otra caja emite antes: no se presenta como asignado.
+  it('rotula el número fiscal como el próximo', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} vistaPrevia />);
+
+    expect(html).toContain('Próximo No.');
+    expect(html).toContain('001-001-04-00000042');
+  });
+
+  it('sin número interno todavía, dice que se asigna al guardar', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, numeroInterno: '' }} vistaPrevia />);
+
+    expect(html).toContain('Se asigna al guardar');
+    expect(html).toContain('no lleva documento fiscal');
+  });
+
+  it('fuera de la vista previa no cambia nada', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
+
+    expect(html.match(/class="invoice-sheet"/g)).toHaveLength(2);
+    expect(html).not.toContain('Vista previa');
+    expect(html).not.toContain('Próximo No.');
   });
 });

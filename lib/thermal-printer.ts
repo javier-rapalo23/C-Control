@@ -257,7 +257,7 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
     if (item.quintalesOro != null && item.precioPorQuintalOro != null) {
       const detail = `${item.libras.toFixed(2)} lb (${item.quintalesOro.toFixed(2)} qq oro)`;
       chunks.push(text(twoColumns(detail, `L ${item.total.toFixed(2)}`)));
-      const pct = item.porcentajeOro != null ? `${item.porcentajeOro.toFixed(2)}% oro` : '';
+      const pct = item.porcentajeOro != null ? `${item.porcentajeOro.toFixed(2)}% factor` : '';
       const precio = `L${item.precioPorQuintalOro.toFixed(2)}/qq oro`;
       chunks.push(text([pct, precio].filter(Boolean).join('  ')));
       continue;
@@ -335,6 +335,51 @@ function ticketCopyChunks(data: TicketData, copia: (typeof TICKET_COPIAS)[number
 
 export function buildTicketBuffer(data: TicketData): Buffer {
   return Buffer.concat(TICKET_COPIAS.flatMap((copia) => ticketCopyChunks(data, copia)));
+}
+
+/**
+ * El ticket como texto, para mostrarlo en pantalla antes de imprimirlo.
+ *
+ * Sale de **los mismos bytes** que van a la térmica —la primera copia—, quitando los
+ * comandos ESC/POS en vez de maquetar aparte: así la vista previa no puede discrepar
+ * del papel. El centrado, que en la impresora es un comando, se reproduce rellenando
+ * con espacios.
+ */
+export function ticketTextoPlano(data: TicketData): string {
+  const bytes = Buffer.concat(ticketCopyChunks(data, TICKET_COPIAS[0]));
+  const lineas: string[] = [];
+  let actual = '';
+  let centrado = false;
+
+  const cerrarLinea = () => {
+    const linea = centrado && actual.length < LINE_WIDTH
+      ? ' '.repeat(Math.floor((LINE_WIDTH - actual.length) / 2)) + actual
+      : actual;
+    lineas.push(linea.trimEnd());
+    actual = '';
+  };
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+    if (byte === ESC) {
+      const comando = bytes[i + 1];
+      if (comando === 0x61) centrado = bytes[i + 2] === 0x01;
+      // ESC @ no lleva argumento; alinear y negrita llevan uno.
+      i += comando === 0x40 ? 1 : 2;
+    } else if (byte === GS) {
+      // El corte de papel: GS V 0.
+      i += 2;
+    } else if (byte === 0x0a) {
+      cerrarLinea();
+    } else {
+      actual += String.fromCharCode(byte);
+    }
+  }
+  if (actual) cerrarLinea();
+
+  // Los saltos del final son para que el corte no se coma el pie; en pantalla sobran.
+  while (lineas.length > 0 && lineas[lineas.length - 1] === '') lineas.pop();
+  return lineas.join('\n');
 }
 
 export type SummaryData = {

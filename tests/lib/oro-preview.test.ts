@@ -6,18 +6,19 @@ import { previewQuintalesOro } from '@/lib/oro-preview';
 // Prisma al bundle del cliente. Esta prueba es lo que impide que se separen.
 describe('previewQuintalesOro', () => {
   const casos: Array<[number, number]> = [
+    [428, 60],
     [1137, 54],
     [1000, 80],
     [237.5, 43.75],
     [95, 12.5],
   ];
 
-  it.each(casos)('coincide con el servidor para %p lb al %p %%', (libras, porcentaje) => {
+  it.each(casos)('coincide con el servidor para %p lb con factor %p', (libras, porcentaje) => {
     const servidor = Number(computeQuintalesOro(new Prisma.Decimal(libras), new Prisma.Decimal(porcentaje)));
     expect(previewQuintalesOro(libras, porcentaje)).toBeCloseTo(servidor, 10);
   });
 
-  it('devuelve 0 cuando todavía no hay rendimiento capturado', () => {
+  it('devuelve 0 cuando todavía no hay factor capturado', () => {
     expect(previewQuintalesOro(1137, 0)).toBe(0);
   });
 });

@@ -19,6 +19,8 @@ import InvoicePrintButtons from '@/components/invoice-print-buttons';
 import { useFiscal } from '@/lib/use-fiscal';
 import { usePrintInvoice } from '@/lib/use-print-invoice';
 import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
+import PurchasePreviewModal, { type PurchasePreview } from '@/components/purchase-preview-modal';
+import type { PrintFormat } from '@/lib/print-formats';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -30,7 +32,7 @@ type CartItem = {
   numeroSacos: string;
   taraPorSaco: string;
   precioPorLibra: string;
-  /** Rendimiento del lote en porcentaje; vacío si todavía no se conoce. */
+  /** Factor oro del lote: el porcentaje que se resta a las libras. Vacío si todavía no se conoce. */
   porcentajeOro: string;
 };
 
@@ -95,6 +97,14 @@ export default function PurchasesPanel() {
   const [descuento, setDescuento] = useState('');
   const [descuentoMotivo, setDescuentoMotivo] = useState('');
   const [clientModalOpen, setClientModalOpen] = useState(false);
+  // La vista previa guarda el payload con el que se armó: al confirmar se guarda ese,
+  // no lo que tenga el formulario en ese momento.
+  const [preview, setPreview] = useState<{ vista: PurchasePreview; payload: ReturnType<typeof payloadCompra> } | null>(
+    null,
+  );
+  const [previewFormato, setPreviewFormato] = useState<PrintFormat>('a4');
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
   const [itemPesoBruto, setItemPesoBruto] = useState('');
@@ -241,9 +251,33 @@ export default function PurchasesPanel() {
     setCart((current) => current.filter((item) => item.id !== id));
   }
 
-  async function saveTransaction(event: FormEvent) {
-    event.preventDefault();
+  function payloadCompra() {
+    return {
+      businessDate,
+      sucursalId,
+      clientId: selectedClientId,
+      metodoPago,
+      numeroFactura: numeroFactura.trim() || undefined,
+      bono: bonoNumero > 0 ? bonoNumero : undefined,
+      bonoMotivo: bonoNumero > 0 ? bonoMotivo.trim() || undefined : undefined,
+      descuento: descuentoNumero > 0 ? descuentoNumero : undefined,
+      descuentoMotivo: descuentoNumero > 0 ? descuentoMotivo.trim() || undefined : undefined,
+      items: cart.map((item) => ({
+        productoId: item.productoId,
+        pesoBruto: Number(item.pesoBruto),
+        numeroSacos: Number(item.numeroSacos) || 0,
+        taraPorSaco: Number(item.taraPorSaco) || 0,
+        precioPorLibra: Number(item.precioPorLibra),
+        porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
+      })),
+    };
+  }
 
+  /**
+   * Primer paso de guardar: arma la boleta tal como va a salir y la muestra. No escribe
+   * nada; lo que se guarda es lo que se confirma en la vista previa.
+   */
+  async function revisarCompra() {
     if (!selectedClientId) {
       setError('Selecciona un cliente');
       return;
@@ -259,33 +293,54 @@ export default function PurchasesPanel() {
       return;
     }
 
+    const payload = payloadCompra();
     try {
       setLoading(true);
       setError(null);
-      await fetch('/api/purchase-transactions', {
+      const vista = await fetch('/api/purchase-transactions/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          businessDate,
-          sucursalId,
-          clientId: selectedClientId,
-          metodoPago,
-          numeroFactura: numeroFactura.trim() || undefined,
-          bono: bonoNumero > 0 ? bonoNumero : undefined,
-          bonoMotivo: bonoNumero > 0 ? bonoMotivo.trim() || undefined : undefined,
-          descuento: descuentoNumero > 0 ? descuentoNumero : undefined,
-          descuentoMotivo: descuentoNumero > 0 ? descuentoMotivo.trim() || undefined : undefined,
-          items: cart.map((item) => ({
-            productoId: item.productoId,
-            pesoBruto: Number(item.pesoBruto),
-            numeroSacos: Number(item.numeroSacos) || 0,
-            taraPorSaco: Number(item.taraPorSaco) || 0,
-            precioPorLibra: Number(item.precioPorLibra),
-            porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
-          })),
-        }),
-      }).then(parseApiResponse);
+        body: JSON.stringify(payload),
+      }).then(parseApiResponse<PurchasePreview>);
 
+      setPreviewError(null);
+      setPreviewFormato(fiscal.formatoDefault);
+      setPreview({ vista, payload });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error preparando la vista previa');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Guarda la compra revisada y, si la vista previa dijo que corresponde, emite la boleta
+   * y la imprime en el formato elegido.
+   *
+   * Se guarda el payload **de la vista previa**, no el formulario: es lo que el
+   * productor vio. Si guardar falla, el modal sigue abierto con el error y no se
+   * consumió nada. Si lo que falla es la emisión, la compra ya quedó guardada: el aviso
+   * lo dice y la fila ofrece "Emitir e imprimir", como cualquier pendiente.
+   */
+  async function confirmarCompra() {
+    if (!preview) return;
+    const emitir = preview.vista.emitira;
+    const formato = previewFormato;
+
+    // La pestaña de la hoja A4 se abre ya, dentro del clic: abierta después de guardar,
+    // el navegador la bloquearía como popup.
+    const pestana = emitir && formato === 'a4' ? window.open('', '_blank') : undefined;
+
+    try {
+      setGuardando(true);
+      setPreviewError(null);
+      const creada = await fetch('/api/purchase-transactions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(preview.payload),
+      }).then(parseApiResponse<PurchaseTransactionDTO>);
+
+      setPreview(null);
       setCart([]);
       setMetodoPago(DEFAULT_PAYMENT_METHOD);
       setNumeroFactura('');
@@ -294,10 +349,19 @@ export default function PurchasesPanel() {
       setDescuento('');
       setDescuentoMotivo('');
       await refresh();
+
+      if (emitir) {
+        await impresion.imprimir('compra', creada.id, formato, {
+          emitir: true,
+          onEmitido: fiscal.refresh,
+          pestana,
+        });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
+      pestana?.close();
+      setPreviewError(err instanceof Error ? err.message : 'Error guardando compra por cliente');
     } finally {
-      setLoading(false);
+      setGuardando(false);
     }
   }
 
@@ -479,10 +543,10 @@ export default function PurchasesPanel() {
               Precio por libra
               <input value={itemPrice} onChange={(event) => setItemPrice(event.target.value)} type="number" step="0.01" required />
             </label>
-            {/* El rendimiento no bloquea la compra: si todavía no se conoce, la línea
+            {/* El factor oro no bloquea la compra: si todavía no se conoce, la línea
                 se guarda sin quintales oro y el productor cobra igual. */}
             <label className="stack-on-tablet" style={{ gridColumn: 'span 3' }}>
-              Rendimiento (%)
+              Factor oro (%)
               <input
                 value={itemPorcentajeOro}
                 onChange={(event) => setItemPorcentajeOro(event.target.value)}
@@ -588,7 +652,7 @@ export default function PurchasesPanel() {
                         />
                       </label>
                       <label style={{ flex: '1 1 80px' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Rend. %</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-soft)' }}>Factor %</span>
                         <input
                           value={item.porcentajeOro}
                           onChange={(event) => updateCartItem(item.id, 'porcentajeOro', event.target.value)}
@@ -679,8 +743,8 @@ export default function PurchasesPanel() {
                   ))}
                 </select>
               </label>
-              <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>
-                Guardar compra por cliente
+              <button className="btn-primary" type="button" onClick={() => void revisarCompra()}>
+                Revisar y guardar
               </button>
             </div>
           </div>
@@ -768,7 +832,7 @@ export default function PurchasesPanel() {
                       <th>Peso bruto</th>
                       <th>Sacos</th>
                       <th>Peso neto</th>
-                      <th>Rend. %</th>
+                      <th>Factor %</th>
                       <th>Qq oro</th>
                       <th>Precio / libra</th>
                       <th>Subtotal</th>
@@ -794,6 +858,16 @@ export default function PurchasesPanel() {
           </div>
         </article>
       </section>
+
+      <PurchasePreviewModal
+        preview={preview?.vista ?? null}
+        formato={previewFormato}
+        onFormatoChange={setPreviewFormato}
+        guardando={guardando}
+        error={previewError}
+        onClose={() => setPreview(null)}
+        onConfirm={() => void confirmarCompra()}
+      />
 
       <LoadingOverlay active={loading} />
     </main>
