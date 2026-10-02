@@ -746,7 +746,14 @@ export default function PurchasesPanel() {
                         transactionId={transaction.id}
                         formatoDefault={fiscal.formatoDefault}
                         imprimiendo={impresion.imprimiendoId === transaction.id}
-                        onImprimir={(formato) => void impresion.imprimir('compra', transaction.id, formato)}
+                        documento={fiscal.documentos[transaction.id] ?? null}
+                        caiActivo={fiscal.caiActivo}
+                        onImprimir={(formato, emitir) =>
+                          void impresion.imprimir('compra', transaction.id, formato, {
+                            emitir,
+                            onEmitido: fiscal.refresh,
+                          })
+                        }
                       />
                       <button className="btn-danger" type="button" onClick={() => void deleteTransaction(transaction.id)}>
                         Eliminar

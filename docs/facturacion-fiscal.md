@@ -11,9 +11,12 @@ el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembr
 > las **notas de crédito y débito**. Quedan fuera de alcance, por decisión del 27/09, las retenciones
 > IHCAFE y la guía de remisión.
 
-> **Lo primero, para que no haya malentendidos:** una transacción **sin documento emitido** se
-> imprime rotulada *"comprobante interno — no es documento fiscal"*, y no lleva CAI. Se vuelve
-> documento fiscal cuando alguien lo **emite**, y ahí toma el número del rango autorizado. En modo
+> **Lo primero, para que no haya malentendidos:** entregar el documento fiscal es obligatorio, así
+> que desde los paneles **no se imprime el comprobante interno**. Si la transacción no tiene
+> documento, el botón dice *"Emitir e imprimir"*: emite (toma el número del rango autorizado) y
+> después imprime. En modo `TALONARIO` o sin CAI activo el botón se apaga, porque no se puede emitir
+> solo. Las rutas de impresión siguen rotulando *"comprobante interno — no es documento fiscal"* lo
+> que llegue sin documento, pero los paneles ya no las llaman así. Al emitir, en modo
 > `SISTEMA` ese número lo asigna la aplicación; en modo `TALONARIO` se teclea el del papel y el
 > sistema lo valida contra el rango. Emitir exige el permiso `fiscal_emitir`; anular, `fiscal_anular`.
 

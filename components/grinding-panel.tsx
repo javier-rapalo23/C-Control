@@ -379,7 +379,14 @@ export default function GrindingPanel() {
                             transactionId={service.id}
                             formatoDefault={fiscal.formatoDefault}
                             imprimiendo={impresion.imprimiendoId === service.id}
-                            onImprimir={(formato) => void impresion.imprimir('molido', service.id, formato)}
+                            documento={documento}
+                            caiActivo={fiscal.caiActivo}
+                            onImprimir={(formato, emitir) =>
+                              void impresion.imprimir('molido', service.id, formato, {
+                                emitir,
+                                onEmitido: fiscal.refresh,
+                              })
+                            }
                           />
                           <button
                             className="btn-danger"

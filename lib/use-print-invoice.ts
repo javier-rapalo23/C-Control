@@ -21,6 +21,25 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 
 const ESPERA_MAXIMA_MS = 20_000;
 
+type OpcionesImpresion = {
+  /**
+   * La transacción todavía no tiene documento emitido: se emite antes de imprimir.
+   * Entregar el documento fiscal es obligatorio, así que imprimir nunca saca el
+   * comprobante interno; emitir aquí consume el siguiente número del CAI.
+   */
+  emitir?: boolean;
+  /** Se llama tras emitir, para que el panel recargue los documentos. */
+  onEmitido?: () => void | Promise<void>;
+};
+
+async function emitirDocumento(origen: 'compra' | 'venta' | 'molido', transactionId: string) {
+  await fetch('/api/fiscal-documents', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ origen, transactionId }),
+  }).then(parseApiResponse);
+}
+
 export function usePrintInvoice() {
   const [imprimiendoId, setImprimiendoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,16 +47,46 @@ export function usePrintInvoice() {
   const imprimir = useCallback(
     // Con `origen = 'nota'`, el id es el del **documento**: una nota de crédito no ampara
     // ninguna transacción.
-    async (origen: 'compra' | 'venta' | 'molido' | 'nota', transactionId: string, formato: PrintFormat) => {
+    async (
+      origen: 'compra' | 'venta' | 'molido' | 'nota',
+      transactionId: string,
+      formato: PrintFormat,
+      opciones: OpcionesImpresion = {},
+    ) => {
       setError(null);
+      const debeEmitir = Boolean(opciones.emitir) && origen !== 'nota';
 
       if (formato === 'a4') {
-        window.open(`/print/${origen}/${transactionId}`, '_blank', 'noopener');
+        const url = `/print/${origen}/${transactionId}`;
+        if (!debeEmitir) {
+          window.open(url, '_blank', 'noopener');
+          return;
+        }
+        // La pestaña se abre ya, dentro del clic: abierta después del `await` el
+        // navegador la toma por un popup y la bloquea.
+        const pestana = window.open('', '_blank');
+        if (pestana) pestana.opener = null;
+        try {
+          setImprimiendoId(transactionId);
+          await emitirDocumento(origen as 'compra' | 'venta' | 'molido', transactionId);
+          await opciones.onEmitido?.();
+          if (pestana) pestana.location.href = url;
+          else window.open(url, '_blank', 'noopener');
+        } catch (err) {
+          pestana?.close();
+          setError(err instanceof Error ? err.message : 'Error emitiendo el documento');
+        } finally {
+          setImprimiendoId(null);
+        }
         return;
       }
 
       try {
         setImprimiendoId(transactionId);
+        if (debeEmitir) {
+          await emitirDocumento(origen as 'compra' | 'venta' | 'molido', transactionId);
+          await opciones.onEmitido?.();
+        }
         const { jobId } = await fetch('/api/print/ticket', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
