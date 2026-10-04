@@ -49,7 +49,6 @@ export default function DashboardHome() {
   const [productos, setProductos] = useState<ProductoDTO[]>([]);
   const [productosLoading, setProductosLoading] = useState(false);
   const [companyName, setCompanyName] = useState<string | null>(null);
-  const [printingSummary, setPrintingSummary] = useState(false);
 
   const fetchLedger = useCallback(async () => {
     if (!sucursalId) return;
@@ -69,43 +68,6 @@ export default function DashboardHome() {
   useEffect(() => {
     void fetchLedger();
   }, [fetchLedger]);
-
-  async function printSummary() {
-    try {
-      setError(null);
-      setPrintingSummary(true);
-
-      const { jobId } = await fetch('/api/print/summary', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ businessDate, sucursalId }),
-      }).then(parseApiResponse<{ jobId: string; status: string }>);
-
-      const deadline = Date.now() + 20000;
-      let status = 'pending';
-      let jobError: string | null = null;
-
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const job = await fetch(`/api/print/jobs/${jobId}`, { cache: 'no-store' }).then(
-          parseApiResponse<{ status: string; error: string | null }>,
-        );
-        status = job.status;
-        jobError = job.error;
-        if (status === 'done' || status === 'error') break;
-      }
-
-      if (status === 'error') {
-        setError(jobError || 'Error imprimiendo resumen');
-      } else if (status !== 'done') {
-        setError('La impresora no respondió a tiempo. Verifica que esté encendida y conectada a la red.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error imprimiendo resumen');
-    } finally {
-      setPrintingSummary(false);
-    }
-  }
 
   useEffect(() => {
     let mounted = true;
@@ -257,11 +219,6 @@ export default function DashboardHome() {
         <article className="card wide">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h3>Resumen de compras del día</h3>
-            {/* <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button className="btn-primary" type="button" disabled={printingSummary} onClick={() => void printSummary()}>
-                {printingSummary ? 'Imprimiendo...' : 'Imprimir resumen del día'}
-              </button>
-            </div> */}
           </div>
           <table className="table-like" style={{ marginTop: 8 }}>
             <thead>

@@ -4,14 +4,11 @@ import { paymentMethodLabel } from '@/lib/payment-methods';
 import { tipoDocumentoLabel } from '@/lib/fiscal';
 
 /**
- * Datos de la factura A4, para compras y para ventas.
+ * Datos de la factura, en hoja A4 o en papel continuo, para compras y para ventas.
  *
- * Es un módulo aparte de `lib/build-ticket.ts` porque los dos documentos no
- * cargan lo mismo: el ticket térmico tiene 32 caracteres de ancho y solo cabe el
- * resultado, mientras que en A4 sí entra la trazabilidad completa del pesaje
- * —bruto, sacos, tara, rendimiento, quintales oro— que es justo lo que el
- * productor revisa cuando le liquidan. Devuelve datos y no un buffer: en A4
- * maqueta el navegador, no la impresora.
+ * Lleva la trazabilidad completa del pesaje —bruto, sacos, tara, factor oro,
+ * quintales oro— que es justo lo que el productor revisa cuando le liquidan.
+ * Devuelve datos y no un buffer: maqueta el navegador, no la impresora.
  */
 
 export type InvoiceFiscal = {

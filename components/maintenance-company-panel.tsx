@@ -19,8 +19,6 @@ export default function MaintenanceCompanyPanel() {
     telefono: '',
     direccion: '',
     email: '',
-    printerIp: '',
-    printerPort: '9100',
     cai: '',
     facturaRangoDesde: '',
     facturaRangoHasta: '',
@@ -42,8 +40,6 @@ export default function MaintenanceCompanyPanel() {
         telefono: data.telefono,
         direccion: data.direccion,
         email: data.email,
-        printerIp: data.printerIp,
-        printerPort: String(data.printerPort || 9100),
         cai: data.cai,
         facturaRangoDesde: data.facturaRangoDesde,
         facturaRangoHasta: data.facturaRangoHasta,
@@ -70,10 +66,7 @@ export default function MaintenanceCompanyPanel() {
       const res = await fetch('/api/settings/company', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          ...companyForm,
-          printerPort: companyForm.printerPort ? Number(companyForm.printerPort) : undefined,
-        }),
+        body: JSON.stringify(companyForm),
       });
       const data = await parseApiResponse<CompanySettingsDTO>(res);
       setCompany(data);
@@ -114,30 +107,6 @@ export default function MaintenanceCompanyPanel() {
         <label style={{ gridColumn: 'span 12' }}>
           Correo electrónico
           <input value={companyForm.email} onChange={(e) => setCompanyForm((f) => ({ ...f, email: e.target.value }))} type="email" />
-        </label>
-
-        <div style={{ gridColumn: 'span 12', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
-          <h4 style={{ margin: '0 0 4px' }}>Impresora térmica</h4>
-          <p style={{ color: 'var(--text-soft)', fontSize: 13, margin: '0 0 12px' }}>
-            Los tickets se envían directamente a esta impresora de red (sin vista previa).
-          </p>
-        </div>
-        <label style={{ gridColumn: 'span 8' }}>
-          IP de la impresora
-          <input
-            value={companyForm.printerIp}
-            onChange={(e) => setCompanyForm((f) => ({ ...f, printerIp: e.target.value }))}
-            placeholder="192.168.101.98"
-          />
-        </label>
-        <label style={{ gridColumn: 'span 4' }}>
-          Puerto
-          <input
-            value={companyForm.printerPort}
-            onChange={(e) => setCompanyForm((f) => ({ ...f, printerPort: e.target.value }))}
-            type="number"
-            placeholder="9100"
-          />
         </label>
 
         <div style={{ gridColumn: 'span 12', marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>

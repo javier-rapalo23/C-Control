@@ -9,7 +9,7 @@ import type { FiscalCaiDTO, FiscalDocumentDTO } from '@/types/domain';
  * principal y el otro al lado, para el caso suelto.
  *
  * El formato predeterminado se configura en Mantenimiento → Facturación. No son dos
- * documentos distintos: el ticket de 80 mm y la hoja A4 llevan el mismo número, el
+ * documentos distintos: la hoja A4 y el papel continuo llevan el mismo número, el
  * mismo CAI y el mismo desglose.
  *
  * Entregar el documento fiscal es obligatorio, así que no se imprime el comprobante
@@ -26,6 +26,12 @@ type Props = {
   caiActivo: FiscalCaiDTO | null;
   /** `emitir` es true cuando hay que emitir el documento antes de imprimirlo. */
   onImprimir: (formato: PrintFormat, emitir: boolean) => void;
+  /**
+   * Un solo botón, en el formato configurado, que abre la hoja en la vista previa de
+   * impresión del navegador. Lo usa Compras: ahí el formato se elige en la vista previa
+   * al guardar, y en la fila basta con poder volver a ver e imprimir el documento.
+   */
+  unSoloBoton?: boolean;
 };
 
 export default function InvoicePrintButtons({
@@ -36,6 +42,7 @@ export default function InvoicePrintButtons({
   documento,
   caiActivo,
   onImprimir,
+  unSoloBoton = false,
 }: Props) {
   const otro = otherPrintFormat(formatoDefault);
   const tipo = tipoDocumentoLabel(TIPO_DOCUMENTO_POR_ORIGEN[origen]).toLowerCase();
@@ -61,17 +68,22 @@ export default function InvoicePrintButtons({
       >
         {imprimiendo ? (emitir ? 'Emitiendo...' : 'Imprimiendo...') : etiqueta}
       </button>
-      <button
-        className="btn-secondary"
-        type="button"
-        disabled={imprimiendo || bloqueo !== null}
-        title={bloqueo ?? `${emitir ? 'Emitir e imprimir' : 'Imprimir'} esta vez en ${printFormatLabel(otro)}`}
-        onClick={() => onImprimir(otro, emitir)}
-        data-origen={origen}
-        data-transaccion={transactionId}
-      >
-        {printFormatLabel(otro)}
-      </button>
+      {unSoloBoton ? null : (
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={imprimiendo || bloqueo !== null}
+          title={
+            bloqueo ??
+            `${emitir ? 'Emitir e imprimir' : 'Imprimir'} esta vez en ${printFormatLabel(otro)}`
+          }
+          onClick={() => onImprimir(otro, emitir)}
+          data-origen={origen}
+          data-transaccion={transactionId}
+        >
+          {printFormatLabel(otro)}
+        </button>
+      )}
     </>
   );
 }

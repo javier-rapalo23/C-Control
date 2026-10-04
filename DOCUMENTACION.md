@@ -50,7 +50,7 @@ Bloques funcionales:
 | Módulo | Ruta web | Descripción |
 |---|---|---|
 | Dashboard | `/` | Resumen del día: saldo inicial, totales, movimientos recientes, agrupación por producto. |
-| Compras | `/purchases` | Compras por cliente con carrito multi-producto, peso bruto/tara/sacos, impresión de ticket. |
+| Compras | `/purchases` | Compras por cliente con carrito multi-producto, peso bruto/tara/sacos, vista previa de la boleta antes de guardar e impresión en A4 o papel continuo. |
 | Ventas | `/sales` | Ventas por cliente con carrito, peso bruto/tara/sacos y rendimiento por línea. |
 | Molido | `/molido` | Servicio de molido sobre café del cliente: libras molidas y monto cobrado. |
 | Gastos | `/expenses` | Registro de gastos por categoría. |
@@ -117,17 +117,12 @@ flowchart TB
   subgraph Next["Next.js 15 (App Router)"]
     MW["middleware.ts (Edge)<br/>verifica token firmado + RBAC"]
     RH["Route Handlers<br/>app/api/**/route.ts"]
-    LIB["lib/*<br/>ledger · validations · business-date<br/>thermal-printer · build-ticket"]
+    LIB["lib/*<br/>ledger · validations · business-date<br/>build-invoice · fiscal-document"]
   end
 
   DB[("PostgreSQL<br/>vía Prisma")]
-  AGENT["Agente de impresión local<br/>(polling con x-agent-token)"]
-  PRN["Impresora térmica ESC/POS<br/>TCP 9100"]
 
   UI -->|fetch JSON| MW --> RH --> LIB --> DB
-  AGENT -->|GET /api/print/agent/pending| RH
-  AGENT -->|socket TCP| PRN
-  AGENT -->|POST /api/print/agent/:id/complete| RH
 ```
 
 ### Capas
@@ -138,7 +133,7 @@ flowchart TB
 | Route Handlers | Parseo/validación Zod → transacción Prisma → mapeo a DTO → `ApiResponse<T>` | `app/api/**/route.ts` |
 | Dominio | Recálculo de balances, resolución de sucursal, conversión de decimales | `lib/ledger.ts`, `lib/business-date.ts` |
 | Café | Catálogo cerrado de tipos y la única conversión a quintales oro | `lib/coffee-types.ts`, `lib/oro.ts` (servidor), `lib/oro-preview.ts` (navegador) |
-| Impresión | Buffer ESC/POS del ticket térmico y datos de la factura A4 | `lib/thermal-printer.ts`, `lib/build-ticket.ts`, `lib/build-invoice.ts` |
+| Impresión | Datos de la factura, en hoja A4 o papel continuo | `lib/build-invoice.ts`, `lib/print-formats.ts`, `components/invoice-a4.tsx` |
 | Validación | Esquemas Zod compartidos por todas las rutas | `lib/validations.ts` |
 | Sesión | Firma/verificación HMAC del token (Edge + Node) y hashing scrypt de contraseñas (solo Node) | `lib/session.ts`, `lib/password.ts` |
 | Caja y planilla | Arqueo, bloqueo de fechas cerradas, reportes por rango y cálculo de planilla | `lib/cash-session.ts`, `lib/reports.ts`, `lib/payroll.ts` |
@@ -174,7 +169,6 @@ c-control/
 │   │   ├── employees/        # empleados · asistencia · adelantos · pagos
 │   │   ├── expenses/         # gastos
 │   │   ├── ledger/           # libro diario y saldo inicial
-│   │   ├── print/            # tickets, resumen, cola de trabajos y agente
 │   │   ├── producto-cargas/  # cargas/descargas de inventario
 │   │   ├── productos/        # catálogo y stock
 │   │   ├── purchases/ purchase-transactions/
@@ -397,13 +391,12 @@ parcialmente por varias planillas, y `montoAplicado` por sí solo no dice cuánt
 
 #### Configuración y sistema
 
-- `CompanySettings` — singleton con datos de la empresa, IP/puerto de la impresora térmica y los
+- `CompanySettings` — singleton con datos de la empresa, el formato de impresión por omisión y los
   datos de factura autorizada (`cai`, `facturaRangoDesde`, `facturaRangoHasta`,
   `facturaFechaLimite`). Vacíos mientras se facture con talonario físico: con `cai` lleno, la
   factura A4 empieza a imprimir el bloque fiscal (§10.2).
 - `User` — usuarios persistidos (`userId` único, `password` hasheado con scrypt, `role`, `activo`).
 - `ModuleAccess` — override de roles permitidos por módulo (`roles String[]`).
-- `PrintJob` — cola de impresión (`pending` → `claimed` → `done` | `error`).
 
 ---
 
@@ -917,7 +910,7 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 
 | Método | Ruta | Notas |
 |---|---|---|
-| GET / PATCH | `/api/settings/company` | Datos de empresa + `printerIp` / `printerPort`. |
+| GET / PATCH | `/api/settings/company` | Datos de empresa y formato de impresión por omisión. |
 | GET / POST | `/api/settings/users` | Gestión de usuarios de BD. |
 | PATCH / DELETE | `/api/settings/users/:id` | |
 | GET | `/api/settings/module-access` | Devuelve todos los módulos con sus roles efectivos. |
@@ -927,14 +920,8 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 
 | Método | Ruta | Notas |
 |---|---|---|
-| POST | `/api/print/ticket` | `{ transactionId, kind?: 'purchase' \| 'sale' }` → encola `PrintJob`. |
-| — | `/print/compra/:id`, `/print/venta/:id`, `/print/molido/:id` | **Páginas**, no API: factura A4 para el diálogo del navegador (§10.2). Imprimen el documento fiscal si ya se emitió (§10.3). |
-| GET | `/api/print/ticket/data` | Devuelve `payloadB64` sin encolar (impresión directa desde el cliente). |
-| POST | `/api/print/summary` | `{ businessDate, sucursalId? }` → encola el resumen del día. |
-| GET | `/api/print/summary/data` | `payloadB64` del resumen. |
-| GET | `/api/print/jobs/:id` | Estado del trabajo (`pending` / `claimed` / `done` / `error`). |
-| GET | `/api/print/agent/pending` | **Agente.** Reclama atómicamente el trabajo pendiente más antiguo. |
-| POST | `/api/print/agent/:id/complete` | **Agente.** `{ success: boolean, error?: string }`. |
+| — | `/print/compra/:id`, `/print/venta/:id`, `/print/molido/:id`, `/print/nota/:id` | **Páginas**, no API: la factura para el diálogo del navegador, con `?formato=a4\|continuo` (§10). Imprimen el documento fiscal si ya se emitió (§10.3). |
+| POST | `/api/purchase-transactions/preview` | Mismo cuerpo que el POST de compras; no escribe. Devuelve la boleta como va a salir y si se va a poder emitir. |
 
 ### Datos y utilidades
 
@@ -945,8 +932,7 @@ Los pagos y anticipos generan su `Expense` de categoría `Planilla` y descuentan
 ### Códigos de error usados
 
 `VALIDATION_ERROR` · `BAD_REQUEST` · `NOT_FOUND` · `UNAUTHORIZED` · `FORBIDDEN` ·
-`MISSING_QUERY` · `INTERNAL_ERROR` · `RBAC_CONFIG_ERROR` · `PRINTER_NOT_CONFIGURED` ·
-`PRINT_AGENT_NOT_CONFIGURED`.
+`MISSING_QUERY` · `INTERNAL_ERROR` · `RBAC_CONFIG_ERROR`.
 
 ---
 
@@ -1038,8 +1024,7 @@ formato hasheado también se acepta ahí, pero el login nunca las reescribe.
 - Sin sesión válida → redirección a `/login`, limpiando de paso la cookie inválida o expirada.
 - Con sesión válida visitando `/login` → redirección a `/`.
 
-**Rutas `/api`** — exentas: `/api/auth/*`, `/api/health`, `/api/print/agent/*` (este último se
-autentica con `PRINT_AGENT_TOKEN`). El resto exige sesión válida salvo que se desactive con
+**Rutas `/api`** — exentas: `/api/auth/*` y `/api/health`. El resto exige sesión válida salvo que se desactive con
 `RBAC_ENABLED=false`; **el valor por defecto es activo**, de modo que dejar la API sin control de
 acceso tenga que ser una decisión explícita.
 
@@ -1196,8 +1181,8 @@ servidor autorizó la navegación.
 
 | Panel | Líneas | Contenido |
 |---|---|---|
-| `sales-panel.tsx` | ~700 | Ventas por cliente, carrito, pesaje bruto/tara/sacos y rendimiento por línea, ticket y factura A4. |
-| `purchases-panel.tsx` | ~730 | Compras por cliente, pesaje bruto/tara/sacos, rendimiento por línea, forma de pago (incluida "Pendiente de pago"), número de factura, ticket y factura A4. |
+| `sales-panel.tsx` | ~700 | Ventas por cliente, carrito, pesaje bruto/tara/sacos y factor oro por línea y factura A4 o papel continuo. |
+| `purchases-panel.tsx` | ~730 | Compras por cliente, pesaje bruto/tara/sacos, factor oro por línea, forma de pago (incluida "Pendiente de pago"), número de factura, vista previa de la boleta y factura A4 o papel continuo. |
 | `grinding-panel.tsx` | ~330 | Servicio de molido: registro y corrección de libras y monto (§6.12). |
 | `cash-session-panel.tsx` | ~740 | Apertura y cierre de caja, ingresos, salidas y traslados. |
 | `pending-payments-section.tsx` | ~220 | Sección de Caja: compras pendientes, pago y deshacer (§6.13). |
@@ -1248,136 +1233,48 @@ para que ningún contenedor los recorte:
 
 ## 10. Impresión
 
-Son **dos formatos del mismo documento**, no dos documentos: el ticket de 80 mm y la hoja A4 llevan
-el mismo número fiscal, el mismo CAI y el mismo desglose (§10.3). Lo que cambia es el papel y el
-camino hacia la impresora, porque ahí el problema sí es distinto.
+Son **dos formatos del mismo documento**, no dos documentos: la hoja A4 y el papel continuo llevan el
+mismo número fiscal, el mismo CAI y el mismo desglose (§10.3). Los dos se maquetan en HTML y se
+imprimen con el diálogo del navegador; lo que cambia es el papel.
 
-Cuál se usa por omisión se configura en **Mantenimiento → Facturación**; en cada compra, venta o
-molido el botón principal imprime en ese formato y el de al lado en el otro, para un caso suelto.
+Cuál se usa por omisión se configura en **Mantenimiento → Facturación**. En Ventas y Molido el botón
+principal imprime en ese formato y el de al lado en el otro; en Compras hay un solo botón, porque el
+formato se elige en la vista previa al guardar.
 
-| | Ticket térmico | Factura A4 |
+| | Hoja A4 | Papel continuo |
 | --- | --- | --- |
-| Destino | ESC/POS de red, 32 columnas | Cualquier impresora del sistema operativo |
-| Camino | `PrintJob` → agente local → TCP 9100 | Diálogo de impresión del navegador |
-| Formato | Buffer binario armado en el servidor | HTML maquetado con `@page { size: A4 }` |
-| Contenido | El resultado: libras, precio, total, pesaje resumido | Trazabilidad completa del pesaje y firmas |
-| Datos fiscales | Los mismos: número, CAI, rango, fecha límite, desglose | Los mismos |
-| Copias | Dos tiras con corte propio | Dos hojas A4 |
-| Requiere | IP de impresora + agente corriendo | Nada |
+| Papel | A4, `@page { size: A4; margin: 14mm }` | Carta continua 9.5" × 11", en blanco, con copias: `@page { size: 9.5in 11in }` |
+| Copias | Dos hojas: original y control interno | **Una sola hoja**: el papel saca la copia de una pasada |
+| Color | El de la maquetación | Todo en negro al imprimir: una matricial puntea los grises y en el carbón se pierden |
+| Requiere | La impresora instalada en la máquina | Igual, eligiendo la matricial en el diálogo |
 
-### 10.1 Ticket térmico
+La página es la misma para los dos: `/print/<origen>/:id?formato=a4|continuo`. Sin el parámetro, A4.
 
-Impresión ESC/POS de 32 columnas hacia impresoras de red (puerto TCP 9100 por defecto).
+### 10.1 Ticket térmico (retirado)
 
-`lib/thermal-printer.ts` construye los buffers binarios (`ESC @` init, `ESC a` alineación,
-`ESC E` negrita, `GS V` corte) y expone:
+Hasta el 02/10/2026 existía un tercer formato, el ticket ESC/POS de 80 mm, que se mandaba a una
+impresora de red por medio de una cola (`PrintJob`) y un agente local. **Se dejó de usar y se quitó
+entero**: `lib/thermal-printer.ts`, `lib/build-ticket.ts`, `lib/print-agent-auth.ts`, las rutas
+`/api/print/*`, el resumen del día en térmica, la IP y el puerto de la impresora en
+`CompanySettings` y la tabla `PrintJob`. La migración `20261002000000_remove_thermal_printing` borra
+las columnas y la tabla, y pasa a `a4` a quien tuviera `termico80` como formato por omisión. Si
+algún día vuelve a hacer falta, está en el historial de git antes de ese commit.
 
-- `buildTicketBuffer(data)` — comprobante de compra/venta. Si la línea trae `quintalesOro` +
-  `precioPorQuintalOro`, imprime el detalle en formato oro; en caso contrario, `lb × precio`.
-  Debajo del neto imprime el **pesaje** —`Bruto 250.00lb`, `Tara 5.00lb (2 sacos)`— y, en otra
-  línea, los quintales oro si los hay: en 32 columnas las tres cosas no caben juntas. Cada dato sale
-  solo si existe, así que una venta vieja sin pesaje se imprime como antes.
+### 10.2 Factura A4 y papel continuo
 
-  El campo `kind` distingue compra de venta: **en la compra no se imprime el conteo de sacos**, igual
-  que en su factura A4 (§10.2). Es el único dato que cambia entre las dos.
+Páginas propias —`/print/compra/:id`, `/print/venta/:id`, `/print/molido/:id`— que maquetan la
+factura en HTML y la mandan a imprimir con el diálogo del navegador. Los paneles las abren en una
+pestaña nueva.
 
-  **Con documento fiscal emitido el ticket imprime lo mismo que la hoja**: tipo de documento, número
-  fiscal, correlativo interno rotulado, CAI, rango —partido en dos líneas, que en 32 columnas no cabe
-  de otra forma—, fecha límite, las dos fechas, el desglose de totales y `*** ANULADO ***` con su
-  motivo. Sin documento, encabeza `COMPROBANTE INTERNO / No es documento fiscal`.
-
-  Los datos salen del **mismo `InvoiceData`** que la hoja A4 (`ticketDataFromInvoice`), así que los dos
-  formatos no pueden discrepar: si hay documento, los dos leen su snapshot.
-
-  Imprime **dos copias**, igual que la factura A4 (§10.2): rotuladas `*** CLIENTE ***` y
-  `*** CONTROL INTERNO ***` bajo el título, con el correlativo interno (`No. C-000123`) debajo. El
-  rótulo va arriba porque en 32 columnas no se puede poner al margen, y es lo que distingue las dos
-  tiras cuando ya están cortadas.
-
-  Las dos van en **un solo `PrintJob`**, cada una con su `GS V` al final: como dos trabajos podían
-  quedar separados en la cola, o fallar uno, la copia del control interno podía no salir nunca. El
-  `numeroInterno` es opcional en `TicketData`: sin él se omite el renglón y las copias siguen
-  siendo dos.
-- `buildSummaryBuffer(data)` — resumen del día con totales y cierre de caja. Bajo `Total Compras`
-  imprime el **desglose por forma de pago** —efectivo, depósito, cheque, pendientes—, y cada
-  renglón **solo si tiene monto**: un día pagado todo en efectivo sale tan corto como antes. Aparte
-  va `Pago de pendientes`, que son compras de días anteriores liquidadas hoy en efectivo: no están
-  en el total de compras de hoy, pero sí salieron de esta caja. El campo opcional `arqueo` decide
-  qué más se imprime:
-  - **Caja cerrada** → bloque `ARQUEO DE CAJA` con apertura, saldo esperado, efectivo contado,
-    la diferencia y quién abrió y cerró; el total se rotula `CIERRE DE CAJA` porque ya es un
-    conteo real. La diferencia se imprime **nombrada** (`FALTA` / `SOBRA` / `cuadra`): en papel el
-    signo por sí solo se malinterpreta.
-  - **Caja abierta** → informa el monto de apertura y quién abrió, pero el total sigue rotulado
-    `CIERRE EST. CAJA`, porque nadie ha contado todavía.
-  - **Sin sesión de caja** → `CIERRE EST. CAJA`, igual que antes.
-- `sendToPrinter(ip, port, buffer, timeoutMs = 5000)` — socket TCP crudo con timeout.
-
-`lib/build-ticket.ts` reúne los datos (transacción + `CompanySettings`, que se autocrea vía upsert)
-y devuelve `{ buffer, company }`.
-
-#### Flujo con agente local
-
-Como el servidor desplegado (Vercel) no puede abrir sockets hacia la LAN del cliente, la impresión
-se desacopla mediante la tabla `PrintJob`:
-
-```mermaid
-sequenceDiagram
-  participant UI as Panel web
-  participant API as /api/print
-  participant DB as PrintJob
-  participant AG as Agente local
-  participant PR as Impresora
-
-  UI->>API: POST /print/ticket { transactionId }
-  API->>DB: create(status=pending, payloadB64, printerIp/Port)
-  API-->>UI: { jobId, status }
-  loop polling
-    AG->>API: GET /print/agent/pending (x-agent-token)
-    API->>DB: findFirst(pending) + updateMany(->claimed)
-    API-->>AG: { id, printerIp, printerPort, payloadB64 }
-  end
-  AG->>PR: socket TCP :9100
-  AG->>API: POST /print/agent/:id/complete { success }
-  API->>DB: status = done | error
-  UI->>API: GET /print/jobs/:id (poll de estado)
-```
-
-El reclamo del trabajo es atómico: el `updateMany` filtra por `status: 'pending'` y solo procede si
-`count > 0`, evitando que dos agentes tomen el mismo job.
-
-**Autenticación del agente** (`lib/print-agent-auth.ts`): header `x-agent-token` comparado contra
-`PRINT_AGENT_TOKEN`. Si la variable no está configurada, responde `500 PRINT_AGENT_NOT_CONFIGURED`.
-Las rutas `/api/print/agent/*` están exentas del RBAC del middleware.
-
-Alternativamente, `GET /api/print/ticket/data` y `GET /api/print/summary/data` devuelven el
-`payloadB64` para que el propio navegador o una app móvil lo envíen a la impresora sin pasar por la cola.
-
-Si `CompanySettings.printerIp` está vacío, las rutas de encolado responden
-`400 PRINTER_NOT_CONFIGURED` remitiendo a Mantenimiento → Empresa.
-
-### 10.2 Factura A4
-
-Páginas propias —`/print/compra/:id` y `/print/venta/:id`— que maquetan la factura en HTML y la
-mandan a imprimir con el diálogo del navegador. Los paneles de Compras y Ventas las abren en una
-pestaña nueva con el botón **Factura A4**, al lado del de **Ticket**.
-
-**Por qué no pasa por el agente.** El agente existe porque el servidor desplegado no puede abrir
-sockets contra la LAN del cliente, y una ESC/POS de red solo entiende ESC/POS. Una láser o de
-inyección, en cambio, ya está instalada en la máquina del usuario: el navegador le llega sin
-intermediarios. Montar A4 sobre la cola habría significado generar PDF en el servidor y un agente
-capaz de imprimirlo, para resolver algo que el sistema operativo ya resuelve.
-
-`lib/build-invoice.ts` reúne los datos —es un módulo aparte de `build-ticket.ts` porque los dos
-documentos no cargan lo mismo: en 32 columnas solo cabe el resultado, y en A4 sí entra la
-trazabilidad del pesaje (bruto, sacos, tara, rendimiento, quintales oro) que es justo lo que el
-productor revisa cuando le liquidan—. Devuelve datos y no un buffer: en A4 maqueta el navegador.
+`lib/build-invoice.ts` reúne los datos, con la trazabilidad completa del pesaje (bruto, sacos, tara,
+factor oro, quintales oro), que es justo lo que el productor revisa cuando le liquidan. Devuelve
+datos y no un buffer: maqueta el navegador.
 
 **Las columnas no son las mismas en las dos hojas**, y la diferencia es deliberada:
 
 | | Compra | Venta |
 | --- | --- | --- |
-| Columnas | Tipo, **Bruto, Tara, Neto**, QQ oro, precio, valor | Concepto, **Bruto, Sacos, Tara, Neto**, Rend., QQ oro, precio, valor |
+| Columnas | Tipo, **Bruto, Tara, Neto**, QQ oro, precio, valor | Concepto, **Bruto, Sacos, Tara, Neto**, Factor, QQ oro, precio, valor |
 
 La compra **no imprime el conteo de sacos ni el rendimiento** (decisión del 27/09/2026): la tara ya
 dice cuánto se descuenta del bruto, y el rendimiento es una estimación del beneficio que no forma
@@ -1525,9 +1422,7 @@ datos vivos. Así los enlaces de siempre siguen valiendo y la hoja pasa a ser fi
 **El pie fiscal lleva los siete renglones, siempre, incluso en cero** (requisito de la contadora del
 29/09/2026): importe exento, importe exonerado, importe gravado 15 %, ISV 15 %, importe gravado 18 %,
 ISV 18 % y total. El formato del SAR los trae preimpresos, y una factura sin el renglón del ISV no se
-lee como completa aunque el monto sea cero. La lista vive en `RENGLONES_DESGLOSE` (`lib/fiscal.ts`)
-con una etiqueta para la hoja y otra corta para el ticket, para que los dos formatos no puedan
-discrepar: un renglón nuevo entra en ambos o en ninguno.
+lee como completa aunque el monto sea cero. La lista vive en `RENGLONES_DESGLOSE` (`lib/fiscal.ts`).
 
 **Bloque del adquiriente exonerado.** Sale cuando el cliente tiene constancia de registro o cuando la
 operación trae orden de compra exenta, con los cuatro datos que sustentan la exoneración: nombre o
@@ -1551,20 +1446,21 @@ por definición se escribe después.
 
 #### Formatos de impresión
 
-**El ticket de 80 mm y la hoja A4 son el mismo documento fiscal**, no dos documentos: mismo número,
+**La hoja A4 y el papel continuo son el mismo documento fiscal**, no dos documentos: mismo número,
 mismo CAI, mismo desglose. Emitir no depende del formato, y cambiar de formato no emite nada nuevo.
 
 - El formato de siempre se configura en **Mantenimiento → Facturación**
   (`CompanySettings.formatoImpresionDefault`, catálogo en `lib/print-formats.ts`).
-- En cada fila, **Imprimir factura** usa ese formato y el botón de al lado el otro. Los dos pasan por
-  `usePrintInvoice`: A4 abre la pestaña, 80 mm encola el `PrintJob` y espera al agente.
+- En Ventas y Molido, **Imprimir factura** usa ese formato y el botón de al lado el otro; en Compras
+  hay un solo botón. Los dos formatos pasan por `usePrintInvoice`, que abre la página con
+  `?formato=`: en A4 salen dos hojas y en papel continuo una, porque el papel trae la copia.
 - **Cada impresión de un documento emitido queda en bitácora** (`reimpresion`, con el formato). Un
   número emitido no se reasigna nunca, así que lo único auditable es cuántas veces se imprimió y cómo.
 
 Que los dos formatos sean el mismo documento tiene una consecuencia que conviene tener presente: si se
 imprimen los dos, en la mano quedan **dos papeles con el mismo número**. Es una reimpresión, no dos
-documentos; ambos dicen `Original — Cliente` / `Copia — Control interno` según la copia, no según el
-formato.
+documentos; en A4 dicen `Original — Cliente` / `Copia — Control interno` según la copia, y en papel continuo la
+única hoja dice `Original: Cliente · Copia: Control interno`.
 
 ### 10.4 Notas de crédito y débito
 
@@ -1584,7 +1480,7 @@ ingreso ya declarado, así que pesa lo mismo que anular.
 | No se puede acreditar más de lo facturado | El techo es `saldoAcreditable` = total + notas de débito − notas de crédito vigentes. Se comprueba **dentro** de la transacción, después de tomar el bloqueo: si se hiciera antes, dos notas simultáneas pasarían las dos |
 | Puede ser **parcial** | El desglose se prorratea desde el documento corregido (`desgloseNota`): si el original llevaba ISV, la nota lleva su parte, y el renglón más grande absorbe el centavo del redondeo |
 | No sobre otra nota, ni sobre un documento anulado | Corregir una corrección enredaría el libro; un documento anulado ya no declara nada |
-| Se imprime en los dos formatos | `/print/nota/:id` en A4 y `kind: 'nota'` en el ticket. La hoja dice **qué documento modifica**, con su número y su fecha, y el motivo |
+| Se imprime en los dos formatos | `/print/nota/:id`, en A4 o en papel continuo. La hoja dice **qué documento modifica**, con su número y su fecha, y el motivo |
 
 En el libro (§6.14) la nota entra **en el libro del documento que corrige**, no en el de su propio
 tipo: una nota de crédito sobre una boleta de compra es del libro de compras. Sus importes salen
@@ -1620,7 +1516,6 @@ al cliente se le retira la exoneración, el papel ya emitido sigue diciendo con 
 |---|---|---|
 | `DATABASE_URL` | ✅ | Cadena de conexión PostgreSQL usada por Prisma. |
 | `SESSION_SECRET` | ✅ en producción | Clave para firmar las sesiones (HMAC-SHA256). Sin ella, en producción no se emiten sesiones. Generar con `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. |
-| `PRINT_AGENT_TOKEN` | Solo con agente | Token compartido con el agente de impresión local. |
 | `RBAC_ENABLED` | No (`true`) | Ponerlo en `false` desactiva el control de acceso de `/api`. |
 | `RBAC_USERS_JSON` | Recomendada en producción | Usuarios/roles de respaldo en JSON. Ej.: `{"operador1":{"role":"editor","password":"operador123"}}`. En producción, si falta, no hay ninguna cuenta de respaldo (§8.6); ponerla en `{}` lo deja explícito. |
 | `NODE_ENV` | Automática | Marca la cookie de sesión como `secure` en producción y decide si se admite el secreto de desarrollo. |
@@ -1657,7 +1552,6 @@ pnpm dev                    # http://localhost:3000
 | `prisma:generate` | `prisma generate` | Regenerar el cliente. |
 | `prisma:migrate` | `prisma migrate dev --name init` | Migración en desarrollo. |
 | `prisma:studio` | `prisma studio` | Explorador de datos. |
-| `print-agent` | `node scripts/print-agent.js` | Agente de impresión — **el archivo no está en el repo** (ver §17). |
 | `hash-passwords` | `node scripts/hash-passwords.mjs` | Backfill único de contraseñas legacy a scrypt. Acepta `--dry-run`. |
 | `create-admin` | `node scripts/create-admin.mjs` | Crea o restablece un usuario admin con la contraseña ya hasheada (§8.6). |
 | `seed-coffee-types` | `node scripts/seed-coffee-types.mjs` | Sincroniza `Producto` con el catálogo cerrado de tipos de café (§6.6). Idempotente; acepta `--dry-run`. |
@@ -1676,7 +1570,7 @@ pnpm dev                    # http://localhost:3000
 | `20260614000000_add_company_and_users` | `CompanySettings` y `User`. |
 | `20260617044532_add_material_carga` | Cargas de material. |
 | `20260707000000_add_printer_settings` | IP/puerto de impresora. |
-| `20260707010000_add_print_jobs` | Cola `PrintJob`. |
+| `20260707010000_add_print_jobs` | Cola `PrintJob` (la quitó `20261002000000_remove_thermal_printing`). |
 | `20260712234500_rename_material_to_producto` | Renombrado Material → Producto. |
 | `20260714213216_add_employees` | Empleados y pagos. |
 | `20260715165823_add_attendance_and_advances` | Asistencia y adelantos. |
@@ -1709,6 +1603,7 @@ pnpm dev                    # http://localhost:3000
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault`: con qué formato se imprime la factura por omisión (§10.3). |
 | `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo` en `FiscalDocument`, para las notas de crédito y débito (§10.4). **Reemplaza un `CHECK`**: el viejo exigía exactamente una transacción, y una nota no ampara ninguna. |
 | `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta`: los datos del adquiriente exonerado (§10.5). Aditiva. |
+| `20261002000000_remove_thermal_printing` | Quita `PrintJob` y `CompanySettings.printerIp` / `printerPort`, y pasa `termico80` a `a4` (§10.1). **Destructiva**: borra la tabla y las dos columnas. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 
@@ -1786,16 +1681,6 @@ Cobertura del proyecto `unit`:
   resta cada movimiento, que una compra que no es en efectivo no salga de la gaveta, el molido, las
   compras pendientes liquidadas hoy y los traslados según de qué lado esté la sucursal.
 
-- `tests/lib/summary-ticket.test.ts` — qué imprime el resumen según el estado de la caja: arqueo
-  real cuando está cerrada, estimado cuando está abierta o no existe, y el nombre del signo de la
-  diferencia.
-
-- `tests/lib/ticket-copias.test.ts` — que el comprobante térmico salga en dos copias (`CLIENTE` y
-  `CONTROL INTERNO`) dentro del mismo buffer, con el mismo correlativo interno y **un corte `GS V`
-  por copia**: sin el segundo corte las dos salen pegadas en una sola tira. También el bloque fiscal,
-  los siete renglones del desglose, la nota, el bloque del exonerado y —lo que cuida el papel— que
-  **ninguna línea pase de 32 columnas** ni con una razón social larga (§10.5).
-
 - `tests/lib/fiscal-reports.test.ts` — el libro (§6.14): orden por fecha de emisión, el recorte por
   **fecha de negocio** y no por la fecha UTC del instante —un documento emitido a las 22:00 de
   Honduras se guarda con fecha UTC del día siguiente—, que el anulado aparezca sin sumar, que cada
@@ -1814,7 +1699,7 @@ Cobertura del proyecto `unit`:
   con el período, `no-store`, y que sin `formato=xlsx` la ruta siga devolviendo el JSON de siempre.
 
 `payroll`, `reports` y `fiscal-reports` usan un doble de Prisma para fijar las reglas sin base de
-datos; `summary-ticket` y `ticket-copias` inspeccionan el buffer ESC/POS como texto.
+datos.
 
 Cobertura del proyecto `integration` (`tests/integration/`, cada suite limpia lo que crea **antes y
 después**, para que un fallo a medias no bloquee la corrida siguiente):
@@ -1853,7 +1738,7 @@ está en [DEPLOY.md](DEPLOY.md); resumen:
 1. Crear la base PostgreSQL en Railway y copiar su `DATABASE_URL`.
 2. Importar el repositorio en Vercel (framework Next.js, root `./`).
 3. Configurar en Vercel `DATABASE_URL` y `SESSION_SECRET` (**ambas obligatorias**; sin la segunda
-   nadie puede iniciar sesión) y, si aplica, `PRINT_AGENT_TOKEN`, `RBAC_ENABLED`, `RBAC_USERS_JSON`.
+   nadie puede iniciar sesión) y, si aplica, `RBAC_ENABLED`, `RBAC_USERS_JSON`.
    Con `NODE_ENV=production` las cuentas de prueba no existen aunque no se declare nada (§8.6);
    declarar `RBAC_USERS_JSON='{}'` lo deja explícito para quien lea la configuración.
 4. Build Command: `pnpm vercel-build` (genera cliente, aplica migraciones y compila).
@@ -1907,9 +1792,8 @@ Puntos a tener presentes al trabajar sobre el código:
    autorización por módulo pasó al servidor con `requireModuleAccess` (§8.5), que falla cerrado.
    Como efecto colateral, las desactivaciones y los cambios de rol ahora surten efecto en la
    siguiente navegación en vez de esperar a que expire el token.
-5. **`scripts/print-agent.js` no existe** en el repositorio aunque `package.json` expone
-   `pnpm print-agent` y `.env` documenta su token. El agente debe recuperarse o reescribirse para
-   que la cola `PrintJob` se drene.
+5. ~~**`scripts/print-agent.js` no existe.**~~ **Resuelto** el 02/10/2026: se dejó de usar la
+   impresora térmica y se quitaron el agente, la cola `PrintJob` y el script de `package.json` (§10.1).
 6. ~~**Convivencia de modelos legacy y por cliente.**~~ **Resuelto**: se eliminaron `POST /api/purchases`
    y `POST /api/sales`, que creaban registros sin cabecera de transacción y por tanto sin cliente.
    La UI nunca los usó y la base no tenía ninguna fila de ese tipo. Todo alta pasa ahora por
@@ -2131,7 +2015,7 @@ Hay dos formas de resolverlo, y **la decisión está abierta**:
 
 | Opción | Cómo se vería | Qué implica |
 |---|---|---|
-| **Descuento en la compra** | Un monto de cortadores por transacción; el productor cobra el neto. | La compra deja de ser "libras × precio": aparece un total bruto y un neto pagado. Toca el recálculo del saldo, el ticket y la factura A4, porque lo que sale de la caja ya no es el total de la compra. |
+| **Descuento en la compra** | Un monto de cortadores por transacción; el productor cobra el neto. | La compra deja de ser "libras × precio": aparece un total bruto y un neto pagado. Toca el recálculo del saldo y la factura, porque lo que sale de la caja ya no es el total de la compra. |
 | **Gasto aparte** | La compra se registra completa y el pago a cortadores entra como `Expense`. | No toca el modelo de compras: el efectivo cuadra igual, porque compra y gasto restan los dos del saldo. Pero se pierde el vínculo con la compra que lo originó, y el costo real de ese café queda repartido en dos módulos. |
 
 Lo que decide entre las dos es **si el negocio necesita ver el costo por compra o solo que la caja

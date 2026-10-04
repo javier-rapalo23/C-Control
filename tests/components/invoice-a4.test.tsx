@@ -596,3 +596,25 @@ describe('InvoiceA4 — vista previa', () => {
     expect(html).not.toContain('Próximo No.');
   });
 });
+
+describe('InvoiceA4 — papel continuo', () => {
+  const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} formato="continuo" />);
+
+  // El papel es de copias: la impresora saca original y copia de una pasada.
+  it('imprime una sola hoja, que dice para quién es cada copia', () => {
+    expect(html.match(/class="invoice-sheet"/g)).toHaveLength(1);
+    expect(html).toContain('Original: Cliente · Copia: Control interno');
+    expect(html).not.toContain('Copia — Control interno');
+  });
+
+  it('usa la página de carta continua de 9.5" × 11"', () => {
+    expect(html).toContain('size: 9.5in 11in');
+    expect(html).toContain('invoice-copias-continuo');
+  });
+
+  it('en A4 sigue la página A4 con dos hojas', () => {
+    const a4 = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
+    expect(a4).not.toContain('9.5in');
+    expect(a4.match(/class="invoice-sheet"/g)).toHaveLength(2);
+  });
+});

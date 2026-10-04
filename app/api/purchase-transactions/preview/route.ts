@@ -2,20 +2,18 @@ import { createPurchaseTransactionSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { buildInvoiceForPurchaseDraft } from '@/lib/build-invoice';
-import { ticketDataFromInvoice } from '@/lib/build-ticket';
 import { vistaPreviaDocumentoFiscal } from '@/lib/fiscal-document';
 import { calcularCompra } from '@/lib/purchase-draft';
 import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 import { ModulePermissionError, requireApiModuleAccess } from '@/lib/require-api-module-access';
-import { ticketTextoPlano } from '@/lib/thermal-printer';
 
 /**
  * Vista previa de la boleta de una compra **antes de guardarla**.
  *
  * Recibe lo mismo que `POST /api/purchase-transactions` y no escribe nada: calcula la
  * compra con la misma función que el guardado y la arma con la misma función que el
- * documento emitido, en los dos formatos. Es lo que el productor revisa antes de que
- * se consuma un número del CAI.
+ * documento emitido. Es lo que el productor revisa antes de que se consuma un número
+ * del CAI.
  *
  * Dice además si al confirmar se va a emitir la boleta y, si no, por qué: sin CAI
  * activo, en modo talonario o sin el permiso `fiscal_emitir`, la compra se puede
@@ -69,7 +67,6 @@ export async function POST(request: Request) {
 
     return success({
       invoice,
-      ticket: ticketTextoPlano(ticketDataFromInvoice(invoice)),
       emitira: invoice.documento !== null,
       motivoNoEmite,
     });

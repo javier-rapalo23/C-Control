@@ -17,7 +17,6 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
-    "print-agent": "node scripts/print-agent.js",
     "hash-passwords": "node scripts/hash-passwords.mjs",
     "create-admin": "node scripts/create-admin.mjs",
     "seed-coffee-types": "node scripts/seed-coffee-types.mjs",

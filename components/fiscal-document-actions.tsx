@@ -38,6 +38,12 @@ type Props = {
   /** Imprime una nota ya emitida, en el formato configurado. */
   onImprimirNota?: (documentoId: string) => void;
   onChange: () => void | Promise<void>;
+  /**
+   * El botón de imprimir de la fila ya emite, así que "Emitir documento fiscal" solo
+   * aparece cuando hay que escribir algo antes: el número del talonario o la orden de
+   * compra exenta. Lo usa Compras, para que la fila tenga un solo botón de impresión.
+   */
+  emitirSoloConDatos?: boolean;
 };
 
 export default function FiscalDocumentActions({
@@ -49,6 +55,7 @@ export default function FiscalDocumentActions({
   clienteExonerado,
   onImprimirNota,
   onChange,
+  emitirSoloConDatos = false,
 }: Props) {
   const [numeroManual, setNumeroManual] = useState('');
   const [ordenCompraExenta, setOrdenCompraExenta] = useState('');
@@ -299,6 +306,11 @@ export default function FiscalDocumentActions({
         {error ? <div style={{ color: 'var(--danger)' }}>{error}</div> : null}
       </div>
     );
+  }
+
+  // Sin datos que pedir, emitir es lo mismo que el botón de imprimir de la fila.
+  if (emitirSoloConDatos && caiActivo !== null && !pideNumero && !clienteExonerado) {
+    return null;
   }
 
   return (

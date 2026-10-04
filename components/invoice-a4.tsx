@@ -1,22 +1,24 @@
 import { RENGLONES_DESGLOSE } from '@/lib/fiscal';
 import type { InvoiceData, InvoiceLinea } from '@/lib/build-invoice';
+import type { PrintFormat } from '@/lib/print-formats';
 
 /**
- * Factura en A4, para el diálogo de impresión del navegador.
+ * Factura en A4 o en papel continuo, para el diálogo de impresión del navegador.
  *
- * La impresión térmica de `lib/thermal-printer.ts` encola un `PrintJob` que un
- * agente local manda por TCP a una ESC/POS. Ese camino no sirve para A4: una
- * láser o de inyección se imprime desde el sistema operativo, así que aquí se
- * maqueta HTML y se deja que el navegador lo mande a la impresora que el usuario
- * ya tiene configurada. No hace falta agente ni IP.
+ * Se maqueta HTML y se deja que el navegador lo mande a la impresora que el usuario
+ * ya tiene configurada en el sistema operativo: no hace falta agente ni IP.
  *
  * El CSS de impresión oculta *todo* el documento y vuelve a mostrar solo las hojas,
  * en vez de enumerar las clases del encabezado y el menú de la aplicación: así un
  * cambio en la navegación no reaparece dentro de la factura.
  *
- * Se imprimen **dos copias** en un solo trabajo: la del cliente y la del control
- * interno. Son el mismo documento con distinto rótulo, y van en hojas separadas
- * para que las dos queden a tamaño completo y con su espacio de firmas.
+ * En A4 se imprimen **dos copias** en un solo trabajo: la del cliente y la del
+ * control interno. Son el mismo documento con distinto rótulo, y van en hojas
+ * separadas para que las dos queden a tamaño completo y con su espacio de firmas.
+ *
+ * En papel continuo va **una sola hoja**: el papel es de copias y la impresora saca
+ * original y copia de una pasada. Mandar dos hojas gastaría el doble de formulario y
+ * dejaría dos juegos. Ver `lib/print-formats.ts`.
  */
 
 const CSS = `
@@ -216,6 +218,25 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
 }
 `;
 
+/**
+ * Ajustes del papel continuo: carta continua de 9.5" × 11". Va después del CSS base, así
+ * que su `@page` es el que manda.
+ *
+ * Los márgenes laterales dejan libres las tiras perforadas del arrastre. En impresión
+ * todo va en negro: una matricial imprime los grises como un punteado que se lee peor,
+ * y en la copia de carbón se pierden.
+ */
+const CSS_CONTINUO = `
+@page { size: 9.5in 11in; margin: 0.35in 0.6in; }
+
+.invoice-copias-continuo .invoice-sheet { max-width: 8.3in; }
+
+@media print {
+  .invoice-copias-continuo .invoice-sheet,
+  .invoice-copias-continuo .invoice-sheet * { color: #000 !important; border-color: #000 !important; }
+}
+`;
+
 const lempiras = (valor: number) =>
   `L ${valor.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -324,11 +345,16 @@ function FilaNota({ linea }: { linea: InvoiceLinea }) {
   );
 }
 
-/** Las dos copias que se imprimen del mismo comprobante. */
-const COPIAS = [
+type Copia = { id: 'cliente' | 'interno' | 'continuo'; rotulo: string };
+
+/** Las dos copias que se imprimen del mismo comprobante en A4. */
+const COPIAS: readonly Copia[] = [
   { id: 'cliente', rotulo: 'Original — Cliente' },
   { id: 'interno', rotulo: 'Copia — Control interno' },
-] as const;
+];
+
+/** En papel continuo es una sola hoja, así que el rótulo dice para quién es cada copia. */
+const COPIA_CONTINUO: Copia = { id: 'continuo', rotulo: 'Original: Cliente · Copia: Control interno' };
 
 /** Cómo se rotula la fecha de la operación según lo que ampara el documento. */
 function fechaOperacionLabel(kind: InvoiceData['kind']) {
@@ -341,7 +367,7 @@ function fechaOperacionLabel(kind: InvoiceData['kind']) {
 
 type HojaProps = {
   data: InvoiceData;
-  copia: (typeof COPIAS)[number];
+  copia: Copia;
   /** Compra todavía sin guardar: el número fiscal es el próximo, no uno asignado. */
   vistaPrevia?: boolean;
 };
@@ -624,8 +650,7 @@ function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
         {/* Desglose fiscal, solo con documento emitido. **Los siete renglones salen
             siempre, incluso en cero** (requisito de la contadora del 29/09/2026): el
             formato del SAR los lleva preimpresos, y una factura sin el renglón del ISV no
-            se lee como completa aunque el monto sea cero. La lista vive en `lib/fiscal.ts`
-            para que la hoja y el ticket no puedan discrepar. */}
+            se lee como completa aunque el monto sea cero. La lista vive en `lib/fiscal.ts`. */}
         {documento ? (
           <div className="invoice-desglose">
             {RENGLONES_DESGLOSE.map((renglon) => (
@@ -654,16 +679,24 @@ function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
   );
 }
 
+type InvoiceA4Props = {
+  data: InvoiceData;
+  /** Hoja A4 (dos hojas) o papel continuo (una sola, el papel saca la copia). */
+  formato?: PrintFormat;
+  vistaPrevia?: boolean;
+};
+
 /**
- * Con `vistaPrevia` sale solo la copia del cliente: las dos son el mismo documento, y
- * lo que se revisa antes de guardar es el contenido, no el rótulo.
+ * Con `vistaPrevia` sale una sola hoja también en A4: las dos copias son el mismo
+ * documento, y lo que se revisa antes de guardar es el contenido, no el rótulo.
  */
-export default function InvoiceA4({ data, vistaPrevia = false }: { data: InvoiceData; vistaPrevia?: boolean }) {
-  const copias = vistaPrevia ? COPIAS.slice(0, 1) : COPIAS;
+export default function InvoiceA4({ data, formato = 'a4', vistaPrevia = false }: InvoiceA4Props) {
+  const continuo = formato === 'continuo';
+  const copias = continuo ? [COPIA_CONTINUO] : vistaPrevia ? COPIAS.slice(0, 1) : COPIAS;
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
-      <div className="invoice-copias">
+      <style dangerouslySetInnerHTML={{ __html: continuo ? CSS + CSS_CONTINUO : CSS }} />
+      <div className={continuo ? 'invoice-copias invoice-copias-continuo' : 'invoice-copias'}>
         {copias.map((copia) => (
           <Hoja key={copia.id} data={data} copia={copia} vistaPrevia={vistaPrevia} />
         ))}

@@ -261,19 +261,17 @@ export function desgloseNota(origen: DesgloseIsv, monto: number): DesgloseIsv {
  * 29/09/2026): el formato del SAR los lleva preimpresos, y una factura a la que le falta
  * el renglón de ISV no se lee como completa aunque el monto fuera cero.
  *
- * Están acá y no en cada maquetación porque el ticket de 80 mm y la hoja A4 son el mismo
- * documento: si cada uno tuviera su lista, un renglón nuevo entraría en uno y no en el
- * otro. El `label` es para la hoja, que tiene espacio; el `labelTicket` cabe en 32
- * columnas.
+ * Están acá, junto al cálculo del desglose, para que un renglón nuevo se agregue en el
+ * mismo lugar donde se calcula.
  */
 export const RENGLONES_DESGLOSE = [
-  { key: 'importeExento', label: 'Importe exento', labelTicket: 'Importe exento:' },
-  { key: 'importeExonerado', label: 'Importe exonerado', labelTicket: 'Importe exonerado:' },
-  { key: 'importeGravado15', label: 'Importe gravado 15 %', labelTicket: 'Gravado 15%:' },
-  { key: 'isv15', label: 'ISV 15 %', labelTicket: 'ISV 15%:' },
-  { key: 'importeGravado18', label: 'Importe gravado 18 %', labelTicket: 'Gravado 18%:' },
-  { key: 'isv18', label: 'ISV 18 %', labelTicket: 'ISV 18%:' },
-] as const satisfies ReadonlyArray<{ key: keyof Omit<DesgloseIsv, 'total'>; label: string; labelTicket: string }>;
+  { key: 'importeExento', label: 'Importe exento' },
+  { key: 'importeExonerado', label: 'Importe exonerado' },
+  { key: 'importeGravado15', label: 'Importe gravado 15 %' },
+  { key: 'isv15', label: 'ISV 15 %' },
+  { key: 'importeGravado18', label: 'Importe gravado 18 %' },
+  { key: 'isv18', label: 'ISV 18 %' },
+] as const satisfies ReadonlyArray<{ key: keyof Omit<DesgloseIsv, 'total'>; label: string }>;
 
 export const MODOS_CAI = ['TALONARIO', 'SISTEMA'] as const;
 export type ModoCai = (typeof MODOS_CAI)[number];

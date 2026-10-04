@@ -9,8 +9,6 @@ function formatCompany(c: {
   telefono: string;
   direccion: string;
   email: string;
-  printerIp: string;
-  printerPort: number;
   cai: string;
   facturaRangoDesde: string;
   facturaRangoHasta: string;

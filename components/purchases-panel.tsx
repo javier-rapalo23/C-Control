@@ -327,9 +327,9 @@ export default function PurchasesPanel() {
     const emitir = preview.vista.emitira;
     const formato = previewFormato;
 
-    // La pestaña de la hoja A4 se abre ya, dentro del clic: abierta después de guardar,
-    // el navegador la bloquearía como popup.
-    const pestana = emitir && formato === 'a4' ? window.open('', '_blank') : undefined;
+    // La pestaña de la hoja se abre ya, dentro del clic: abierta después de guardar, el
+    // navegador la bloquearía como popup.
+    const pestana = emitir ? window.open('', '_blank') : undefined;
 
     try {
       setGuardando(true);
@@ -798,17 +798,19 @@ export default function PurchasesPanel() {
                         void impresion.imprimir('nota', documentoId, fiscal.formatoDefault)
                       }
                       onChange={fiscal.refresh}
+                      emitirSoloConDatos
                     />
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
-                      {/* Un solo documento, dos formatos: el de siempre en el botón
-                          principal y el otro al lado. Ver `lib/print-formats.ts`. */}
+                      {/* Un solo botón, en el formato configurado: abre la hoja en la vista
+                          previa de impresión. */}
                       <InvoicePrintButtons
                         origen="compra"
                         transactionId={transaction.id}
                         formatoDefault={fiscal.formatoDefault}
+                        unSoloBoton
                         imprimiendo={impresion.imprimiendoId === transaction.id}
                         documento={fiscal.documentos[transaction.id] ?? null}
                         caiActivo={fiscal.caiActivo}

@@ -235,14 +235,12 @@ export type CompanySettingsDTO = {
   telefono: string;
   direccion: string;
   email: string;
-  printerIp: string;
-  printerPort: number;
   /** Vacío mientras se facture con talonario físico; con valor activa el bloque fiscal de la factura A4. */
   cai: string;
   facturaRangoDesde: string;
   facturaRangoHasta: string;
   facturaFechaLimite: string;
-  /** `a4` o `termico80`: con qué formato se imprime la factura por omisión. */
+  /** `a4` o `continuo`: con qué formato se imprime la factura por omisión. */
   formatoImpresionDefault: string;
   updatedAt: string;
 };

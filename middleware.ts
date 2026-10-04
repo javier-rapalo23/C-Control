@@ -83,11 +83,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // El agente de impresión se autentica con su propio token compartido.
-  if (pathname.startsWith('/api/print/agent/')) {
-    return NextResponse.next();
-  }
-
   // Por defecto activo: dejar la API sin control de acceso solo debe ser una
   // decisión explícita, no lo que ocurre si nadie configura la variable.
   const isRbacEnabled = (process.env.RBAC_ENABLED ?? 'true').toLowerCase() !== 'false';

@@ -4,10 +4,12 @@ import InvoiceToolbar from '@/components/invoice-toolbar';
 import { buildInvoiceFromDocument } from '@/lib/build-invoice';
 import { registrarImpresion } from '@/lib/fiscal-document';
 import { prisma } from '@/lib/prisma';
+import { parsePrintFormat } from '@/lib/print-formats';
 import { requireModuleAccess } from '@/lib/require-module-access';
 
 type Params = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ formato?: string | string[] }>;
 };
 
 /**
@@ -20,8 +22,9 @@ type Params = {
  * una compra. Para saber cuál es hay que leer la nota primero; la lectura no muestra
  * nada, la autorización ocurre antes de renderizar.
  */
-export default async function NotaFiscalPage({ params }: Params) {
+export default async function NotaFiscalPage({ params, searchParams }: Params) {
   const { id } = await params;
+  const formato = parsePrintFormat((await searchParams).formato);
   const data = await buildInvoiceFromDocument(id);
   // Solo notas: la factura de una compra se imprime desde `/print/compra/:id`, que sabe
   // resolver el caso de que todavía no esté emitida.
@@ -30,13 +33,13 @@ export default async function NotaFiscalPage({ params }: Params) {
   const { userId } = await requireModuleAccess(data.notaSobre === 'compra' ? 'purchases' : 'sales');
 
   if (data.documento) {
-    await registrarImpresion(prisma, { fiscalDocumentId: data.documento.id, usuario: userId, formato: 'a4' });
+    await registrarImpresion(prisma, { fiscalDocumentId: data.documento.id, usuario: userId, formato });
   }
 
   return (
     <>
       <InvoiceToolbar />
-      <InvoiceA4 data={data} />
+      <InvoiceA4 data={data} formato={formato} />
     </>
   );
 }

@@ -69,7 +69,6 @@ async function main() {
     ['CashSession', prisma.cashSession],
     ['DailyBalance', prisma.dailyBalance],
     ['ProductoCarga', prisma.productoCarga],
-    ['PrintJob', prisma.printJob],
   ];
 
   console.log('=== Movimiento ===');

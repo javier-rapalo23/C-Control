@@ -185,7 +185,8 @@ export default function MaintenanceFiscalPanel() {
         <p style={{ color: 'var(--text-soft)' }}>
           Con cuál de los dos formatos se imprime la factura normalmente. Son el <strong>mismo
           documento</strong>: llevan el mismo número, el mismo CAI y el mismo desglose; lo que cambia es
-          el papel. En cada compra o venta se puede imprimir el otro para un caso suelto.
+          el papel. Los dos se imprimen desde el navegador. En papel continuo sale una sola hoja,
+          porque el papel trae la copia.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
           {PRINT_FORMATS.map((opcion) => (
@@ -204,11 +205,6 @@ export default function MaintenanceFiscalPanel() {
             </label>
           ))}
         </div>
-        {formato === 'termico80' ? (
-          <p style={{ color: 'var(--text-soft)', marginTop: 8 }}>
-            El ticket necesita la IP de la impresora y el agente corriendo (Mantenimiento → Empresa).
-          </p>
-        ) : null}
       </section>
 
       {/* Cada tipo de documento tiene su propia autorización y su propio rango: la boleta

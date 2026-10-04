@@ -21,8 +21,8 @@ el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembr
 > sistema lo valida contra el rango. Emitir exige el permiso `fiscal_emitir`; anular, `fiscal_anular`.
 
 > **En Compras, guardar pasa por una vista previa.** El botón *"Revisar y guardar"* no escribe
-> nada: muestra la boleta tal como va a salir, en A4 o en ticket de 80 mm (se puede cambiar ahí
-> mismo), con el próximo número del CAI. *"Guardar e imprimir"* guarda la compra, emite la boleta
+> nada: muestra la boleta tal como va a salir, en hoja A4 o en papel continuo (se puede cambiar
+> ahí mismo), con el próximo número del CAI. *"Guardar e imprimir"* guarda la compra, emite la boleta
 > y la imprime en el formato elegido; *"Corregir"* vuelve al formulario sin consumir nada. Si no se
 > puede emitir —sin CAI activo, en `TALONARIO`, con el CAI vencido o agotado, o sin
 > `fiscal_emitir`— la vista previa lo dice antes y el botón pasa a *"Guardar sin boleta"*: la
@@ -34,27 +34,28 @@ el bloque fiscal y **qué todavía no hace**. Última revisión: 28 de septiembr
 
 ## 1. Un documento, dos formatos de impresión
 
-El ticket de 80 mm y la hoja A4 **no son dos documentos**: son dos formatos del mismo, con el mismo
-número fiscal y los mismos datos. El ticket es el del mostrador y la A4 la que se entrega; cuál se usa
-por omisión se configura en Mantenimiento → Facturación, y en cada fila se puede imprimir el otro.
+La hoja A4 y el papel continuo **no son dos documentos**: son dos formatos del mismo, con el mismo
+número fiscal y los mismos datos. Cuál se usa por omisión se configura en Mantenimiento →
+Facturación.
 
-| | Ticket térmico | Factura A4 |
+| | Hoja A4 | Papel continuo |
 | --- | --- | --- |
-| Ancho | 32 columnas (ESC/POS) | Hoja A4 con márgenes de 14 mm |
-| Cómo llega a la impresora | Se encola un `PrintJob`, un agente local lo recoge y lo manda por TCP al puerto 9100 | Diálogo de impresión del navegador |
-| Qué necesita | IP de la impresora configurada + agente corriendo | Nada; usa la impresora que ya tiene la máquina |
-| Contenido | El resultado: libras, precio, total, pesaje resumido | Trazabilidad completa del pesaje, ajustes y firmas |
-| Copias | Dos tiras, cada una con su corte | Dos hojas |
-| Bloque fiscal (CAI) | Sí, cuando el documento está emitido | Sí, cuando el documento está emitido |
-| Dónde se dispara | **Imprimir factura** en Compras, Ventas y Molido, según el formato configurado; el botón de al lado imprime en el otro | Igual (abre pestaña nueva) |
+| Papel | A4, márgenes de 14 mm | Carta continua 9.5" × 11", en blanco, con copias |
+| Cómo llega a la impresora | Diálogo de impresión del navegador | Igual, eligiendo la matricial |
+| Copias | Dos hojas: original y control interno | **Una sola hoja**: el papel saca la copia |
+| Contenido y bloque fiscal | Trazabilidad completa del pesaje, ajustes, desglose y firmas | Lo mismo; en impresión todo va en negro |
 
-**Rutas de la factura A4:** `/print/compra/:id` y `/print/venta/:id`. Son páginas, no API. Se abren
-fuera del panel, así que piden permiso de módulo por su cuenta (`purchases` y `sales`): quien no
-puede ver Compras tampoco puede abrir la factura de una compra.
+El ticket térmico de 80 mm **se dejó de usar el 02/10/2026** y se quitó del sistema con su agente de
+impresión, su cola de trabajos (`PrintJob`) y la configuración de la IP. Migración
+`20261002000000_remove_thermal_printing`; quien lo tenía como formato por omisión pasó a A4.
 
-**Ruta del ticket:** `POST /api/print/ticket` con `{ transactionId, kind }`, donde `kind` es `compra`,
-`venta` o `molido` (se aceptan los nombres viejos `purchase` y `sale`).
-Devuelve un `jobId`; el panel consulta `GET /api/print/jobs/:id` hasta que queda en `done` o `error`.
+**Rutas de la factura:** `/print/compra/:id`, `/print/venta/:id`, `/print/molido/:id` y
+`/print/nota/:id`, con `?formato=a4` o `?formato=continuo` (sin el parámetro, A4). Son páginas, no
+API. Se abren fuera del panel, así que piden permiso de módulo por su cuenta (`purchases` y
+`sales`): quien no puede ver Compras tampoco puede abrir la factura de una compra.
+
+En **Compras**, cada fila tiene un solo botón de impresión, en el formato por omisión: el formato se
+elige en la vista previa al guardar. En Ventas y Molido sigue el botón del otro formato al lado.
 
 ---
 
@@ -105,35 +106,32 @@ esperando el papel para cobrar.
 
 ## 3. Dos copias: cliente y control interno
 
-Los dos documentos imprimen **dos copias en un solo trabajo de impresión**.
-
-**Factura A4** → dos hojas, cada una a tamaño completo con su espacio de firmas:
+**Hoja A4** → dos hojas en un solo trabajo de impresión, cada una a tamaño completo con su espacio
+de firmas:
 
 | Hoja | Rótulo |
 | --- | --- |
 | 1 | `ORIGINAL — CLIENTE` |
 | 2 | `COPIA — CONTROL INTERNO` (en recuadro negro, para distinguirla de lejos) |
 
-**Ticket térmico** → dos tiras, rotuladas `*** CLIENTE ***` y `*** CONTROL INTERNO ***` bajo el
-título, con el correlativo interno debajo (`No. C-000123`).
+**Papel continuo** → una sola hoja rotulada `ORIGINAL: CLIENTE · COPIA: CONTROL INTERNO`. El papel es
+de copias y la impresora saca las dos de una pasada; mandar dos hojas gastaría el doble de
+formulario.
 
 Detalles de por qué está hecho así:
 
-- **El rótulo va arriba.** Es lo que se busca al tener las dos copias en la mano, y en 32 columnas
-  no se puede poner al margen.
-- **Un solo trabajo de impresión, no dos.** En el ticket, cada copia termina con su propio corte de
-  papel (`GS V`). Si fueran dos trabajos podrían quedar separados en la cola, o fallar uno, y la
-  copia del control interno no saldría nunca.
+- **El rótulo va arriba.** Es lo que se busca al tener las copias en la mano.
+- **Un solo trabajo de impresión, no dos.** Si fueran dos trabajos podrían quedar separados en la
+  cola, o fallar uno, y la copia del control interno no saldría nunca.
 - **Las dos copias llevan el mismo número interno**: es lo que permite casarlas.
-- **El resumen del día no se duplica.** Es un reporte interno, no un comprobante que se entregue.
 
 ---
 
 ## 4. El bloque fiscal (CAI)
 
 El recuadro con CAI, rango autorizado y fecha límite se imprime **solo si el documento está
-emitido**, y sale del CAI con el que se emitió, guardado en el documento. Sin documento, la hoja y el
-ticket llevan el rótulo *"comprobante interno — no es documento fiscal"* y ningún CAI.
+emitido**, y sale del CAI con el que se emitió, guardado en el documento. Sin documento, la hoja
+lleva el rótulo *"comprobante interno — no es documento fiscal"* y ningún CAI.
 
 El CAI se administra en **Mantenimiento → Facturación** (tabla `FiscalCai`), un registro por
 autorización:
@@ -186,9 +184,6 @@ Cuatro criterios de impresión que vale la pena conocer:
 - **El desglose imprime los siete renglones en cero.** Es lo contrario del criterio anterior y a
   propósito: el formato del SAR los trae preimpresos, y una factura sin el renglón del ISV no se lee
   como completa. Un rendimiento en cero, en cambio, afirma algo falso.
-- **En el ticket de 80 mm las líneas se envuelven.** La térmica no ajusta: lo que pasa de 32 columnas
-  se pierde, y una razón social cortada a la mitad en un documento fiscal es un defecto. El nombre del
-  cliente, el concepto de una nota y los datos del exonerado se reparten en varias líneas.
 
 ---
 
@@ -313,7 +308,7 @@ Piden tipo, monto y motivo; el monto viene propuesto con el saldo completo, que 
 | **No se puede acreditar más de lo facturado** | El techo es lo que queda del documento: su total, más las notas de débito, menos las de crédito ya emitidas. Una nota anulada devuelve el saldo |
 | Puede ser **parcial** | Acreditar la mitad acredita la mitad de cada renglón: si el original llevaba ISV —el molido—, la nota lleva su parte |
 | **No sobre otra nota**, ni sobre un documento anulado | Corregir una corrección enreda el libro; un documento anulado ya no declara nada |
-| Se imprime en los dos formatos | 80 mm y A4, y la hoja dice **qué documento modifica**, con su número y su fecha |
+| Se imprime en los dos formatos | A4 y papel continuo, y la hoja dice **qué documento modifica**, con su número y su fecha |
 
 Emitirlas tiene permiso propio, **`fiscal_nota`**, por omisión solo admin: una nota de crédito rebaja
 un ingreso ya declarado, así que pesa lo mismo que anular.
@@ -345,7 +340,7 @@ implica además un movimiento de bodega, ese se registra aparte.
    detectar un código mal tecleado sin gastar un número.
 3. Dar los permisos: `fiscal_emitir`, `fiscal_anular` y `fiscal_nota` se configuran por rol en
    Mantenimiento → Roles. No aparecen en el menú, son solo permisos.
-4. Elegir el **formato de impresión** por omisión (80 mm o A4) en Mantenimiento → Facturación.
+4. Elegir el **formato de impresión** por omisión (A4 o papel continuo) en Mantenimiento → Facturación.
 5. Emitir una de prueba y verificar en el papel el número, el CAI, el rango y la fecha límite.
 
 ---
@@ -361,20 +356,16 @@ implica además un movimiento de bodega, ese se registra aparte.
 | `lib/csv.ts` | El CSV: BOM, comillas, protección de fórmulas |
 | `lib/xlsx.ts`, `lib/report-exports.ts` | El Excel: una hoja por tabla, con el formato de cada columna |
 | `lib/build-invoice.ts` | Datos de la factura: desde el snapshot si el documento está emitido, si no de los datos vivos. Formatea el correlativo interno |
-| `lib/build-ticket.ts` | Convierte esos mismos datos al ticket: los dos formatos leen una sola fuente |
-| `lib/thermal-printer.ts` | Buffers ESC/POS: ticket (dos copias, bloque fiscal) y resumen del día |
 | `lib/print-formats.ts`, `lib/use-print-invoice.ts` | El catálogo de formatos y el hook que imprime en el elegido |
-| `components/invoice-a4.tsx` | La hoja: maquetación, CSS de impresión y las dos copias |
-| `components/invoice-print-buttons.tsx` | "Imprimir factura" en el formato por omisión, más el otro formato |
+| `components/invoice-a4.tsx` | La hoja: maquetación, CSS de impresión, las dos copias en A4 y la hoja única en papel continuo |
+| `components/invoice-print-buttons.tsx` | "Imprimir factura" en el formato por omisión, más el otro formato (en Compras, solo el primero) |
 | `components/fiscal-document-actions.tsx` | Emitir, anular y emitir notas desde Compras, Ventas y Molido |
 | `components/maintenance-fiscal-panel.tsx` | Mantenimiento → Facturación: CAI y formato por omisión |
 | `components/fiscal-reports-panel.tsx` | Reportes → Fiscal: los dos libros, pendientes, estado del CAI y la descarga |
 | `app/api/fiscal-cais/*`, `app/api/fiscal-documents/*` | Administración del CAI, emisión, anulación y notas (`:id/nota`) |
 | `app/api/reports/fiscal/libro`, `.../pendientes`, `.../cais` | Los reportes, en JSON, Excel (`formato=xlsx`) o CSV |
-| `app/print/{compra,venta,molido}/[id]/page.tsx` | Las páginas de factura A4, con su control de acceso |
-| `app/print/nota/[id]/page.tsx` | La hoja A4 de una nota. El id es el del **documento**, no de una transacción |
-| `app/api/print/ticket/route.ts` | Encola el `PrintJob` del ticket y registra la reimpresión |
-| `app/api/print/agent/*` | Endpoints del agente local. Se autentica con `PRINT_AGENT_TOKEN` |
+| `app/print/{compra,venta,molido}/[id]/page.tsx` | Las páginas de factura, con su control de acceso y `?formato=` |
+| `app/print/nota/[id]/page.tsx` | La hoja de una nota. El id es el del **documento**, no de una transacción |
 | `prisma/schema.prisma` | `FiscalCai`, `FiscalDocument`, `FiscalAuditLog`, `numeroInterno`, `Producto.clasificacionFiscal`, `CompanySettings.formatoImpresionDefault` |
 
 **Migraciones relacionadas:**
@@ -387,6 +378,7 @@ implica además un movimiento de bodega, ese se registra aparte.
 | `20260928000000_add_print_format` | `CompanySettings.formatoImpresionDefault` |
 | `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo`, con el `CHECK` de referencia reemplazado: o una transacción, o un documento corregido |
 | `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta` |
+| `20261002000000_remove_thermal_printing` | Quita el ticket térmico: tabla `PrintJob`, IP y puerto de la impresora; `termico80` pasa a `a4` |
 
 **Pruebas:** `tests/lib/fiscal.test.ts` (reglas del CAI, desglose y notas), `tests/lib/fiscal-reports.test.ts`
 y `tests/lib/csv.test.ts` (libro, pendientes y exportación), `tests/lib/build-invoice.test.ts`,
@@ -406,8 +398,8 @@ verdad `tests/integration/fiscal-{constraints,emision,reportes,notas}.test.ts`.
   de dos dígitos (`TT`), además del formato y las leyendas exactas que exige el SAR. Lo mismo para las
   notas: su código `TT` y si una **boleta de compra** se corrige con nota de crédito o de otra forma.
   El sistema lo permite; que sea lo correcto ante el SAR es lo que hay que confirmar.
-- Falta ver impreso el corte entre las dos copias, tanto en A4 como en la térmica, y el ticket fiscal
-  en la impresora real.
+- Falta ver impreso el corte entre las dos copias en A4, y el papel continuo en la matricial real:
+  que la hoja quepa entre las tiras perforadas y que la copia de carbón se lea.
 - Fuera de alcance por decisión del 27/09: retenciones IHCAFE —cambiarían el total impreso— y guía de
   remisión, que antes exige modelar el traslado de café entre bodegas.
 - Para el detalle de decisiones de diseño, ver `DOCUMENTACION.md` §6.14 (reportes fiscales), §10.1

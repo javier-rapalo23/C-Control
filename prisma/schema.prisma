@@ -673,8 +673,6 @@ model CompanySettings {
   telefono    String   @default("")
   direccion   String   @default("")
   email       String   @default("")
-  printerIp   String   @default("")
-  printerPort Int      @default(9100)
   /// Datos de factura autorizada (SAR). Vacíos mientras el negocio facture con
   /// talonario físico: la factura A4 imprime el bloque fiscal solo cuando `cai`
   /// tiene valor, así que activarlo después es llenarlos y nada más.
@@ -682,7 +680,7 @@ model CompanySettings {
   facturaRangoDesde  String   @default("")
   facturaRangoHasta  String   @default("")
   facturaFechaLimite String   @default("")
-  /// Formato con el que se imprime la factura por omisión: `a4` o `termico80`. Son
+  /// Formato con el que se imprime la factura por omisión: `a4` o `continuo`. Son
   /// dos formatos del **mismo** documento, no dos documentos distintos, así que esto
   /// es una preferencia de impresión y nada más. Ver `lib/print-formats.ts`.
   formatoImpresionDefault String @default("a4")
@@ -699,17 +697,3 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
-model PrintJob {
-  id          String   @id @default(cuid())
-  status      String   @default("pending") // pending | claimed | done | error
-  printerIp   String
-  printerPort Int
-  payloadB64  String
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([status, createdAt])
-}
-

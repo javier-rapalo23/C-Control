@@ -7,8 +7,6 @@ import { PRINT_FORMATS, type PrintFormat, printFormatLabel } from '@/lib/print-f
 /** Lo que devuelve `POST /api/purchase-transactions/preview`. */
 export type PurchasePreview = {
   invoice: InvoiceData;
-  /** El ticket de 80 mm como texto, sacado de los mismos bytes que van a la térmica. */
-  ticket: string;
   /** Si al confirmar se emite la boleta. */
   emitira: boolean;
   /** Por qué no se emite; null si se emite. */
@@ -118,32 +116,10 @@ export default function PurchasePreviewModal({
             overflow: 'auto',
             background: 'var(--surface-alt)',
             borderRadius: 'var(--radius)',
-            padding: formato === 'a4' ? '0 8px' : 16,
+            padding: '0 8px',
           }}
         >
-          {formato === 'a4' ? (
-            <InvoiceA4 data={preview.invoice} vistaPrevia />
-          ) : (
-            // El ticket mide 32 columnas: en monoespaciada y a ese ancho, se ve como
-            // va a salir en el papel.
-            <pre
-              style={{
-                margin: '0 auto',
-                width: 'max-content',
-                maxWidth: '100%',
-                overflowX: 'auto',
-                background: '#fff',
-                color: '#111',
-                padding: '12px 14px',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: 13,
-                lineHeight: 1.35,
-                boxShadow: '0 1px 8px rgba(0, 0, 0, 0.15)',
-              }}
-            >
-              {preview.ticket}
-            </pre>
-          )}
+          <InvoiceA4 data={preview.invoice} formato={formato} vistaPrevia />
         </div>
 
         {error ? <p style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{error}</p> : null}
