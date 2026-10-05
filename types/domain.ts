@@ -161,6 +161,17 @@ export type BancoDTO = {
   updatedAt: string;
 };
 
+export type ExpenseCategoryDTO = {
+  id: string;
+  nombre: string;
+  requiereBanco: boolean;
+  activo: boolean;
+  /** La escribe el sistema (p. ej. "Planilla"): no se elige ni se edita. */
+  sistema: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ExpenseDTO = {
   id: string;
   businessDate: string;

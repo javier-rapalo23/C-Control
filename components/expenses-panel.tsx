@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
-import type { BancoDTO, LedgerDTO } from '@/types/domain';
+import type { BancoDTO, ExpenseCategoryDTO, LedgerDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
-import {
-  DEFAULT_EXPENSE_CATEGORIA,
-  MANUAL_EXPENSE_CATEGORIES,
-  requiresBanco,
-  type ExpenseCategoria,
-} from '@/lib/expenses';
+import { DEFAULT_EXPENSE_CATEGORIA } from '@/lib/expenses';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -34,12 +29,17 @@ export default function ExpensesPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategoria>(DEFAULT_EXPENSE_CATEGORIA);
+  const [expenseCategory, setExpenseCategory] = useState(DEFAULT_EXPENSE_CATEGORIA);
   const [expenseBancoId, setExpenseBancoId] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [bancos, setBancos] = useState<BancoDTO[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategoryDTO[]>([]);
 
+  // Las de sistema ("Planilla") las escribe otro módulo y el API las rechaza aquí.
+  const manualCategories = categories.filter((category) => category.activo && !category.sistema);
+  const requiresBanco = (nombre: string) =>
+    manualCategories.find((category) => category.nombre === nombre)?.requiereBanco === true;
   const needsBanco = requiresBanco(expenseCategory);
   const bancosActivos = bancos.filter((banco) => banco.activo);
 
@@ -70,6 +70,22 @@ export default function ExpensesPanel() {
       } catch {
         // El catálogo vacío solo bloquea el pago a banco; el resto de gastos sigue.
         setBancos([]);
+      }
+    })();
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/expense-categories', { cache: 'no-store' });
+        const data = await parseApiResponse<ExpenseCategoryDTO[]>(res);
+        setCategories(data);
+        // Si la categoría por defecto se desactivó o renombró, se toma la primera
+        // disponible para no enviar una que el API va a rechazar.
+        const disponibles = data.filter((category) => category.activo && !category.sistema);
+        setExpenseCategory((current) =>
+          disponibles.some((category) => category.nombre === current) ? current : disponibles[0]?.nombre ?? '',
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error cargando categorías');
       }
     })();
   }, []);
@@ -146,15 +162,15 @@ export default function ExpensesPanel() {
             <select
               value={expenseCategory}
               onChange={(e) => {
-                const categoria = e.target.value as ExpenseCategoria;
+                const categoria = e.target.value;
                 setExpenseCategory(categoria);
                 if (!requiresBanco(categoria)) setExpenseBancoId('');
               }}
               required
             >
-              {MANUAL_EXPENSE_CATEGORIES.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
+              {manualCategories.map((category) => (
+                <option key={category.id} value={category.nombre}>
+                  {category.nombre}
                 </option>
               ))}
             </select>
@@ -186,7 +202,7 @@ export default function ExpensesPanel() {
             <input value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} type="number" step="0.01" required />
           </label>
           <div style={{ gridColumn: 'span 12', marginTop: 8 }}>
-            <button className="btn-primary" type="submit" disabled={needsBanco && !expenseBancoId}>
+            <button className="btn-primary" type="submit" disabled={!expenseCategory || (needsBanco && !expenseBancoId)}>
               Registrar gasto
             </button>
           </div>

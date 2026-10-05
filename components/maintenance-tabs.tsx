@@ -11,6 +11,7 @@ const tabs = [
   { href: '/clients', label: 'Clientes' },
   { href: '/sucursales', label: 'Sucursales' },
   { href: '/bancos', label: 'Bancos' },
+  { href: '/categorias-gasto', label: 'Categorías de gasto' },
 ];
 
 export default function MaintenanceTabs() {

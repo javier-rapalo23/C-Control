@@ -57,6 +57,7 @@ const MAINTENANCE_SUBLINKS = [
   { href: '/clients', label: 'Clientes' },
   { href: '/sucursales', label: 'Sucursales' },
   { href: '/bancos', label: 'Bancos' },
+  { href: '/categorias-gasto', label: 'Categorías de gasto' },
 ];
 
 function isMaintenanceGroupPath(pathname: string) {
@@ -68,7 +69,9 @@ function isMaintenanceGroupPath(pathname: string) {
     pathname === '/sucursales' ||
     pathname.startsWith('/sucursales/') ||
     pathname === '/bancos' ||
-    pathname.startsWith('/bancos/')
+    pathname.startsWith('/bancos/') ||
+    pathname === '/categorias-gasto' ||
+    pathname.startsWith('/categorias-gasto/')
   );
 }
 
@@ -244,6 +247,7 @@ export default function SiteHeader() {
               def.key !== 'clients' &&
               def.key !== 'sucursales' &&
               def.key !== 'bancos' &&
+              def.key !== 'expense_categories' &&
               isRoleAllowed(moduleRoles[def.key] ?? def.defaultRoles, authUser.role),
           ).map((def) => {
             const Icon = MODULE_ICONS[def.key];

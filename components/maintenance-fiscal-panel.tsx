@@ -50,9 +50,46 @@ const formInicial = {
   notas: '',
 };
 
+type FormCai = typeof formInicial;
+
+/**
+ * El CAI que el formulario edita para un tipo: el activo, o si no hay, el más
+ * reciente que todavía no emitió nada. Cada tipo lleva un solo CAI en uso, así que
+ * elegir el tipo carga ese en vez de dar de alta uno repetido.
+ */
+function caiEditable(cais: FiscalCaiDTO[], tipoDocumento: string): FiscalCaiDTO | null {
+  const delTipo = cais.filter((cai) => cai.tipoDocumento === tipoDocumento);
+  return (
+    delTipo.find((cai) => cai.estado === 'activo') ??
+    delTipo.find((cai) => cai.documentosEmitidos === 0) ??
+    null
+  );
+}
+
+function formDesdeCai(cai: FiscalCaiDTO): FormCai {
+  return {
+    tipoDocumento: cai.tipoDocumento,
+    codigo: cai.codigo,
+    codigoEstablecimiento: cai.codigoEstablecimiento,
+    codigoPuntoEmision: cai.codigoPuntoEmision,
+    codigoTipoDocumento: cai.codigoTipoDocumento,
+    rangoDesde: String(cai.rangoDesde),
+    rangoHasta: String(cai.rangoHasta),
+    fechaLimite: cai.fechaLimite,
+    modo: cai.modo as FormCai['modo'],
+    alertaPorcentaje: String(cai.alertaPorcentaje),
+    alertaDiasPrevios: String(cai.alertaDiasPrevios),
+    notas: cai.notas ?? '',
+  };
+}
+
 export default function MaintenanceFiscalPanel() {
   const [cais, setCais] = useState<FiscalCaiDTO[]>([]);
-  const [form, setForm] = useState(formInicial);
+  const [tipoDocumento, setTipoDocumento] = useState(formInicial.tipoDocumento);
+  const [form, setForm] = useState<FormCai>(formInicial);
+  // Registrar uno nuevo solo se ofrece cuando el del tipo ya emitió documentos: es el
+  // caso de reemplazar una autorización agotada o vencida.
+  const [registrandoNuevo, setRegistrandoNuevo] = useState(false);
   const [formato, setFormato] = useState<PrintFormat>(DEFAULT_PRINT_FORMAT);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,6 +118,18 @@ export default function MaintenanceFiscalPanel() {
   useEffect(() => {
     void fetchCais();
   }, [fetchCais]);
+
+  const existente = caiEditable(cais, tipoDocumento);
+  const editando = existente && !registrandoNuevo ? existente : null;
+  // Con documentos emitidos, el CAI y el rango ya están impresos en papel.
+  const numeracionBloqueada = editando !== null && editando.documentosEmitidos > 0;
+
+  // Cambiar de tipo, o recargar la lista después de guardar, vuelve a llenar el
+  // formulario con el CAI de ese tipo.
+  useEffect(() => {
+    const cai = registrandoNuevo ? null : caiEditable(cais, tipoDocumento);
+    setForm(cai ? formDesdeCai(cai) : { ...formInicial, tipoDocumento });
+  }, [cais, tipoDocumento, registrandoNuevo]);
 
   async function guardarFormato(nuevo: PrintFormat) {
     const anterior = formato;
@@ -117,12 +166,41 @@ export default function MaintenanceFiscalPanel() {
   const totalRango =
     form.rangoDesde && form.rangoHasta ? Number(form.rangoHasta) - Number(form.rangoDesde) + 1 : null;
 
-  async function crear(event: React.FormEvent) {
+  async function guardar(event: React.FormEvent) {
     event.preventDefault();
     try {
       setSaving(true);
       setError(null);
       setMensaje(null);
+
+      if (editando) {
+        await fetch(`/api/fiscal-cais/${editando.id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...(numeracionBloqueada
+              ? {}
+              : {
+                  codigo: form.codigo.trim(),
+                  codigoEstablecimiento: form.codigoEstablecimiento.trim(),
+                  codigoPuntoEmision: form.codigoPuntoEmision.trim(),
+                  codigoTipoDocumento: form.codigoTipoDocumento.trim(),
+                  rangoDesde: Number(form.rangoDesde),
+                  rangoHasta: Number(form.rangoHasta),
+                }),
+            fechaLimite: form.fechaLimite,
+            modo: form.modo,
+            alertaPorcentaje: Number(form.alertaPorcentaje),
+            alertaDiasPrevios: Number(form.alertaDiasPrevios),
+            notas: form.notas.trim(),
+          }),
+        }).then(parseApiResponse);
+
+        setMensaje('CAI actualizado.');
+        await fetchCais();
+        return;
+      }
+
       await fetch('/api/fiscal-cais', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -142,7 +220,7 @@ export default function MaintenanceFiscalPanel() {
         }),
       }).then(parseApiResponse);
 
-      setForm(formInicial);
+      setRegistrandoNuevo(false);
       setMensaje('CAI registrado. El anterior del mismo tipo quedó inactivo.');
       await fetchCais();
     } catch (err) {
@@ -260,12 +338,16 @@ export default function MaintenanceFiscalPanel() {
         {error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : null}
         {mensaje ? <p style={{ color: 'var(--text-soft)' }}>{mensaje}</p> : null}
 
-        <form onSubmit={(event) => void crear(event)} className="row" style={{ marginTop: 8 }}>
+        <form onSubmit={(event) => void guardar(event)} className="row" style={{ marginTop: 8 }}>
           <label style={{ gridColumn: 'span 4' }}>
             Tipo de documento
             <select
-              value={form.tipoDocumento}
-              onChange={(event) => setForm((f) => ({ ...f, tipoDocumento: event.target.value }))}
+              value={tipoDocumento}
+              onChange={(event) => {
+                setTipoDocumento(event.target.value);
+                setRegistrandoNuevo(false);
+                setMensaje(null);
+              }}
             >
               {TIPOS_SELECCIONABLES.map((tipo) => (
                 <option key={tipo.key} value={tipo.key}>
@@ -280,6 +362,7 @@ export default function MaintenanceFiscalPanel() {
               value={form.codigo}
               onChange={(event) => setForm((f) => ({ ...f, codigo: event.target.value }))}
               placeholder="Tal como aparece en la autorización"
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -292,6 +375,7 @@ export default function MaintenanceFiscalPanel() {
               inputMode="numeric"
               pattern="\d{3}"
               maxLength={3}
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -303,6 +387,7 @@ export default function MaintenanceFiscalPanel() {
               inputMode="numeric"
               pattern="\d{3}"
               maxLength={3}
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -314,6 +399,7 @@ export default function MaintenanceFiscalPanel() {
               inputMode="numeric"
               pattern="\d{2}"
               maxLength={2}
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -325,6 +411,7 @@ export default function MaintenanceFiscalPanel() {
               step="1"
               value={form.rangoDesde}
               onChange={(event) => setForm((f) => ({ ...f, rangoDesde: event.target.value }))}
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -336,6 +423,7 @@ export default function MaintenanceFiscalPanel() {
               step="1"
               value={form.rangoHasta}
               onChange={(event) => setForm((f) => ({ ...f, rangoHasta: event.target.value }))}
+              disabled={numeracionBloqueada}
               required
             />
           </label>
@@ -391,12 +479,36 @@ export default function MaintenanceFiscalPanel() {
                 {totalRango && totalRango > 0 ? ` · ${totalRango} documentos en el rango` : ''}
               </p>
             ) : null}
-            <button className="btn-primary" type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Registrar CAI'}
-            </button>
-            <span style={{ marginLeft: 8, color: 'var(--text-soft)' }}>
-              Al registrarlo, el CAI activo de ese tipo de documento pasa a inactivo.
-            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn-primary" type="submit" disabled={saving}>
+                {saving ? 'Guardando...' : editando ? 'Guardar cambios' : 'Registrar CAI'}
+              </button>
+              {editando ? (
+                <span style={{ color: 'var(--text-soft)' }}>
+                  Editando el CAI <strong>{editando.codigo}</strong> de este tipo
+                  {editando.estado === 'activo' ? '' : ' (inactivo)'}.
+                  {numeracionBloqueada
+                    ? ` Ya emitió ${editando.documentosEmitidos} documentos: el CAI, los códigos y el rango no se pueden cambiar.`
+                    : ''}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--text-soft)' }}>
+                  Al registrarlo, el CAI activo de ese tipo de documento pasa a inactivo.
+                </span>
+              )}
+              {/* Otro CAI del mismo tipo solo se registra para reemplazar uno ya en uso;
+                  si el actual no emitió nada, se corrige y el API rechaza el duplicado. */}
+              {numeracionBloqueada ? (
+                <button className="btn-secondary" type="button" onClick={() => setRegistrandoNuevo(true)}>
+                  Registrar CAI nuevo (reemplaza al actual)
+                </button>
+              ) : null}
+              {registrandoNuevo ? (
+                <button className="btn-secondary" type="button" onClick={() => setRegistrandoNuevo(false)}>
+                  Cancelar
+                </button>
+              ) : null}
+            </div>
           </div>
         </form>
       </section>

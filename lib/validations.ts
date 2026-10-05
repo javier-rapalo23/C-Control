@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { MANUAL_EXPENSE_CATEGORIA_VALUES, requiresBanco } from '@/lib/expenses';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
 import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
 import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS, TIPOS_NOTA } from '@/lib/fiscal';
@@ -191,41 +190,27 @@ export const createBancoSchema = z.object({
 
 export const updateBancoSchema = createBancoSchema.partial();
 
-/**
- * La categoría sale del catálogo y excluye "Planilla": ese gasto lo escribe el
- * módulo Personal junto al pago o anticipo que lo origina, y uno creado a mano
- * quedaría sin esa contrapartida.
- *
- * `bancoId` se exige solo en "Pago banco" y se rechaza en el resto, para que no
- * queden pagos de banco sin banco ni gasolina colgando de uno.
- */
-export const createExpenseSchema = z
-  .object({
-    businessDate: businessDateField,
-    sucursalId: z.string().min(1).optional(),
-    categoria: z.enum(MANUAL_EXPENSE_CATEGORIA_VALUES),
-    bancoId: z.string().min(1).nullable().optional(),
-    descripcion: z.string().trim().min(2).max(250),
-    monto: z.number().positive(),
-  })
-  .superRefine((value, ctx) => {
-    if (requiresBanco(value.categoria) && !value.bancoId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['bancoId'],
-        message: 'Seleccione el banco al que corresponde el pago',
-      });
-      return;
-    }
+export const createExpenseCategorySchema = z.object({
+  nombre: z.string().trim().min(2).max(60),
+  requiereBanco: z.boolean().optional(),
+  activo: z.boolean().optional(),
+});
 
-    if (!requiresBanco(value.categoria) && value.bancoId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['bancoId'],
-        message: `La categoría "${value.categoria}" no lleva banco`,
-      });
-    }
-  });
+export const updateExpenseCategorySchema = createExpenseCategorySchema.partial();
+
+/**
+ * La categoría tiene que existir en `ExpenseCategory`, estar activa, no ser de
+ * sistema y llevar banco solo si lo pide: eso depende de la base y lo comprueba
+ * `assertManualExpenseCategory` en la ruta.
+ */
+export const createExpenseSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  categoria: z.string().trim().min(1).max(60),
+  bancoId: z.string().min(1).nullable().optional(),
+  descripcion: z.string().trim().min(2).max(250),
+  monto: z.number().positive(),
+});
 
 export const updateProductoSchema = createProductoSchema.partial();
 
@@ -276,12 +261,18 @@ export const createFiscalCaiSchema = z
   });
 
 /**
- * Cambios sobre un CAI ya guardado. **No incluye rango, códigos ni tipo**: un CAI
- * con documentos emitidos no puede cambiar de numeración, y la ruta además lo
- * rechaza. Lo que sí se corrige es su vigencia operativa y los avisos.
+ * Cambios sobre un CAI ya guardado. **No incluye el tipo**: cada tipo tiene su
+ * propio CAI. El código, los códigos del número y el rango se aceptan, pero la
+ * ruta los rechaza si el CAI ya emitió documentos: esa numeración ya está impresa.
  */
 export const updateFiscalCaiSchema = z.object({
   estado: z.enum(ESTADOS_CAI).optional(),
+  codigo: z.string().trim().min(4).max(50).optional(),
+  codigoEstablecimiento: z.string().trim().regex(/^d{3}$/, 'Debe ser 3 dígitos').optional(),
+  codigoPuntoEmision: z.string().trim().regex(/^d{3}$/, 'Debe ser 3 dígitos').optional(),
+  codigoTipoDocumento: z.string().trim().regex(/^d{2}$/, 'Debe ser 2 dígitos').optional(),
+  rangoDesde: z.number().int().min(1).max(99_999_999).optional(),
+  rangoHasta: z.number().int().min(1).max(99_999_999).optional(),
   modo: z.enum(MODOS_CAI).optional(),
   fechaLimite: businessDateField.optional(),
   alertaPorcentaje: z.number().int().min(1).max(100).optional(),

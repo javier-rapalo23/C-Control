@@ -490,8 +490,9 @@ model Expense {
   id           String   @id @default(cuid())
   businessDate DateTime @db.Date
   sucursalId   String
-  /// Valor del catálogo de `lib/expenses.ts`, no texto libre: de eso depende que
-  /// el reporte pueda agrupar por categoría.
+  /// Nombre de una `ExpenseCategory`, no texto libre: de eso depende que el
+  /// reporte pueda agrupar por categoría. La llave foránea apunta al nombre (no al
+  /// id) para que renombrar la categoría arrastre los gastos ya registrados.
   categoria    String
   /// Solo para la categoría "Pago banco": habilita el desglose por banco. Nulo en
   /// las demás categorías.
@@ -501,6 +502,7 @@ model Expense {
   createdAt    DateTime @default(now())
   sucursal     Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   banco        Banco?   @relation(fields: [bancoId], references: [id], onDelete: Restrict)
+  categoriaDef ExpenseCategory @relation(fields: [categoria], references: [nombre], onDelete: Restrict, onUpdate: Cascade)
   // Gasto generado automáticamente por un pago o adelanto de planilla. Lo posee
   // ese registro: se borra con él y no debe eliminarse desde el panel de gastos.
   employeePayment EmployeePayment?
@@ -509,6 +511,24 @@ model Expense {
   @@index([businessDate])
   @@index([sucursalId])
   @@index([bancoId])
+  @@index([categoria])
+}
+
+/// Categorías de gasto, administrables desde Mantenimiento. Siguen siendo un
+/// catálogo cerrado (el gasto no acepta texto libre), pero el cliente puede
+/// agregar las suyas sin esperar un cambio de código.
+model ExpenseCategory {
+  id            String    @id @default(cuid())
+  nombre        String    @unique
+  /// El gasto exige banco y entra en el desglose por banco del reporte.
+  requiereBanco Boolean   @default(false)
+  activo        Boolean   @default(true)
+  /// La escribe el sistema (p. ej. "Planilla", desde el módulo Personal): no se
+  /// elige en el panel de gastos ni se puede editar o eliminar.
+  sistema       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  expenses      Expense[]
 }
 
 /// Bancos a los que la empresa hace pagos. Es un catálogo administrable desde

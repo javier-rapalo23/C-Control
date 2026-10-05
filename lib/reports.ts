@@ -7,7 +7,6 @@ import {
   toBusinessDateString,
 } from '@/lib/business-date';
 import { decimalToNumber } from '@/lib/ledger';
-import { requiresBanco } from '@/lib/expenses';
 import type {
   ExpenseReportDTO,
   ExpenseReportGroupDTO,
@@ -475,6 +474,7 @@ export async function getExpenseReport(
       categoria: true,
       monto: true,
       banco: { select: { nombre: true } },
+      categoriaDef: { select: { requiereBanco: true } },
     },
   });
 
@@ -494,7 +494,7 @@ export async function getExpenseReport(
     if (!byCategoria.has(expense.categoria)) byCategoria.set(expense.categoria, emptyExpenseAccumulator());
     accumulateExpense(byCategoria.get(expense.categoria)!, monto);
 
-    if (requiresBanco(expense.categoria)) {
+    if (expense.categoriaDef.requiereBanco) {
       // Un pago sin banco solo puede venir de datos anteriores a que su categoría lo
       // exigiera: se agrupa aparte en vez de descartarlo, para que el desglose cuadre
       // con el total.

@@ -28,6 +28,13 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: 'cash', href: '/cash', label: 'Caja', defaultRoles: ['editor'] },
   { key: 'sucursales', href: '/sucursales', label: 'Sucursales', defaultRoles: [], locked: true },
   { key: 'bancos', href: '/bancos', label: 'Bancos', defaultRoles: [], locked: true },
+  {
+    key: 'expense_categories',
+    href: '/categorias-gasto',
+    label: 'Categorías de gasto',
+    defaultRoles: [],
+    locked: true,
+  },
   { key: 'personnel', href: '/personnel', label: 'Personal', defaultRoles: [] },
   { key: 'maintenance', href: '/maintenance', label: 'Mantenimiento', defaultRoles: [], locked: true },
   // Permisos de facturación fiscal. Emitir es de la operación; anular destruye el
