@@ -40,6 +40,11 @@ export type InvoiceCliente = {
    * bloque del **adquiriente exonerado**: es lo que identifica de quién es la exoneración.
    */
   registroExonerado: string | null;
+  /**
+   * Registro de la SAG del adquiriente exonerado. Opcional en el tipo porque los
+   * snapshots emitidos antes de agregarlo no lo traen.
+   */
+  registroSag?: string | null;
 };
 
 export type InvoiceLinea = {
@@ -111,6 +116,7 @@ export async function buildInvoiceForGrinding(grindingServiceId: string): Promis
       claveIhcafe: servicio.client.claveIhcafe,
       nombreFinca: servicio.client.nombreFinca,
       registroExonerado: servicio.client.registroExonerado,
+      registroSag: servicio.client.registroSag,
     },
     lineas,
     subtotal: monto,
@@ -259,6 +265,7 @@ export type CompraParaFactura = {
     claveIhcafe: string | null;
     nombreFinca: string | null;
     registroExonerado: string | null;
+    registroSag: string | null;
   };
   items: Array<{
     productoNombre: string;
@@ -339,6 +346,7 @@ function invoiceDataForCompra(transaction: CompraParaFactura, empresa: InvoiceEm
       claveIhcafe: transaction.client.claveIhcafe,
       nombreFinca: transaction.client.nombreFinca,
       registroExonerado: transaction.client.registroExonerado,
+      registroSag: transaction.client.registroSag,
     },
     lineas,
     subtotal: lineas.reduce((suma, linea) => suma + linea.total, 0),
@@ -391,6 +399,7 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
       claveIhcafe: transaction.client.claveIhcafe,
       nombreFinca: transaction.client.nombreFinca,
       registroExonerado: transaction.client.registroExonerado,
+      registroSag: transaction.client.registroSag,
     },
     lineas,
     // Las ventas no llevan ajustes al pie: el bono y el descuento son de la compra.

@@ -49,6 +49,8 @@ export const createClientSchema = z.object({
   // Constancia de registro de exonerado del SAR. Se admite vacía para poder borrarla:
   // un cliente puede dejar de estar exonerado.
   registroExonerado: z.string().trim().max(60).optional(),
+  // Registro de la SAG del adquiriente exonerado; vacío por la misma razón.
+  registroSag: z.string().trim().max(60).optional(),
   notas: z.string().trim().max(500).optional(),
 });
 

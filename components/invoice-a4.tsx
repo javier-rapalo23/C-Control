@@ -104,6 +104,8 @@ const CSS = `
   letter-spacing: 0.4px;
 }
 .invoice-exonerado .invoice-cliente { margin-top: 0; border-top: none; padding-top: 0; }
+/* Dato que falta: raya para llenarlo a mano, como en un formulario preimpreso. */
+.invoice-campo-vacio { display: inline-block; min-width: 45mm; border-bottom: 1px solid #111; }
 
 /* Un documento anulado tiene que leerse como anulado de un vistazo, aunque alguien
    solo mire la hoja de lejos. */
@@ -254,6 +256,16 @@ function Campo({ etiqueta, valor }: { etiqueta: string; valor: string | null }) 
     <div className="invoice-campo">
       <span>{etiqueta}</span>
       <span>{valor}</span>
+    </div>
+  );
+}
+
+/** Como `Campo`, pero se imprime aunque no haya valor: deja la raya para llenarlo. */
+function CampoFormulario({ etiqueta, valor }: { etiqueta: string; valor: string | null | undefined }) {
+  return (
+    <div className="invoice-campo">
+      <span>{etiqueta}</span>
+      {valor ? <span>{valor}</span> : <span className="invoice-campo-vacio" />}
     </div>
   );
 }
@@ -509,18 +521,20 @@ function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
           <Campo etiqueta="Dirección" valor={cliente.direccion} />
         </section>
 
-        {/* Bloque del adquiriente exonerado. Sale cuando el cliente tiene constancia de
-            registro o cuando la operación trae orden de compra exenta: es lo que dice de
-            quién es la exoneración y con qué documento se amparó. Repite nombre y RTN a
-            propósito —ya salen arriba— porque el bloque tiene que poder leerse solo. */}
-        {cliente.registroExonerado || documento?.ordenCompraExenta ? (
+        {/* Bloque del adquiriente exonerado. En la factura y la boleta de compra sale
+            siempre, con raya donde falte un dato: son campos que el documento fiscal
+            tiene que traer. En el comprobante interno y en las notas solo sale cuando
+            hay algo que poner. */}
+        {(documento && !esNota) ||
+        cliente.registroExonerado ||
+        cliente.registroSag ||
+        documento?.ordenCompraExenta ? (
           <section className="invoice-exonerado">
-            <p className="invoice-exonerado-titulo">Adquiriente exonerado</p>
+            <p className="invoice-exonerado-titulo">Datos del adquiriente exonerado</p>
             <div className="invoice-cliente">
-              <Campo etiqueta="Nombre o razón social" valor={cliente.nombre} />
-              <Campo etiqueta="RTN" valor={cliente.rtn} />
-              <Campo etiqueta="Constancia de registro" valor={cliente.registroExonerado} />
-              <Campo etiqueta="Orden de compra exenta" valor={documento?.ordenCompraExenta ?? null} />
+              <CampoFormulario etiqueta="No. orden de compra exenta" valor={documento?.ordenCompraExenta} />
+              <CampoFormulario etiqueta="No. constancia de registro de exonerado" valor={cliente.registroExonerado} />
+              <CampoFormulario etiqueta="No. registro de la SAG" valor={cliente.registroSag} />
             </div>
           </section>
         ) : null}

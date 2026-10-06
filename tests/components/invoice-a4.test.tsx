@@ -26,6 +26,7 @@ const CLIENTE = {
   claveIhcafe: '12345',
   nombreFinca: 'El Rosal',
   registroExonerado: null,
+  registroSag: null,
 };
 
 const COMPRA: InvoiceData = {
@@ -504,15 +505,49 @@ describe('InvoiceA4 — nota', () => {
 });
 
 /**
- * Bloque del adquiriente exonerado. Son los datos con los que se sustenta una operación
- * exonerada: quién es, su RTN, su constancia de registro y la orden de compra exenta.
+ * Bloque del adquiriente exonerado: orden de compra exenta, constancia de registro de
+ * exonerado y registro de la SAG. En un documento fiscal sale siempre, con raya donde
+ * falte el dato.
  */
 describe('InvoiceA4 — adquiriente exonerado', () => {
-  const CLIENTE_EXONERADO = { ...CLIENTE, rtn: '0801-1990-999999', registroExonerado: 'REG-EXO-4455' };
+  const CLIENTE_EXONERADO = {
+    ...CLIENTE,
+    rtn: '0801-1990-999999',
+    registroExonerado: 'REG-EXO-4455',
+    registroSag: 'SAG-7781',
+  };
 
-  it('no imprime el bloque cuando el cliente no está exonerado', () => {
+  it('en un documento fiscal imprime el bloque aunque el cliente no esté exonerado', () => {
     const html = renderToStaticMarkup(<InvoiceA4 data={{ ...COMPRA, documento: DOCUMENTO }} />);
-    expect(html).not.toContain('Adquiriente exonerado');
+
+    expect(html).toContain('Datos del adquiriente exonerado');
+    expect(html).toContain('No. orden de compra exenta');
+    expect(html).toContain('No. constancia de registro de exonerado');
+    expect(html).toContain('No. registro de la SAG');
+    expect(html).toContain('invoice-campo-vacio');
+  });
+
+  it('en el comprobante interno no imprime el bloque si no hay datos', () => {
+    const html = renderToStaticMarkup(<InvoiceA4 data={COMPRA} />);
+    expect(html).not.toContain('class="invoice-exonerado"');
+  });
+
+  it('imprime el registro de la SAG del cliente', () => {
+    const html = renderToStaticMarkup(
+      <InvoiceA4 data={{ ...COMPRA, cliente: CLIENTE_EXONERADO, documento: DOCUMENTO }} />,
+    );
+    expect(html).toContain('SAG-7781');
+  });
+
+  // Los documentos emitidos antes de agregar el registro de la SAG no lo traen en el
+  // snapshot: el campo sale en blanco en vez de romper la reimpresión.
+  it('reimprime un snapshot viejo sin registro de la SAG', () => {
+    const clienteViejo = { ...CLIENTE_EXONERADO, registroSag: undefined };
+    const html = renderToStaticMarkup(
+      <InvoiceA4 data={{ ...COMPRA, cliente: clienteViejo, documento: DOCUMENTO }} />,
+    );
+    expect(html).toContain('No. registro de la SAG');
+    expect(html).toContain('REG-EXO-4455');
   });
 
   it('imprime constancia y orden de compra exenta cuando aplican', () => {
@@ -526,7 +561,7 @@ describe('InvoiceA4 — adquiriente exonerado', () => {
       />,
     );
 
-    expect(html).toContain('Adquiriente exonerado');
+    expect(html).toContain('Datos del adquiriente exonerado');
     expect(html).toContain('REG-EXO-4455');
     expect(html).toContain('OC-2026-118');
     expect(html).toContain('0801-1990-999999');
@@ -539,7 +574,7 @@ describe('InvoiceA4 — adquiriente exonerado', () => {
       <InvoiceA4 data={{ ...COMPRA, cliente: CLIENTE_EXONERADO, documento: DOCUMENTO }} />,
     );
 
-    expect(html).toContain('Adquiriente exonerado');
+    expect(html).toContain('Datos del adquiriente exonerado');
     expect(html).toContain('REG-EXO-4455');
   });
 });

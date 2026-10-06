@@ -37,6 +37,8 @@ export type ClientDTO = {
   rtn?: string | null;
   /** Constancia de registro de exonerado del SAR; identifica al adquiriente exonerado. */
   registroExonerado?: string | null;
+  /** Registro de la SAG del adquiriente exonerado. */
+  registroSag?: string | null;
   cuentaBancaria?: string | null;
   notas?: string | null;
   esGeneral: boolean;

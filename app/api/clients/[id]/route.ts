@@ -18,6 +18,7 @@ function mapClient(client: {
   rtn: string | null;
   cuentaBancaria: string | null;
   registroExonerado: string | null;
+  registroSag: string | null;
   notas: string | null;
   esGeneral: boolean;
   createdAt: Date;
@@ -34,6 +35,7 @@ function mapClient(client: {
     rtn: client.rtn ?? null,
     cuentaBancaria: client.cuentaBancaria ?? null,
     registroExonerado: client.registroExonerado ?? null,
+    registroSag: client.registroSag ?? null,
     notas: client.notas ?? null,
     createdAt: client.createdAt.toISOString(),
     updatedAt: client.updatedAt.toISOString(),

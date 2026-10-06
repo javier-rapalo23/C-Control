@@ -94,6 +94,9 @@ model Client {
   /// que identifica al **adquiriente exonerado**. La orden de compra exenta, que cambia
   /// en cada operación, va en `FiscalDocument.ordenCompraExenta`.
   registroExonerado    String?
+  /// Número de registro de la SAG del adquiriente exonerado. Del cliente, como la
+  /// constancia: se registra una vez y se imprime en cada documento suyo.
+  registroSag          String?
   cuentaBancaria       String?
   notas                String?
   esGeneral            Boolean               @default(false)

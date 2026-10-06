@@ -24,6 +24,7 @@ type EditingClient = {
   telefono: string;
   cuentaBancaria: string;
   registroExonerado: string;
+  registroSag: string;
   notas: string;
 };
 
@@ -122,6 +123,7 @@ export default function ClientsPanel() {
           telefono: editingClient.telefono || undefined,
           cuentaBancaria: editingClient.cuentaBancaria || undefined,
           registroExonerado: editingClient.registroExonerado || undefined,
+          registroSag: editingClient.registroSag || undefined,
           notas: editingClient.notas || undefined,
         }),
       }).then(parseApiResponse);
@@ -235,6 +237,7 @@ export default function ClientsPanel() {
                 <th>RTN</th>
                 <th>Teléfono</th>
                 <th>Constancia exonerado</th>
+                <th>Registro SAG</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -298,6 +301,13 @@ export default function ClientsPanel() {
                         placeholder="Solo si está exonerado"
                       />
                     </td>
+                    <td>
+                      <input
+                        value={editingClient.registroSag}
+                        onChange={(e) => setEditingClient((prev) => prev && { ...prev, registroSag: e.target.value })}
+                        placeholder="Solo si está exonerado"
+                      />
+                    </td>
                     <td style={{ display: 'flex', gap: 6 }}>
                       <button className="btn-primary" type="button" onClick={() => void updateClient(client.id)}>
                         Guardar
@@ -318,6 +328,7 @@ export default function ClientsPanel() {
                       <td>{client.rtn ?? '—'}</td>
                       <td>{client.telefono ?? '—'}</td>
                       <td>{client.registroExonerado ?? '—'}</td>
+                      <td>{client.registroSag ?? '—'}</td>
                       <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button
                           className="btn-secondary"
@@ -334,6 +345,7 @@ export default function ClientsPanel() {
                               telefono: client.telefono ?? '',
                               cuentaBancaria: client.cuentaBancaria ?? '',
                               registroExonerado: client.registroExonerado ?? '',
+                              registroSag: client.registroSag ?? '',
                               notas: client.notas ?? '',
                             })
                           }
@@ -352,7 +364,7 @@ export default function ClientsPanel() {
                     </tr>
                     {expandedClientId === client.id ? (
                       <tr>
-                        <td colSpan={9} style={{ background: 'var(--surface-alt)' }}>
+                        <td colSpan={10} style={{ background: 'var(--surface-alt)' }}>
                           <div style={{ padding: '8px 4px' }}>
                             <strong style={{ fontSize: 13 }}>Productores originales de {client.nombre}</strong>
                             <ErrorToast message={originalesError} onClose={() => setOriginalesError(null)} />
@@ -436,7 +448,7 @@ export default function ClientsPanel() {
               )}
               {clients.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={9}>No hay clientes registrados.</td>
+                  <td colSpan={10}>No hay clientes registrados.</td>
                 </tr>
               ) : null}
             </tbody>
