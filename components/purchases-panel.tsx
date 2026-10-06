@@ -322,9 +322,10 @@ export default function PurchasesPanel() {
    * consumió nada. Si lo que falla es la emisión, la compra ya quedó guardada: el aviso
    * lo dice y la fila ofrece "Emitir e imprimir", como cualquier pendiente.
    */
-  async function confirmarCompra() {
+  async function confirmarCompra(imprimir: boolean) {
     if (!preview) return;
-    const emitir = preview.vista.emitira;
+    // "Guardar" solo guarda: la boleta queda para emitirla desde la fila.
+    const emitir = imprimir && preview.vista.emitira;
     const formato = previewFormato;
 
     // La pestaña de la hoja se abre ya, dentro del clic: abierta después de guardar, el
@@ -868,7 +869,7 @@ export default function PurchasesPanel() {
         guardando={guardando}
         error={previewError}
         onClose={() => setPreview(null)}
-        onConfirm={() => void confirmarCompra()}
+        onConfirm={(imprimir) => void confirmarCompra(imprimir)}
       />
 
       <LoadingOverlay active={loading} />

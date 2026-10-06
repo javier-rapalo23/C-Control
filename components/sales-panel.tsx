@@ -356,9 +356,10 @@ export default function SalesPanel() {
    * consumió nada. Si lo que falla es la emisión, la venta ya quedó guardada y la fila
    * ofrece emitirla.
    */
-  async function confirmarVenta() {
+  async function confirmarVenta(imprimir: boolean) {
     if (!preview) return;
-    const emitir = preview.vista.emitira;
+    // "Guardar" solo guarda: la factura queda para emitirla desde la fila.
+    const emitir = imprimir && preview.vista.emitira;
     const formato = previewFormato;
     const datos = datosEmision();
 
@@ -851,7 +852,7 @@ export default function SalesPanel() {
         guardando={guardando}
         error={previewError}
         onClose={() => setPreview(null)}
-        onConfirm={() => void confirmarVenta()}
+        onConfirm={(imprimir) => void confirmarVenta(imprimir)}
       />
 
       <LoadingOverlay active={loading} />

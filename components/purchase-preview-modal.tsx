@@ -37,7 +37,8 @@ type Props = {
   guardando: boolean;
   error: string | null;
   onClose: () => void;
-  onConfirm: () => void;
+  /** `imprimir`: emitir el documento e imprimirlo; si no, solo se guarda. */
+  onConfirm: (imprimir: boolean) => void;
 };
 
 /**
@@ -117,8 +118,10 @@ export default function PurchasePreviewModal({
 
         {preview.emitira ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-soft)' }}>
-            Al confirmar se guarda {textos.transaccion}, se emite {textos.documento} y se imprime en{' '}
-            <strong>{printFormatLabel(formato)}</strong>.
+            <strong>Guardar e imprimir</strong> guarda {textos.transaccion}, emite {textos.documento} y la
+            imprime en <strong>{printFormatLabel(formato)}</strong>. <strong>Guardar</strong> solo guarda{' '}
+            {textos.transaccion}: {textos.documento} no se emite ni consume número, y queda en la fila para
+            emitirla e imprimirla después.
           </p>
         ) : (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--danger)' }}>
@@ -146,9 +149,22 @@ export default function PurchasePreviewModal({
           <button className="btn-secondary" type="button" onClick={onClose} disabled={guardando}>
             Corregir
           </button>
-          <button className="btn-primary" type="button" onClick={onConfirm} disabled={guardando}>
-            {guardando ? 'Guardando…' : preview.emitira ? 'Guardar e imprimir' : `Guardar sin ${textos.documentoCorto}`}
-          </button>
+          {/* Guardar sin imprimir no emite: un número del CAI consumido sin papel impreso
+              solo se recupera anulando. */}
+          {preview.emitira ? (
+            <>
+              <button className="btn-secondary" type="button" onClick={() => onConfirm(false)} disabled={guardando}>
+                Guardar
+              </button>
+              <button className="btn-primary" type="button" onClick={() => onConfirm(true)} disabled={guardando}>
+                {guardando ? 'Guardando…' : 'Guardar e imprimir'}
+              </button>
+            </>
+          ) : (
+            <button className="btn-primary" type="button" onClick={() => onConfirm(false)} disabled={guardando}>
+              {guardando ? 'Guardando…' : `Guardar sin ${textos.documentoCorto}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
