@@ -2,10 +2,10 @@ import { Prisma } from '@prisma/client';
 import { createSaleTransactionSchema } from '@/lib/validations';
 import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { recalculateDailyBalance, resolveSucursalId } from '@/lib/ledger';
-import { computeQuintalesOro } from '@/lib/oro';
+import { recalculateDailyBalance } from '@/lib/ledger';
+import { calcularVenta } from '@/lib/sale-draft';
+import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 import { formatNumeroInterno } from '@/lib/build-invoice';
 
 function mapTransaction(transaction: {
@@ -14,6 +14,7 @@ function mapTransaction(transaction: {
   sucursalId: string;
   clientId: string;
   numeroInterno: number;
+  metodoPago: string;
   total: Prisma.Decimal;
   createdAt: Date;
   updatedAt: Date;
@@ -55,6 +56,7 @@ function mapTransaction(transaction: {
     sucursalId: transaction.sucursalId,
     clientId: transaction.clientId,
     numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
+    metodoPago: transaction.metodoPago,
     total: Number(transaction.total),
     createdAt: transaction.createdAt.toISOString(),
     updatedAt: transaction.updatedAt.toISOString(),
@@ -122,96 +124,16 @@ export async function POST(request: Request) {
     const payload = createSaleTransactionSchema.parse(await request.json());
 
     const transaction = await prisma.$transaction(async (tx) => {
-      const client = await tx.client.findUnique({ where: { id: payload.clientId } });
-      if (!client) {
-        throw new Error('Client not found');
-      }
-
-      const sucursalId = await resolveSucursalId(tx, payload.sucursalId);
-      await assertCashOpen(tx, payload.businessDate, sucursalId);
-
-      const items = await Promise.all(
-        payload.items.map(async (item) => {
-          const producto = await tx.producto.findUnique({ where: { id: item.productoId } });
-          if (!producto) {
-            throw new Error(`Producto not found: ${item.productoId}`);
-          }
-
-          // Mismo pesaje que compras: con peso bruto, las libras son el neto.
-          let pesoBruto: Prisma.Decimal | null = null;
-          let numeroSacos: number | null = null;
-          let taraPorSaco: Prisma.Decimal | null = null;
-          let libras: Prisma.Decimal;
-
-          if (item.pesoBruto !== undefined) {
-            pesoBruto = new Prisma.Decimal(item.pesoBruto);
-            numeroSacos = item.numeroSacos ?? 0;
-            taraPorSaco = new Prisma.Decimal(item.taraPorSaco ?? Number(producto.taraPorSaco ?? 0));
-            libras = pesoBruto.sub(taraPorSaco.mul(numeroSacos));
-            if (libras.lte(0)) {
-              throw new Error('INVALID_NET_WEIGHT');
-            }
-          } else {
-            libras = new Prisma.Decimal(item.libras ?? 0);
-          }
-
-          const pesaje = { pesoBruto, numeroSacos, taraPorSaco };
-
-          if (item.precioPorQuintalOro !== undefined) {
-            // Modo Oro: la conversión es la misma que en compras (`lib/oro.ts`).
-            const porcentajeOro = new Prisma.Decimal(item.porcentajeOro!);
-            const precioPorQuintalOro = new Prisma.Decimal(item.precioPorQuintalOro);
-            const quintalesOro = computeQuintalesOro(libras, porcentajeOro);
-            const monto = quintalesOro.mul(precioPorQuintalOro);
-
-            return {
-              businessDate: parseBusinessDate(payload.businessDate),
-              sucursalId,
-              productoId: producto.id,
-              productoNombre: producto.nombre,
-              precioPorLibra: null,
-              ...pesaje,
-              libras,
-              porcentajeOro,
-              quintalesOro,
-              precioPorQuintalOro,
-              monto,
-            };
-          }
-
-          // El esquema exige `precioPorLibra` fuera del modo oro: el catálogo ya no
-          // guarda precio del que tirar.
-          const precioPorLibra = new Prisma.Decimal(item.precioPorLibra!);
-          const monto = precioPorLibra.mul(libras);
-
-          // Por libra el rendimiento es opcional y no toca el monto: igual que en
-          // compras, los quintales oro quedan solo como referencia.
-          const porcentajeOro = item.porcentajeOro !== undefined ? new Prisma.Decimal(item.porcentajeOro) : null;
-          const quintalesOro = porcentajeOro !== null ? computeQuintalesOro(libras, porcentajeOro) : null;
-
-          return {
-            businessDate: parseBusinessDate(payload.businessDate),
-            sucursalId,
-            productoId: producto.id,
-            productoNombre: producto.nombre,
-            precioPorLibra,
-            ...pesaje,
-            libras,
-            porcentajeOro,
-            quintalesOro,
-            precioPorQuintalOro: null,
-            monto,
-          };
-        }),
-      );
-
-      const total = items.reduce((accumulator, item) => accumulator.add(item.monto), new Prisma.Decimal(0));
+      // El cálculo es el mismo que usa la vista previa de la factura: lo que se revisó
+      // en pantalla es lo que se guarda.
+      const { client, sucursalId, items, total } = await calcularVenta(tx, payload);
 
       const createdTransaction = await tx.saleTransaction.create({
         data: {
           businessDate: parseBusinessDate(payload.businessDate),
           sucursalId,
           clientId: client.id,
+          metodoPago: payload.metodoPago ?? DEFAULT_PAYMENT_METHOD,
           total,
           items: {
             create: items,

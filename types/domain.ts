@@ -148,6 +148,8 @@ export type SaleTransactionDTO = {
   clientId: string;
   /** Correlativo interno ya formateado (`V-000123`). Lo asigna la base. */
   numeroInterno: string;
+  /** Forma de cobro: solo `efectivo` suma al saldo de caja. */
+  metodoPago: string;
   total: number;
   createdAt: string;
   updatedAt: string;
@@ -472,6 +474,10 @@ export type LedgerDTO = {
     /** Compras pagadas con depósito o cheque, que no tocan la caja. */
     totalComprasOtrosMedios: number;
     totalVentas: number;
+    /** La parte de `totalVentas` cobrada en efectivo: la única que suma al saldo. */
+    totalVentasEfectivo: number;
+    /** Ventas cobradas con depósito o cheque, que no tocan la caja. */
+    totalVentasOtrosMedios: number;
     totalGastos: number;
     totalIngresos: number;
     /** Cobros del servicio de molido. Suma al saldo. */

@@ -45,6 +45,13 @@ export const SETTLEMENT_METHOD_ENUM_VALUES = SETTLEMENT_METHODS.map((method) => 
 ];
 
 /**
+ * Formas de cobro de una venta. Son las de liquidar una compra: "pendiente" no está
+ * porque una venta a crédito necesitaría un cobro posterior que el sistema no lleva.
+ */
+export const SALE_PAYMENT_METHODS = SETTLEMENT_METHODS;
+export const SALE_PAYMENT_METHOD_ENUM_VALUES = SETTLEMENT_METHOD_ENUM_VALUES;
+
+/**
  * Las compras registradas antes de que existiera el método de pago se migraron a
  * `efectivo`, que es como se venían contando: el saldo histórico no cambia.
  */

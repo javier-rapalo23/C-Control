@@ -13,8 +13,25 @@ export type PurchasePreview = {
   motivoNoEmite: string | null;
 };
 
+/** Cómo se llama lo que se revisa. Por omisión, la compra y su boleta. */
+export type PreviewTextos = {
+  /** "la compra", "la venta". */
+  transaccion: string;
+  /** "la boleta de compra", "la factura". */
+  documento: string;
+  /** "boleta", "factura": para "Guardar sin …". */
+  documentoCorto: string;
+};
+
+const TEXTOS_COMPRA: PreviewTextos = {
+  transaccion: 'la compra',
+  documento: 'la boleta de compra',
+  documentoCorto: 'boleta',
+};
+
 type Props = {
   preview: PurchasePreview | null;
+  textos?: PreviewTextos;
   formato: PrintFormat;
   onFormatoChange: (formato: PrintFormat) => void;
   guardando: boolean;
@@ -33,6 +50,7 @@ type Props = {
  */
 export default function PurchasePreviewModal({
   preview,
+  textos = TEXTOS_COMPRA,
   formato,
   onFormatoChange,
   guardando,
@@ -76,7 +94,7 @@ export default function PurchasePreviewModal({
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <h3 id="purchase-preview-title" style={{ margin: 0 }}>
-            Revisar la compra antes de guardar
+            Revisar {textos.transaccion} antes de guardar
           </h3>
           {/* Se revisa en el formato en que se va a imprimir; cambiarlo aquí cambia
               también con qué se imprime al confirmar. */}
@@ -99,13 +117,13 @@ export default function PurchasePreviewModal({
 
         {preview.emitira ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-soft)' }}>
-            Al confirmar se guarda la compra, se emite la boleta de compra y se imprime en{' '}
+            Al confirmar se guarda {textos.transaccion}, se emite {textos.documento} y se imprime en{' '}
             <strong>{printFormatLabel(formato)}</strong>.
           </p>
         ) : (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--danger)' }}>
-            Se va a guardar <strong>sin boleta</strong>: {preview.motivoNoEmite} Quedará en &quot;Pendientes de
-            emitir&quot;.
+            Se va a guardar <strong>sin {textos.documentoCorto}</strong>: {preview.motivoNoEmite} Quedará en
+            &quot;Pendientes de emitir&quot;.
           </p>
         )}
 
@@ -129,7 +147,7 @@ export default function PurchasePreviewModal({
             Corregir
           </button>
           <button className="btn-primary" type="button" onClick={onConfirm} disabled={guardando}>
-            {guardando ? 'Guardando…' : preview.emitira ? 'Guardar e imprimir' : 'Guardar sin boleta'}
+            {guardando ? 'Guardando…' : preview.emitira ? 'Guardar e imprimir' : `Guardar sin ${textos.documentoCorto}`}
           </button>
         </div>
       </div>

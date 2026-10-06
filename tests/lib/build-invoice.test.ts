@@ -153,6 +153,7 @@ describe('buildInvoiceForSale', () => {
       id: 'st_1',
       businessDate: new Date('2026-09-14T00:00:00.000Z'),
       numeroInterno: 45,
+      metodoPago: 'deposito',
       total: 34560,
       sucursal: { nombre: 'Bodega San Juan' },
       client: { nombre: 'Exportadora', rtn: null, telefono: null, direccion: null, claveIhcafe: null, nombreFinca: null },
@@ -180,7 +181,8 @@ describe('buildInvoiceForSale', () => {
     expect(data!.numeroFactura).toBeNull();
     // Serie propia: una venta no puede quedar con el prefijo de una compra.
     expect(data!.numeroInterno).toBe('V-000045');
-    expect(data!.metodoPago).toBeNull();
+    // La forma de cobro va impresa, como en la boleta de compra.
+    expect(data!.metodoPago).toBe('Depósito');
   });
 
   it('tolera una venta libre sin producto ni libras', async () => {

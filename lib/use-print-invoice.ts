@@ -34,13 +34,23 @@ type OpcionesImpresion = {
    * navegador la tomaría por un popup y la bloquearía.
    */
   pestana?: Window | null;
+  /**
+   * Lo que se escribió antes de guardar para emitir: el número del talonario y la orden
+   * de compra exenta. Sin esto el documento sale con el siguiente número del CAI y sin
+   * orden.
+   */
+  datosEmision?: { numeroManual?: number; ordenCompraExenta?: string };
 };
 
-async function emitirDocumento(origen: 'compra' | 'venta' | 'molido', transactionId: string) {
+async function emitirDocumento(
+  origen: 'compra' | 'venta' | 'molido',
+  transactionId: string,
+  datos: OpcionesImpresion['datosEmision'] = {},
+) {
   await fetch('/api/fiscal-documents', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ origen, transactionId }),
+    body: JSON.stringify({ origen, transactionId, ...datos }),
   }).then(parseApiResponse);
 }
 
@@ -73,7 +83,7 @@ export function usePrintInvoice() {
       if (pestana) pestana.opener = null;
       try {
         setImprimiendoId(transactionId);
-        await emitirDocumento(origen as 'compra' | 'venta' | 'molido', transactionId);
+        await emitirDocumento(origen as 'compra' | 'venta' | 'molido', transactionId, opciones.datosEmision);
         await opciones.onEmitido?.();
         if (pestana) pestana.location.href = url;
         else window.open(url, '_blank', 'noopener');

@@ -12,6 +12,14 @@ import InvoicePrintButtons from '@/components/invoice-print-buttons';
 import { useFiscal } from '@/lib/use-fiscal';
 import { usePrintInvoice } from '@/lib/use-print-invoice';
 import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
+import {
+  DEFAULT_PAYMENT_METHOD,
+  SALE_PAYMENT_METHODS,
+  paymentMethodLabel,
+  type PaymentMethod,
+} from '@/lib/payment-methods';
+import PurchasePreviewModal, { type PreviewTextos, type PurchasePreview } from '@/components/purchase-preview-modal';
+import type { PrintFormat } from '@/lib/print-formats';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -44,6 +52,12 @@ function computeDerived(item: { pesoBruto: string; numeroSacos: string; taraPorS
   const subtotal = pesoNeto * precioPorLibra;
   return { pesoNeto, quintalesOro, subtotal };
 }
+
+const TEXTOS_VENTA: PreviewTextos = {
+  transaccion: 'la venta',
+  documento: 'la factura',
+  documentoCorto: 'factura',
+};
 
 function taraDelProducto(producto: ProductoDTO | undefined) {
   return producto?.taraPorSaco !== null && producto?.taraPorSaco !== undefined ? String(producto.taraPorSaco) : '';
@@ -86,6 +100,19 @@ export default function SalesPanel() {
 
   const [selectedClientId, setSelectedClientId] = useState('');
   const [clientModalOpen, setClientModalOpen] = useState(false);
+
+  // Datos de la factura que se escriben antes de guardar, como en compras.
+  const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
+  const [numeroManual, setNumeroManual] = useState('');
+  const [ordenCompraExenta, setOrdenCompraExenta] = useState('');
+
+  // Vista previa de la factura: lo que se guarda es el payload que se revisó.
+  const [preview, setPreview] = useState<{ vista: PurchasePreview; payload: ReturnType<typeof payloadVenta> } | null>(
+    null,
+  );
+  const [previewFormato, setPreviewFormato] = useState<PrintFormat>('a4');
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   const [itemProductoId, setItemProductoId] = useState('');
   const [itemPesoBruto, setItemPesoBruto] = useState('');
@@ -195,6 +222,11 @@ export default function SalesPanel() {
     ].filter((dato) => dato.value !== null && dato.value !== '');
   }, [selectedClient]);
 
+  // El número lo trae el papel solo si el CAI de factura es de talonario; la orden de
+  // compra exenta, solo si el cliente tiene constancia de exonerado.
+  const pideNumeroTalonario = fiscal.caiActivo?.modo === 'TALONARIO';
+  const pideOrdenCompraExenta = Boolean(selectedClient?.registroExonerado);
+
   function handleClientCreated(client: ClientDTO) {
     setClients((current) => [client, ...current]);
     setSelectedClientId(client.id);
@@ -251,9 +283,36 @@ export default function SalesPanel() {
     setCart((current) => current.filter((item) => item.id !== id));
   }
 
-  async function saveTransaction(event: FormEvent) {
-    event.preventDefault();
+  function payloadVenta() {
+    return {
+      businessDate,
+      sucursalId,
+      clientId: selectedClientId,
+      metodoPago,
+      items: cart.map((item) => ({
+        productoId: item.productoId,
+        pesoBruto: Number(item.pesoBruto),
+        numeroSacos: Number(item.numeroSacos) || 0,
+        taraPorSaco: Number(item.taraPorSaco) || 0,
+        precioPorLibra: Number(item.precioPorLibra),
+        porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
+      })),
+    };
+  }
 
+  /** Lo que se escribió para emitir; solo lo que aplica a este CAI y a este cliente. */
+  function datosEmision() {
+    return {
+      ...(pideNumeroTalonario && numeroManual.trim() ? { numeroManual: Number(numeroManual) } : {}),
+      ...(pideOrdenCompraExenta && ordenCompraExenta.trim() ? { ordenCompraExenta: ordenCompraExenta.trim() } : {}),
+    };
+  }
+
+  /**
+   * Primer paso de guardar: arma la factura tal como va a salir y la muestra. No escribe
+   * nada; lo que se guarda es lo que se confirma en la vista previa.
+   */
+  async function revisarVenta() {
     if (!selectedClientId) {
       setError('Selecciona un cliente');
       return;
@@ -264,33 +323,78 @@ export default function SalesPanel() {
       return;
     }
 
+    if (pideNumeroTalonario && numeroManual.trim() !== '' && !(Number(numeroManual) > 0)) {
+      setError('El número de factura del talonario no es válido');
+      return;
+    }
+
+    const payload = payloadVenta();
     try {
       setLoading(true);
       setError(null);
-      await fetch('/api/sale-transactions', {
+      const vista = await fetch('/api/sale-transactions/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          businessDate,
-          sucursalId,
-          clientId: selectedClientId,
-          items: cart.map((item) => ({
-            productoId: item.productoId,
-            pesoBruto: Number(item.pesoBruto),
-            numeroSacos: Number(item.numeroSacos) || 0,
-            taraPorSaco: Number(item.taraPorSaco) || 0,
-            precioPorLibra: Number(item.precioPorLibra),
-            porcentajeOro: Number(item.porcentajeOro) > 0 ? Number(item.porcentajeOro) : undefined,
-          })),
-        }),
-      }).then(parseApiResponse);
+        body: JSON.stringify({ ...payload, ...datosEmision() }),
+      }).then(parseApiResponse<PurchasePreview>);
 
-      setCart([]);
-      await refresh();
+      setPreviewError(null);
+      setPreviewFormato(fiscal.formatoDefault);
+      setPreview({ vista, payload });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando venta por cliente');
+      setError(err instanceof Error ? err.message : 'Error preparando la vista previa');
     } finally {
       setLoading(false);
+    }
+  }
+
+  /**
+   * Guarda la venta revisada y, si la vista previa dijo que corresponde, emite la
+   * factura con los datos escritos y la imprime en el formato elegido.
+   *
+   * Igual que en compras: si guardar falla, el modal sigue abierto con el error y no se
+   * consumió nada. Si lo que falla es la emisión, la venta ya quedó guardada y la fila
+   * ofrece emitirla.
+   */
+  async function confirmarVenta() {
+    if (!preview) return;
+    const emitir = preview.vista.emitira;
+    const formato = previewFormato;
+    const datos = datosEmision();
+
+    // La pestaña de la hoja se abre ya, dentro del clic: abierta después de guardar, el
+    // navegador la bloquearía como popup.
+    const pestana = emitir ? window.open('', '_blank') : undefined;
+
+    try {
+      setGuardando(true);
+      setPreviewError(null);
+      const creada = await fetch('/api/sale-transactions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(preview.payload),
+      }).then(parseApiResponse<SaleTransactionDTO>);
+
+      setPreview(null);
+      setCart([]);
+      setMetodoPago(DEFAULT_PAYMENT_METHOD);
+      setNumeroManual('');
+      setOrdenCompraExenta('');
+      await refresh();
+
+      if (emitir) {
+        await impresion.imprimir('venta', creada.id, formato, {
+          emitir: true,
+          onEmitido: fiscal.refresh,
+          pestana,
+          datosEmision: datos,
+        });
+      }
+    } catch (err) {
+      pestana?.close();
+      setPreviewError(err instanceof Error ? err.message : 'Error guardando venta por cliente');
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -341,6 +445,11 @@ export default function SalesPanel() {
         <article className="card third kpi">
           <div className="label">Ventas del día</div>
           <div className="value">L {ledger?.totals.totalVentas.toFixed(2) ?? '0.00'}</div>
+          {ledger && ledger.totals.totalVentasOtrosMedios !== 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+              L {ledger.totals.totalVentasOtrosMedios.toFixed(2)} con depósito o cheque (no suman a caja)
+            </div>
+          ) : null}
         </article>
         <article className="card third kpi">
           <div className="label">Transacciones</div>
@@ -589,12 +698,56 @@ export default function SalesPanel() {
               })
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
-            <strong>Total carrito: L {cartTotal.toFixed(2)}</strong>
-            <button className="btn-primary" type="button" onClick={(event) => void saveTransaction(event as unknown as FormEvent)}>
-              Guardar venta por cliente
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, gap: 12, flexWrap: 'wrap' }}>
+            <strong>Total a cobrar: L {cartTotal.toFixed(2)}</strong>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              {/* Solo con CAI de talonario: el número lo trae el papel. Si se deja vacío,
+                  la venta se guarda y la factura se emite después desde la fila. */}
+              {pideNumeroTalonario ? (
+                <label style={{ minWidth: 160 }}>
+                  Factura No. (talonario)
+                  <input
+                    value={numeroManual}
+                    onChange={(event) => setNumeroManual(event.target.value)}
+                    inputMode="numeric"
+                    placeholder={
+                      fiscal.caiActivo ? `${fiscal.caiActivo.rangoDesde}–${fiscal.caiActivo.rangoHasta}` : undefined
+                    }
+                  />
+                </label>
+              ) : null}
+              {/* Solo si el cliente está exonerado: ampara esta venta y va impresa en el
+                  bloque del adquiriente exonerado. */}
+              {pideOrdenCompraExenta ? (
+                <label style={{ minWidth: 180 }}>
+                  Orden de compra exenta
+                  <input
+                    value={ordenCompraExenta}
+                    onChange={(event) => setOrdenCompraExenta(event.target.value)}
+                    placeholder="opcional"
+                    maxLength={60}
+                  />
+                </label>
+              ) : null}
+              <label style={{ minWidth: 160 }}>
+                Forma de pago
+                <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value as PaymentMethod)}>
+                  {SALE_PAYMENT_METHODS.map((method) => (
+                    <option key={method.value} value={method.value}>
+                      {method.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn-primary" type="button" onClick={() => void revisarVenta()}>
+                Revisar y guardar
+              </button>
+            </div>
           </div>
+          <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 6 }}>
+            Solo las ventas cobradas en efectivo suman al saldo de caja: un depósito o un cheque
+            quedan registrados y facturados, pero no entran a la gaveta.
+          </p>
         </article>
 
         <article className="card wide">
@@ -607,7 +760,8 @@ export default function SalesPanel() {
                   <div>
                     <strong>{transaction.client.nombre}</strong>
                     <div style={{ color: 'var(--text-soft)' }}>
-                      {transaction.numeroInterno} · {transaction.items.length} items
+                      {transaction.numeroInterno} · {transaction.items.length} items ·{' '}
+                      {paymentMethodLabel(transaction.metodoPago)}
                     </div>
                     <FiscalDocumentActions
                       origen="venta"
@@ -620,16 +774,18 @@ export default function SalesPanel() {
                         void impresion.imprimir('nota', documentoId, fiscal.formatoDefault)
                       }
                       onChange={fiscal.refresh}
+                      emitirSoloConDatos
                     />
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <strong>L {transaction.total.toFixed(2)}</strong>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
-                      {/* Un solo documento, dos formatos. Ver `lib/print-formats.ts`. */}
+                      {/* Un solo botón, en el formato configurado, como en compras. */}
                       <InvoicePrintButtons
                         origen="venta"
                         transactionId={transaction.id}
                         formatoDefault={fiscal.formatoDefault}
+                        unSoloBoton
                         imprimiendo={impresion.imprimiendoId === transaction.id}
                         documento={fiscal.documentos[transaction.id] ?? null}
                         caiActivo={fiscal.caiActivo}
@@ -686,6 +842,17 @@ export default function SalesPanel() {
           </div>
         </article>
       </section>
+
+      <PurchasePreviewModal
+        preview={preview?.vista ?? null}
+        textos={TEXTOS_VENTA}
+        formato={previewFormato}
+        onFormatoChange={setPreviewFormato}
+        guardando={guardando}
+        error={previewError}
+        onClose={() => setPreview(null)}
+        onConfirm={() => void confirmarVenta()}
+      />
 
       <LoadingOverlay active={loading} />
     </main>

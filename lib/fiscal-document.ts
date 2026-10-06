@@ -534,6 +534,11 @@ export async function vistaPreviaDocumentoFiscal(
   origen: OrigenDocumento,
   lineas: LineaFiscal[],
   totalTransaccion: number,
+  /**
+   * Datos que se escriben para emitir. Con `numeroManual`, un CAI de talonario también
+   * se puede emitir al confirmar; la orden de compra exenta va impresa en el documento.
+   */
+  emision: { numeroManual?: number; ordenCompraExenta?: string } = {},
 ): Promise<VistaPreviaFiscal> {
   const tipoDocumento = TIPO_DOCUMENTO_POR_ORIGEN[origen];
   const etiqueta = tipoDocumentoLabel(tipoDocumento);
@@ -547,7 +552,8 @@ export async function vistaPreviaDocumentoFiscal(
     };
   }
 
-  if (cai.modo === 'TALONARIO') {
+  const talonario = cai.modo === 'TALONARIO';
+  if (talonario && emision.numeroManual === undefined) {
     return {
       documento: null,
       motivoNoEmite: `El CAI de ${etiqueta} está en modo talonario: se emite después, desde la fila, con el número del papel.`,
@@ -556,20 +562,38 @@ export async function vistaPreviaDocumentoFiscal(
 
   const estadoCai = evaluarCai(cai, hoy);
   const motivo = motivoNoEmitible(estadoCai, true);
-  if (motivo || estadoCai.siguienteCorrelativo === null) {
+  if (motivo || (!talonario && estadoCai.siguienteCorrelativo === null)) {
     return { documento: null, motivoNoEmite: motivo ?? 'El CAI no puede emitir.' };
+  }
+
+  let correlativo = estadoCai.siguienteCorrelativo as number;
+  if (talonario) {
+    const numero = emision.numeroManual as number;
+    // Mismas comprobaciones que la emisión, para no dejar confirmar un número que se
+    // va a rechazar después de guardar la venta.
+    if (numero < cai.rangoDesde || numero > cai.rangoHasta) {
+      throw new Error(`El número ${numero} está fuera del rango autorizado (${cai.rangoDesde}–${cai.rangoHasta}).`);
+    }
+    const usado = await db.fiscalDocument.findFirst({
+      where: { caiId: cai.id, correlativo: numero },
+      select: { numeroCompleto: true },
+    });
+    if (usado) {
+      throw new Error(`El número ${numero} del talonario ya se usó (${usado.numeroCompleto}).`);
+    }
+    correlativo = numero;
   }
 
   return {
     documento: {
       id: '',
-      numeroCompleto: formatNumeroFiscal({ ...cai, correlativo: estadoCai.siguienteCorrelativo }),
+      numeroCompleto: formatNumeroFiscal({ ...cai, correlativo }),
       tipoDocumentoLabel: etiqueta,
       estado: 'emitido',
       fechaEmision: hoy,
       cai: caiDelSnapshot(cai),
       notaMotivo: null,
-      ordenCompraExenta: null,
+      ordenCompraExenta: emision.ordenCompraExenta?.trim() || null,
       documentoOrigen: null,
       desglose: ajustarDesgloseAlTotal(desgloseIsv(lineas), totalTransaccion),
       anulacionMotivo: null,

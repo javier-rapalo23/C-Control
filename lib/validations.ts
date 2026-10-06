@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { COFFEE_TYPE_NOMBRES, PRODUCTO_CATEGORIAS } from '@/lib/coffee-types';
-import { PAYMENT_METHOD_ENUM_VALUES, SETTLEMENT_METHOD_ENUM_VALUES } from '@/lib/payment-methods';
+import {
+  PAYMENT_METHOD_ENUM_VALUES,
+  SALE_PAYMENT_METHOD_ENUM_VALUES,
+  SETTLEMENT_METHOD_ENUM_VALUES,
+} from '@/lib/payment-methods';
 import { CLASIFICACION_FISCAL_KEYS, ESTADOS_CAI, MODOS_CAI, TIPO_DOCUMENTO_KEYS, TIPOS_NOTA } from '@/lib/fiscal';
 import { PRINT_FORMAT_KEYS } from '@/lib/print-formats';
 
@@ -182,7 +186,19 @@ export const createSaleTransactionSchema = z.object({
   businessDate: businessDateField,
   sucursalId: z.string().min(1).optional(),
   clientId: z.string().min(1),
+  // Opcional por compatibilidad: sin él la venta cuenta como efectivo, como antes.
+  metodoPago: z.enum(SALE_PAYMENT_METHOD_ENUM_VALUES).optional(),
   items: z.array(createSaleLineSchema).min(1),
+});
+
+/**
+ * Vista previa de la factura de una venta: la venta más los datos que se escriben para
+ * emitirla —el número del talonario y la orden de compra exenta—, para que la factura
+ * que se revisa sea la que va a salir.
+ */
+export const previewSaleTransactionSchema = createSaleTransactionSchema.extend({
+  numeroManual: z.number().int().min(1).max(99_999_999).optional(),
+  ordenCompraExenta: z.string().trim().max(60).optional(),
 });
 
 export const createBancoSchema = z.object({

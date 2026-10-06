@@ -287,9 +287,12 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalId },
       _sum: { total: true },
     }),
-    db.sale.aggregate({
+    // Como en compras, el método vive en la cabecera: solo la venta cobrada en
+    // efectivo entra a la gaveta.
+    db.saleTransaction.groupBy({
+      by: ['metodoPago'],
       where: { businessDate, sucursalId },
-      _sum: { monto: true },
+      _sum: { total: true },
     }),
     db.expense.aggregate({
       where: { businessDate, sucursalId },
@@ -331,7 +334,11 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const totalComprasCheque = porMetodo('cheque');
   const totalComprasPendientes = porMetodo(PENDING_PAYMENT_METHOD);
   const totalComprasOtrosMedios = Number((totalCompras - totalComprasEfectivo).toFixed(2));
-  const totalVentas = decimalToNumber(ventasAgg._sum.monto);
+  const totalVentas = ventasAgg.reduce((suma, grupo) => suma + decimalToNumber(grupo._sum.total), 0);
+  const totalVentasEfectivo = decimalToNumber(
+    ventasAgg.find((grupo) => grupo.metodoPago === CASH_PAYMENT_METHOD)?._sum.total ?? null,
+  );
+  const totalVentasOtrosMedios = Number((totalVentas - totalVentasEfectivo).toFixed(2));
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
   const totalMolido = decimalToNumber(molidoAgg._sum.monto);
@@ -346,7 +353,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const ajusteCaja = decimalToNumber(balance.ajusteCaja);
   const saldoActual =
     saldoInicial +
-    totalVentas +
+    totalVentasEfectivo +
     totalIngresos +
     totalMolido +
     totalTrasladosRecibidos -
@@ -372,6 +379,8 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalComprasPendientes,
       totalComprasOtrosMedios,
       totalVentas,
+      totalVentasEfectivo,
+      totalVentasOtrosMedios,
       totalGastos,
       totalIngresos,
       totalMolido,

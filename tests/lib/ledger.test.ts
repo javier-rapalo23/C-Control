@@ -2,6 +2,8 @@ import { recalculateDailyBalance } from '@/lib/ledger';
 import { CASH_PAYMENT_METHOD } from '@/lib/payment-methods';
 
 type Compra = { total: number; metodoPago?: string };
+/** Una venta: el monto solo, o con su forma de cobro. Sin forma, cuenta como efectivo. */
+type Venta = number | { total: number; metodoPago: string };
 
 /**
  * Doble de la parte de Prisma que consume `recalculateDailyBalance`. Fija la
@@ -12,7 +14,7 @@ function fakeDb(options: {
   saldoInicial?: number;
   ajusteCaja?: number;
   compras?: Compra[];
-  ventas?: number[];
+  ventas?: Venta[];
   gastos?: number[];
   ingresos?: number[];
   salidas?: number[];
@@ -57,7 +59,17 @@ function fakeDb(options: {
       // La otra consulta a la cabecera: pendientes de otros días pagadas hoy.
       aggregate: async () => ({ _sum: { total: sum(options.pagosPendientes ?? []) } }),
     },
-    sale: { aggregate: async () => ({ _sum: { monto: sum(options.ventas ?? []) } }) },
+    // Las ventas también se agrupan por forma de cobro sobre la cabecera.
+    saleTransaction: {
+      groupBy: async () => {
+        const porMetodo = new Map<string, number>();
+        for (const venta of options.ventas ?? []) {
+          const { total, metodoPago } = typeof venta === 'number' ? { total: venta, metodoPago: CASH_PAYMENT_METHOD } : venta;
+          porMetodo.set(metodoPago, (porMetodo.get(metodoPago) ?? 0) + total);
+        }
+        return [...porMetodo].map(([metodoPago, total]) => ({ metodoPago, _sum: { total } }));
+      },
+    },
     expense: { aggregate: async () => ({ _sum: { monto: sum(options.gastos ?? []) } }) },
     cashEntry: { aggregate: async () => ({ _sum: { monto: sum(options.ingresos ?? []) } }) },
     grindingService: { aggregate: async () => ({ _sum: { monto: sum(options.molido ?? []) } }) },
@@ -78,6 +90,22 @@ function fakeDb(options: {
 const FECHA = '2026-08-31';
 
 describe('recalculateDailyBalance', () => {
+  it('suma al saldo solo las ventas cobradas en efectivo', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({
+        saldoInicial: 1000,
+        ventas: [500, { total: 300, metodoPago: 'deposito' }, { total: 200, metodoPago: 'cheque' }],
+      }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalVentas).toBe(1000);
+    expect(totals.totalVentasEfectivo).toBe(500);
+    expect(totals.totalVentasOtrosMedios).toBe(500);
+    expect(totals.saldoActual).toBe(1500);
+  });
+
   it('resta compras, resta gastos y suma ventas', async () => {
     const { totals } = await recalculateDailyBalance(
       fakeDb({ saldoInicial: 1000, compras: [{ total: 400 }], ventas: [500], gastos: [100] }),

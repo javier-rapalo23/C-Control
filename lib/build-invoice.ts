@@ -359,6 +359,32 @@ function invoiceDataForCompra(transaction: CompraParaFactura, empresa: InvoiceEm
   };
 }
 
+/**
+ * Lo que hace falta para armar la factura de una venta. Lo cumple la fila guardada y
+ * también la venta calculada antes de guardarse (`calcularVenta`), igual que en compras.
+ */
+export type VentaParaFactura = {
+  numeroInterno: string;
+  businessDate: string;
+  sucursalNombre: string;
+  metodoPago: string;
+  client: CompraParaFactura['client'];
+  items: Array<{
+    productoNombre: string | null;
+    pesoBruto: Numerico | null;
+    numeroSacos: number | null;
+    taraPorSaco: Numerico | null;
+    libras: Numerico | null;
+    porcentajeOro: Numerico | null;
+    quintalesOro: Numerico | null;
+    precioPorLibra: Numerico | null;
+    precioPorQuintalOro: Numerico | null;
+    descripcion?: string | null;
+    monto: Numerico;
+  }>;
+  total: Numerico;
+};
+
 export async function buildInvoiceForSale(transactionId: string): Promise<InvoiceData | null> {
   const transaction = await prisma.saleTransaction.findUnique({
     where: { id: transactionId },
@@ -366,6 +392,27 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
   });
   if (!transaction) return null;
 
+  return invoiceDataForVenta(
+    {
+      ...transaction,
+      numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
+      businessDate: toBusinessDateString(transaction.businessDate),
+      sucursalNombre: transaction.sucursal.nombre,
+    },
+    await getEmpresa(),
+  );
+}
+
+/**
+ * Factura de una venta que todavía no se guardó, para la vista previa. Sin número
+ * interno —lo asigna la base al guardar— y sin documento fiscal: eso lo agrega quien
+ * llama, si corresponde.
+ */
+export async function buildInvoiceForSaleDraft(venta: Omit<VentaParaFactura, 'numeroInterno'>): Promise<InvoiceData> {
+  return invoiceDataForVenta({ ...venta, numeroInterno: '' }, await getEmpresa());
+}
+
+function invoiceDataForVenta(transaction: VentaParaFactura, empresa: InvoiceEmpresa): InvoiceData {
   const lineas: InvoiceLinea[] = transaction.items.map((item) => ({
     // Una venta puede no tener producto: la línea libre solo lleva descripción y monto.
     productoNombre: item.productoNombre ?? 'Venta',
@@ -377,20 +424,20 @@ export async function buildInvoiceForSale(transactionId: string): Promise<Invoic
     quintalesOro: item.quintalesOro !== null ? Number(item.quintalesOro) : null,
     precioPorLibra: item.precioPorLibra !== null ? Number(item.precioPorLibra) : null,
     precioPorQuintalOro: item.precioPorQuintalOro !== null ? Number(item.precioPorQuintalOro) : null,
-    descripcion: item.descripcion,
+    descripcion: item.descripcion ?? null,
     total: Number(item.monto),
   }));
 
   return {
     kind: 'venta',
     titulo: 'Comprobante de Venta',
-    numeroInterno: formatNumeroInterno('venta', transaction.numeroInterno),
+    numeroInterno: transaction.numeroInterno,
     // Las ventas no llevan número de talonario: §19.3 lo decidió solo para compras.
     numeroFactura: null,
-    businessDate: toBusinessDateString(transaction.businessDate),
-    sucursalNombre: transaction.sucursal.nombre,
-    metodoPago: null,
-    empresa: await getEmpresa(),
+    businessDate: transaction.businessDate,
+    sucursalNombre: transaction.sucursalNombre,
+    metodoPago: paymentMethodLabel(transaction.metodoPago),
+    empresa,
     cliente: {
       nombre: transaction.client.nombre,
       rtn: transaction.client.rtn,
