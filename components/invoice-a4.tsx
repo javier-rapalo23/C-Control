@@ -103,9 +103,20 @@ const CSS = `
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.invoice-exonerado .invoice-cliente { margin-top: 0; border-top: none; padding-top: 0; }
+/* Una sola columna y del ancho de su contenido: son tres datos cortos y el recuadro a
+   todo el ancho le quitaba espacio a las líneas. */
+.invoice-exonerado { width: fit-content; max-width: 100%; }
+.invoice-exonerado .invoice-cliente {
+  margin-top: 0;
+  border: none;
+  padding: 0;
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+.invoice-exonerado .invoice-campo { font-size: 8.5pt; }
+.invoice-exonerado .invoice-campo span:first-child { min-width: 62mm; }
 /* Dato que falta: raya para llenarlo a mano, como en un formulario preimpreso. */
-.invoice-campo-vacio { display: inline-block; min-width: 45mm; border-bottom: 1px solid #111; }
+.invoice-campo-vacio { display: inline-block; min-width: 40mm; border-bottom: 1px solid #111; }
 
 /* Un documento anulado tiene que leerse como anulado de un vistazo, aunque alguien
    solo mire la hoja de lejos. */
