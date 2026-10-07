@@ -1,7 +1,25 @@
 'use client';
 
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ClientDTO } from '@/types/domain';
+
+const ALTO_LISTA = 260;
+
+type Posicion = { left: number; width: number; top?: number; bottom?: number };
+
+/**
+ * Dónde va la lista, en coordenadas de la ventana. Debajo del campo si cabe; si no,
+ * encima, para que cerca del borde inferior no quede fuera de la pantalla.
+ */
+function posicionDe(input: HTMLInputElement): Posicion {
+  const rect = input.getBoundingClientRect();
+  const espacioAbajo = window.innerHeight - rect.bottom;
+  const base = { left: rect.left, width: rect.width };
+  return espacioAbajo < ALTO_LISTA + 8 && rect.top > espacioAbajo
+    ? { ...base, bottom: window.innerHeight - rect.top + 4 }
+    : { ...base, top: rect.bottom + 4 };
+}
 
 /** Sin tildes ni mayúsculas: "Pérez" se encuentra escribiendo "perez". */
 function normalizar(texto: string) {
@@ -29,6 +47,24 @@ export default function ClientSearchSelect({ clients, value, onChange }: Props) 
   const [activo, setActivo] = useState(0);
   const listaId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [posicion, setPosicion] = useState<Posicion | null>(null);
+  // El portal necesita `document`: solo existe después de montar en el navegador.
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
+
+  // La lista va en un portal con posición fija: dentro de la tarjeta, su `overflow`
+  // la recortaba. Se reubica al hacer scroll o cambiar el tamaño de la ventana.
+  useLayoutEffect(() => {
+    if (!abierto || !inputRef.current) return;
+    const actualizar = () => inputRef.current && setPosicion(posicionDe(inputRef.current));
+    actualizar();
+    window.addEventListener('scroll', actualizar, true);
+    window.addEventListener('resize', actualizar);
+    return () => {
+      window.removeEventListener('scroll', actualizar, true);
+      window.removeEventListener('resize', actualizar);
+    };
+  }, [abierto]);
 
   const seleccionado = clients.find((client) => client.id === value) ?? null;
 
@@ -94,17 +130,16 @@ export default function ClientSearchSelect({ clients, value, onChange }: Props) 
         onKeyDown={onKeyDown}
         style={{ width: '100%' }}
       />
-      {abierto ? (
+      {abierto && montado && posicion ? createPortal(
         <ul
           id={listaId}
           role="listbox"
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            maxHeight: 260,
+            position: 'fixed',
+            ...posicion,
+            // Por encima de la barra lateral y de los modales del panel.
+            zIndex: 1000,
+            maxHeight: ALTO_LISTA,
             overflowY: 'auto',
             margin: 0,
             padding: 4,
@@ -147,7 +182,8 @@ export default function ClientSearchSelect({ clients, value, onChange }: Props) 
               </li>
             ))
           )}
-        </ul>
+        </ul>,
+        document.body,
       ) : null}
     </div>
   );
