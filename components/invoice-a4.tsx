@@ -42,13 +42,16 @@ const CSS = `
   padding: 10mm;
   font-family: var(--font-jakarta), system-ui, sans-serif;
   font-size: 10.5pt;
+  /* Seminegrita de base: con el peso normal los datos sin negrita salían tenues en
+     papel, sobre todo en impresoras láser en modo ahorro y en matriciales. */
+  font-weight: 600;
   line-height: 1.35;
   box-shadow: 0 1px 14px rgba(0, 0, 0, 0.16);
 }
 
 .invoice-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
-.invoice-empresa-nombre { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
-.invoice-empresa-dato { margin: 0; font-size: 9pt; color: #444; }
+.invoice-empresa-nombre { font-size: 15pt; font-weight: 800; margin: 0 0 2px; }
+.invoice-empresa-dato { margin: 0; font-size: 9pt; color: #222; }
 
 /* Rótulo de la copia. Es lo primero que se busca al tener las dos hojas en la
    mano, así que va arriba del título y con recuadro. */
@@ -59,17 +62,17 @@ const CSS = `
   padding: 2px 7px;
   margin-bottom: 6px;
   font-size: 8pt;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.6px;
 }
 .invoice-copia-interno { background: #111; color: #fff; }
 
 .invoice-meta { text-align: right; min-width: 52mm; margin: 0; }
-.invoice-titulo { font-size: 12pt; font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+.invoice-titulo { font-size: 12pt; font-weight: 800; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.4px; }
 .invoice-meta-fila { display: flex; justify-content: space-between; gap: 10px; font-size: 9.5pt; }
-.invoice-meta-fila dt { color: #444; margin: 0; }
-.invoice-meta-fila dd { margin: 0; font-weight: 600; }
+.invoice-meta-fila dt { color: #222; margin: 0; }
+.invoice-meta-fila dd { margin: 0; font-weight: 700; }
 .invoice-folio dd { font-size: 12pt; }
 
 .invoice-fiscal {
@@ -77,13 +80,13 @@ const CSS = `
   border: 1px solid #bbb;
   padding: 5px 8px;
   font-size: 8.5pt;
-  color: #333;
+  color: #222;
 }
 .invoice-fiscal p { margin: 0; }
 
 /* Aviso de que la hoja no es un documento fiscal. Sobrio pero visible: es lo que
    distingue un comprobante interno de una factura. */
-.invoice-interno { border-style: dashed; font-weight: 600; text-align: center; }
+.invoice-interno { border-style: dashed; font-weight: 700; text-align: center; }
 
 /* Referencia de una nota al documento que corrige. Va arriba, junto al bloque fiscal:
    los dos papeles se archivan juntos y es el dato que los empareja. */
@@ -99,7 +102,7 @@ const CSS = `
 .invoice-exonerado-titulo {
   margin: 0 0 3px;
   font-size: 8.5pt;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
@@ -126,7 +129,7 @@ const CSS = `
   padding: 6px 10px;
   text-align: center;
   font-size: 13pt;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -134,7 +137,7 @@ const CSS = `
 /* Desglose de totales del documento fiscal. Alineado a la derecha, como el total. */
 .invoice-desglose { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 9.5pt; }
 .invoice-desglose-fila { display: flex; gap: 16px; }
-.invoice-desglose-label { color: #444; min-width: 48mm; text-align: right; }
+.invoice-desglose-label { color: #222; min-width: 48mm; text-align: right; }
 .invoice-desglose-monto { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
 
 .invoice-cliente {
@@ -147,8 +150,8 @@ const CSS = `
   gap: 2px 20px;
 }
 .invoice-campo { display: flex; gap: 6px; font-size: 9.5pt; }
-.invoice-campo span:first-child { color: #555; min-width: 28mm; }
-.invoice-campo span:last-child { font-weight: 600; }
+.invoice-campo span:first-child { color: #222; min-width: 28mm; }
+.invoice-campo span:last-child { font-weight: 700; }
 
 table.invoice-lineas { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 9.5pt; }
 table.invoice-lineas th {
@@ -158,13 +161,13 @@ table.invoice-lineas th {
   font-size: 8.5pt;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: #333;
+  color: #222;
   white-space: nowrap;
 }
 table.invoice-lineas td { text-align: right; padding: 5px 4px; border-bottom: 1px solid #e2e2e2; }
 table.invoice-lineas th:first-child, table.invoice-lineas td:first-child { text-align: left; }
-table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #111; font-weight: 700; padding-top: 7px; }
-.invoice-linea-desc { color: #555; font-size: 8.5pt; }
+table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #111; font-weight: 800; padding-top: 7px; }
+.invoice-linea-desc { color: #222; font-size: 8.5pt; }
 
 .invoice-total {
   margin-top: 14px;
@@ -180,9 +183,9 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
    como la cuenta que llevan al total, no como notas sueltas. */
 .invoice-ajustes { margin-top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 9.5pt; }
 .invoice-ajuste { display: flex; gap: 16px; align-items: baseline; }
-.invoice-ajuste-label { color: #444; }
+.invoice-ajuste-label { color: #222; }
 .invoice-ajuste-monto { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
-.invoice-ajuste-motivo { font-size: 8.5pt; color: #666; font-style: italic; }
+.invoice-ajuste-motivo { font-size: 8.5pt; color: #222; font-style: italic; }
 
 .invoice-pie { margin-top: 10px; font-size: 9.5pt; }
 
@@ -195,12 +198,12 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
   background: #fffbeb;
   color: #78350f;
   font-size: 9pt;
-  font-weight: 600;
+  font-weight: 700;
   text-align: center;
 }
 
 .invoice-firmas { margin-top: 26mm; display: flex; justify-content: space-between; gap: 30px; }
-.invoice-firma { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 9pt; color: #444; }
+.invoice-firma { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 9pt; color: #222; }
 
 @media print {
   /* Se oculta todo y se vuelve a mostrar solo el camino hasta las hojas, en vez de
