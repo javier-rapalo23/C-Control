@@ -45,11 +45,25 @@ export const SETTLEMENT_METHOD_ENUM_VALUES = SETTLEMENT_METHODS.map((method) => 
 ];
 
 /**
- * Formas de cobro de una venta. Son las de liquidar una compra: "pendiente" no está
- * porque una venta a crédito necesitaría un cobro posterior que el sistema no lleva.
+ * Venta que no se cobra al registrarse: queda como cuenta por cobrar del cliente y se
+ * liquida con abonos (efectivo, depósito o cheque), que pueden llegar por partes. Es
+ * solo de ventas: una compra sin pagar es "pendiente", y se paga de una sola vez.
  */
-export const SALE_PAYMENT_METHODS = SETTLEMENT_METHODS;
-export const SALE_PAYMENT_METHOD_ENUM_VALUES = SETTLEMENT_METHOD_ENUM_VALUES;
+export const CREDIT_SALE_METHOD = 'credito';
+
+const CREDIT_SALE_METHOD_DEF = { value: CREDIT_SALE_METHOD, label: 'Crédito (por cobrar)', afectaCaja: false } as const;
+
+export type SalePaymentMethod = Exclude<PaymentMethod, typeof PENDING_PAYMENT_METHOD> | typeof CREDIT_SALE_METHOD;
+
+/** Formas de cobro de una venta: las de liquidar una compra, más el crédito. */
+export const SALE_PAYMENT_METHODS: { value: SalePaymentMethod; label: string; afectaCaja: boolean }[] = [
+  ...(SETTLEMENT_METHODS as { value: SalePaymentMethod; label: string; afectaCaja: boolean }[]),
+  CREDIT_SALE_METHOD_DEF,
+];
+export const SALE_PAYMENT_METHOD_ENUM_VALUES = SALE_PAYMENT_METHODS.map((method) => method.value) as [
+  SalePaymentMethod,
+  ...SalePaymentMethod[],
+];
 
 /**
  * Las compras registradas antes de que existiera el método de pago se migraron a
@@ -58,9 +72,11 @@ export const SALE_PAYMENT_METHOD_ENUM_VALUES = SETTLEMENT_METHOD_ENUM_VALUES;
 export const DEFAULT_PAYMENT_METHOD: PaymentMethod = CASH_PAYMENT_METHOD;
 
 export function paymentMethodLabel(value: string): string {
+  if (value === CREDIT_SALE_METHOD) return CREDIT_SALE_METHOD_DEF.label;
   return PAYMENT_METHODS.find((method) => method.value === value)?.label ?? value;
 }
 
 export function afectaCaja(value: string): boolean {
+  if (value === CREDIT_SALE_METHOD) return false;
   return PAYMENT_METHODS.find((method) => method.value === value)?.afectaCaja ?? true;
 }

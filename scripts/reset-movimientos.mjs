@@ -59,6 +59,8 @@ async function main() {
     ['Attendance', prisma.attendance],
     ['Purchase', prisma.purchase],
     ['PurchaseTransaction', prisma.purchaseTransaction],
+    ['ClientPaymentApplication', prisma.clientPaymentApplication],
+    ['ClientPayment', prisma.clientPayment],
     ['Sale', prisma.sale],
     ['SaleTransaction', prisma.saleTransaction],
     ['Expense', prisma.expense],

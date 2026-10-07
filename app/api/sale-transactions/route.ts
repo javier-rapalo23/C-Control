@@ -4,7 +4,7 @@ import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
 import { recalculateDailyBalance } from '@/lib/ledger';
-import { calcularVenta } from '@/lib/sale-draft';
+import { CREDITO_CLIENTE_GENERAL, calcularVenta } from '@/lib/sale-draft';
 import { DEFAULT_PAYMENT_METHOD } from '@/lib/payment-methods';
 import { formatNumeroInterno } from '@/lib/build-invoice';
 
@@ -153,6 +153,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === 'Client not found') {
       return failure('NOT_FOUND', error.message, 404);
+    }
+
+    if (error instanceof Error && error.message === 'CREDIT_GENERAL_CLIENT') {
+      return failure('VALIDATION_ERROR', CREDITO_CLIENTE_GENERAL, 400);
     }
 
     if (error instanceof Error && error.message === 'INVALID_NET_WEIGHT') {

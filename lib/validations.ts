@@ -126,6 +126,21 @@ export const payPendingPurchaseSchema = z.object({
   metodoPago: z.enum(SETTLEMENT_METHOD_ENUM_VALUES),
 });
 
+/**
+ * Abono de un cliente a sus ventas a crédito. Con `saleTransactionId` se aplica solo a
+ * esa venta; sin él se reparte de la venta más antigua a la más reciente.
+ */
+export const createClientPaymentSchema = z.object({
+  businessDate: businessDateField,
+  sucursalId: z.string().min(1).optional(),
+  clientId: z.string().min(1),
+  metodoPago: z.enum(SETTLEMENT_METHOD_ENUM_VALUES),
+  monto: z.number().positive(),
+  referencia: z.string().trim().min(1).max(60).optional(),
+  notas: z.string().trim().min(1).max(250).optional(),
+  saleTransactionId: z.string().min(1).optional(),
+});
+
 /** Libras y monto se escriben a mano: el molido no tiene tarifa fija. */
 export const createGrindingServiceSchema = z.object({
   businessDate: businessDateField,

@@ -249,43 +249,63 @@ export default function ClientsPanel() {
                       <input
                         value={editingClient.nombres}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, nombres: e.target.value })}
+                        placeholder="Nombres"
+                        title="Nombres"
+                        aria-label="Nombres"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.apellidos}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, apellidos: e.target.value })}
+                        placeholder="Apellidos"
+                        title="Apellidos"
+                        aria-label="Apellidos"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.claveIhcafe}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, claveIhcafe: e.target.value })}
-                        placeholder="06-05-09037"
+                        placeholder="Clave IHCAFE (06-05-09037)"
+                        title="Clave IHCAFE"
+                        aria-label="Clave IHCAFE"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.nombreFinca}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, nombreFinca: e.target.value })}
+                        placeholder="Finca"
+                        title="Finca"
+                        aria-label="Finca"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.direccion}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, direccion: e.target.value })}
+                        placeholder="Dirección"
+                        title="Dirección"
+                        aria-label="Dirección"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.rtn}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, rtn: e.target.value })}
+                        placeholder="RTN"
+                        title="RTN"
+                        aria-label="RTN"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.telefono}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, telefono: e.target.value })}
+                        placeholder="Teléfono"
+                        title="Teléfono"
+                        aria-label="Teléfono"
                       />
                     </td>
                     {/* Constancia de registro de exonerado: es del cliente y vale para
@@ -298,14 +318,18 @@ export default function ClientsPanel() {
                         onChange={(e) =>
                           setEditingClient((prev) => prev && { ...prev, registroExonerado: e.target.value })
                         }
-                        placeholder="Solo si está exonerado"
+                        placeholder="Constancia exonerado (solo si está exonerado)"
+                        title="Constancia exonerado"
+                        aria-label="Constancia exonerado"
                       />
                     </td>
                     <td>
                       <input
                         value={editingClient.registroSag}
                         onChange={(e) => setEditingClient((prev) => prev && { ...prev, registroSag: e.target.value })}
-                        placeholder="Solo si está exonerado"
+                        placeholder="Registro SAG (solo si está exonerado)"
+                        title="Registro SAG"
+                        aria-label="Registro SAG"
                       />
                     </td>
                     <td style={{ display: 'flex', gap: 6 }}>

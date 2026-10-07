@@ -23,6 +23,8 @@ function fakeDb(options: {
   pagosPendientes?: number[];
   trasladosRecibidos?: number[];
   trasladosEnviados?: number[];
+  /** Abonos de clientes a ventas a crédito, recibidos hoy en efectivo. */
+  cobros?: number[];
 }) {
   const compras = options.compras ?? [];
   const balance = {
@@ -70,6 +72,8 @@ function fakeDb(options: {
         return [...porMetodo].map(([metodoPago, total]) => ({ metodoPago, _sum: { total } }));
       },
     },
+    // Abonos de clientes en efectivo recibidos hoy (la consulta ya filtra por efectivo).
+    clientPayment: { aggregate: async () => ({ _sum: { monto: sum(options.cobros ?? []) } }) },
     expense: { aggregate: async () => ({ _sum: { monto: sum(options.gastos ?? []) } }) },
     cashEntry: { aggregate: async () => ({ _sum: { monto: sum(options.ingresos ?? []) } }) },
     grindingService: { aggregate: async () => ({ _sum: { monto: sum(options.molido ?? []) } }) },
@@ -214,6 +218,25 @@ describe('recalculateDailyBalance', () => {
     expect(totals.totalComprasEfectivo).toBe(0);
     expect(totals.totalPagosPendientes).toBe(300);
     expect(totals.saldoActual).toBe(700);
+  });
+
+  // La venta al crédito no entra a la gaveta; el abono en efectivo sí, el día que llega.
+  it('no suma las ventas al crédito y sí los abonos en efectivo', async () => {
+    const { totals } = await recalculateDailyBalance(
+      fakeDb({
+        saldoInicial: 1000,
+        ventas: [200, { total: 800, metodoPago: 'credito' }],
+        cobros: [150],
+      }),
+      FECHA,
+      'suc-1',
+    );
+
+    expect(totals.totalVentas).toBe(1000);
+    expect(totals.totalVentasCredito).toBe(800);
+    expect(totals.totalVentasOtrosMedios).toBe(800);
+    expect(totals.totalCobros).toBe(150);
+    expect(totals.saldoActual).toBe(1350);
   });
 
   it('incluye el ajuste del arqueo en el saldo', async () => {

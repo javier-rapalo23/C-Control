@@ -119,6 +119,82 @@ export type PendingPaymentDTO = {
   pagoMetodo: string | null;
 };
 
+/** Venta a crédito con lo abonado y lo que falta. */
+export type ReceivableSaleDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  /** `V-000123`. */
+  numeroInterno: string;
+  /** Número del documento fiscal vigente, si se emitió. */
+  numeroFiscal: string | null;
+  total: number;
+  abonado: number;
+  saldo: number;
+  /** Días desde la venta. */
+  dias: number;
+};
+
+/** Saldo por cobrar de un cliente. */
+export type ReceivableClientDTO = {
+  clientId: string;
+  clientNombre: string;
+  ventasPendientes: number;
+  totalCredito: number;
+  totalAbonado: number;
+  saldo: number;
+  ventaMasAntigua: string;
+  diasMasAntigua: number;
+};
+
+/** Abono de un cliente, con las ventas a las que se aplicó. */
+export type ClientPaymentDTO = {
+  id: string;
+  businessDate: string;
+  sucursalId: string;
+  clientId: string;
+  clientNombre: string;
+  metodoPago: string;
+  monto: number;
+  referencia: string | null;
+  notas: string | null;
+  registradoPor: string;
+  createdAt: string;
+  aplicaciones: Array<{ saleTransactionId: string; numeroInterno: string; monto: number }>;
+};
+
+export type AccountStatementMovementDTO = {
+  tipo: 'venta' | 'abono';
+  id: string;
+  businessDate: string;
+  documento: string;
+  detalle: string;
+  cargo: number;
+  abono: number;
+  /** Saldo después del movimiento. */
+  saldo: number;
+};
+
+export type AccountStatementDTO = {
+  client: {
+    id: string;
+    nombre: string;
+    rtn: string | null;
+    telefono: string | null;
+    claveIhcafe: string | null;
+  };
+  desde: string | null;
+  hasta: string | null;
+  saldoAnterior: number;
+  totalCargos: number;
+  totalAbonos: number;
+  saldoFinal: number;
+  movimientos: AccountStatementMovementDTO[];
+  /** Facturas con saldo al día de hoy, sin importar el rango. */
+  pendientes: ReceivableSaleDTO[];
+  saldoActual: number;
+};
+
 export type SaleDTO = {
   id: string;
   businessDate: string;
@@ -476,8 +552,12 @@ export type LedgerDTO = {
     totalVentas: number;
     /** La parte de `totalVentas` cobrada en efectivo: la única que suma al saldo. */
     totalVentasEfectivo: number;
-    /** Ventas cobradas con depósito o cheque, que no tocan la caja. */
+    /** Ventas cobradas con depósito o cheque, o dejadas al crédito: no tocan la caja. */
     totalVentasOtrosMedios: number;
+    /** Ventas del día dejadas al crédito (cuentas por cobrar). */
+    totalVentasCredito: number;
+    /** Abonos de clientes recibidos hoy en efectivo. Suma al saldo. */
+    totalCobros: number;
     totalGastos: number;
     totalIngresos: number;
     /** Cobros del servicio de molido. Suma al saldo. */

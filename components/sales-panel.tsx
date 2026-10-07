@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import type { ApiResponse } from '@/types/api';
 import type { ClientDTO, LedgerDTO, ProductoDTO, SaleTransactionDTO } from '@/types/domain';
@@ -13,10 +14,11 @@ import { useFiscal } from '@/lib/use-fiscal';
 import { usePrintInvoice } from '@/lib/use-print-invoice';
 import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
 import {
-  DEFAULT_PAYMENT_METHOD,
+  CREDIT_SALE_METHOD,
+  CASH_PAYMENT_METHOD,
   SALE_PAYMENT_METHODS,
   paymentMethodLabel,
-  type PaymentMethod,
+  type SalePaymentMethod,
 } from '@/lib/payment-methods';
 import PurchasePreviewModal, { type PreviewTextos, type PurchasePreview } from '@/components/purchase-preview-modal';
 import type { PrintFormat } from '@/lib/print-formats';
@@ -103,7 +105,7 @@ export default function SalesPanel() {
   const [clientModalOpen, setClientModalOpen] = useState(false);
 
   // Datos de la factura que se escriben antes de guardar, como en compras.
-  const [metodoPago, setMetodoPago] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
+  const [metodoPago, setMetodoPago] = useState<SalePaymentMethod>(CASH_PAYMENT_METHOD);
   const [numeroManual, setNumeroManual] = useState('');
   const [ordenCompraExenta, setOrdenCompraExenta] = useState('');
 
@@ -379,7 +381,7 @@ export default function SalesPanel() {
 
       setPreview(null);
       setCart([]);
-      setMetodoPago(DEFAULT_PAYMENT_METHOD);
+      setMetodoPago(CASH_PAYMENT_METHOD);
       setNumeroManual('');
       setOrdenCompraExenta('');
       await refresh();
@@ -449,7 +451,12 @@ export default function SalesPanel() {
           <div className="value">L {ledger?.totals.totalVentas.toFixed(2) ?? '0.00'}</div>
           {ledger && ledger.totals.totalVentasOtrosMedios !== 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
-              L {ledger.totals.totalVentasOtrosMedios.toFixed(2)} con depósito o cheque (no suman a caja)
+              L {ledger.totals.totalVentasOtrosMedios.toFixed(2)} con depósito, cheque o crédito (no suman a caja)
+            </div>
+          ) : null}
+          {ledger && ledger.totals.totalCobros !== 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+              + L {ledger.totals.totalCobros.toFixed(2)} en abonos de clientes en efectivo
             </div>
           ) : null}
         </article>
@@ -723,7 +730,7 @@ export default function SalesPanel() {
               ) : null}
               <label style={{ minWidth: 160 }}>
                 Forma de pago
-                <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value as PaymentMethod)}>
+                <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value as SalePaymentMethod)}>
                   {SALE_PAYMENT_METHODS.map((method) => (
                     <option key={method.value} value={method.value}>
                       {method.label}
@@ -739,6 +746,9 @@ export default function SalesPanel() {
           <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 6 }}>
             Solo las ventas cobradas en efectivo suman al saldo de caja: un depósito o un cheque
             quedan registrados y facturados, pero no entran a la gaveta.
+            {metodoPago === CREDIT_SALE_METHOD
+              ? ' Al crédito, la venta queda en Cuentas por cobrar y se liquida con abonos, que pueden llegar por partes.'
+              : ''}
           </p>
         </article>
 
@@ -754,6 +764,12 @@ export default function SalesPanel() {
                     <div style={{ color: 'var(--text-soft)' }}>
                       {transaction.numeroInterno} · {transaction.items.length} items ·{' '}
                       {paymentMethodLabel(transaction.metodoPago)}
+                      {transaction.metodoPago === CREDIT_SALE_METHOD ? (
+                        <>
+                          {' · '}
+                          <Link href="/cuentas-por-cobrar">ver cuenta</Link>
+                        </>
+                      ) : null}
                     </div>
                     <FiscalDocumentActions
                       origen="venta"

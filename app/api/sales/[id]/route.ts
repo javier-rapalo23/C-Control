@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
 import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
+import { ReceivableError, totalAbonadoVenta } from '@/lib/receivables';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -36,10 +37,21 @@ export async function DELETE(_: Request, { params }: Params) {
         orderBy: { createdAt: 'asc' },
       });
 
+      const total = remainingItems.reduce((accumulator, item) => accumulator.add(item.monto), new Prisma.Decimal(0));
+      // En una venta a crédito el total no puede quedar por debajo de lo ya abonado:
+      // el estado de cuenta mostraría un saldo a favor que nadie registró.
+      const abonado = await totalAbonadoVenta(tx, transactionId);
+      if (abonado.gt(total)) {
+        throw new ReceivableError(
+          `La venta ya tiene L ${abonado.toFixed(2)} abonados: elimina los abonos antes de quitar esta línea.`,
+          409,
+          'CONFLICT',
+        );
+      }
+
       if (remainingItems.length === 0) {
         await tx.saleTransaction.delete({ where: { id: transactionId } });
       } else {
-        const total = remainingItems.reduce((accumulator, item) => accumulator.add(item.monto), new Prisma.Decimal(0));
         await tx.saleTransaction.update({ where: { id: transactionId }, data: { total } });
       }
 
@@ -53,6 +65,9 @@ export async function DELETE(_: Request, { params }: Params) {
 
     return success({ deleted: true, id });
   } catch (error) {
+    if (error instanceof ReceivableError) {
+      return failure(error.code, error.message, error.status);
+    }
     return handleApiError(error);
   }
 }

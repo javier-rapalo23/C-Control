@@ -724,6 +724,32 @@ Reglas:
 La liquidación vive en columnas de `PurchaseTransaction` y no en una tabla de abonos: **el pago es
 total, no hay abonos parciales**. Soportarlos exigiría una tabla propia (§17).
 
+### 6.13b Cuentas por cobrar — ventas al crédito y abonos por partes
+
+Una venta con `metodoPago = "credito"` no se cobra al registrarse: queda como cuenta por cobrar
+del cliente. No suma a la caja (cuenta en `totalVentasOtrosMedios` y en `totalVentasCredito`). No se
+permite al cliente general.
+
+Los abonos se registran en **Cuentas por cobrar** (`/cuentas-por-cobrar`, módulo `receivables`) y
+pueden llegar por partes. Un abono (`ClientPayment`) es **del cliente**, no de una venta: una
+boleta puede cubrir varias facturas. Se reparte en `ClientPaymentApplication`, de la venta más
+antigua a la más reciente, salvo que se elija una venta.
+
+| Forma del abono | Efecto |
+|---|---|
+| Efectivo | Suma al saldo del **día del abono** en la bodega que lo recibe (`totalCobros`). Exige esa caja abierta. |
+| Depósito, cheque | Queda registrado con su referencia (boleta o cheque), pero no entra a la gaveta. |
+
+Reglas:
+
+- El abono no puede pasar del saldo pendiente: no hay saldo a favor.
+- Solo se aplica a ventas con fecha igual o anterior a la del abono.
+- Una venta con abonos no se borra, y quitarle líneas no puede dejar su total por debajo de lo
+  abonado: primero se eliminan los abonos (`DELETE`, **admin**).
+- El estado de cuenta (`GET /api/receivables/:clientId?desde&hasta`) lista cargos y abonos con el
+  saldo corrido, más las facturas pendientes al día. La hoja imprimible está en
+  `/print/estado-cuenta/:clientId`.
+
 ### 6.14 Reportes fiscales — libro de compras, libro de ventas y pendientes
 
 `lib/fiscal-reports.ts`. Son los reportes que la contadora presenta y con los que se cuadra el
@@ -864,6 +890,10 @@ Todas las rutas de esta tabla devuelven **409 `CASH_CLOSED`** si la caja de esa 
 | GET | `/api/pending-payments` | Query `sucursalId?`, `businessDate?`. Devuelve `{ pendientes, pagados }`: las compras sin pagar de cualquier fecha y las pagadas en esa fecha (§6.13). |
 | POST | `/api/pending-payments/:id` | `{ businessDate, metodoPago }` (efectivo, depósito o cheque). 409 si ya se pagó o si la compra no es pendiente; 400 si la fecha es anterior a la compra. |
 | DELETE | `/api/pending-payments/:id` | **admin.** Deshace el pago: la compra vuelve a quedar pendiente. |
+| GET | `/api/receivables` | Clientes con saldo por cobrar, con facturas pendientes y antigüedad (§6.13b). |
+| GET | `/api/receivables/:clientId` | Estado de cuenta. Query `desde?`, `hasta?`. |
+| GET / POST | `/api/client-payments` | Abonos. GET filtra por `clientId?`, `businessDate?`, `sucursalId?`. POST `{ businessDate, sucursalId?, clientId, metodoPago, monto, referencia?, notas?, saleTransactionId? }`; 400 si pasa del saldo. |
+| DELETE | `/api/client-payments/:id` | **admin.** Deshace el abono: sus ventas vuelven a deber lo que cubría. |
 
 Ingresos, salidas y traslados devuelven **409 `CASH_CLOSED`** si la caja de esa fecha está cerrada;
 en un traslado basta con que esté cerrada la del origen o la del destino.
@@ -1604,6 +1634,7 @@ pnpm dev                    # http://localhost:3000
 | `20260929000000_add_fiscal_notas` | `documentoOrigenId` y `notaMotivo` en `FiscalDocument`, para las notas de crédito y débito (§10.4). **Reemplaza un `CHECK`**: el viejo exigía exactamente una transacción, y una nota no ampara ninguna. |
 | `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta`: los datos del adquiriente exonerado (§10.5). Aditiva. |
 | `20261002000000_remove_thermal_printing` | Quita `PrintJob` y `CompanySettings.printerIp` / `printerPort`, y pasa `termico80` a `a4` (§10.1). **Destructiva**: borra la tabla y las dos columnas. |
+| `20261007000000_add_client_payments` | `ClientPayment` y `ClientPaymentApplication`: abonos de clientes a ventas al crédito (§6.13b). Aditiva. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 

@@ -4,11 +4,15 @@ import { assertCashOpen } from '@/lib/cash-session';
 import { parseBusinessDate } from '@/lib/business-date';
 import { resolveSucursalId } from '@/lib/ledger';
 import { computeQuintalesOro } from '@/lib/oro';
+import { CREDIT_SALE_METHOD } from '@/lib/payment-methods';
 import type { createSaleTransactionSchema } from '@/lib/validations';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
 export type VentaPayload = z.infer<typeof createSaleTransactionSchema>;
+
+export const CREDITO_CLIENTE_GENERAL =
+  'No se puede vender al crédito al cliente general: selecciona o crea el cliente que va a pagar.';
 
 /**
  * Cálculo de una venta antes de guardarla: líneas y total.
@@ -25,6 +29,12 @@ export async function calcularVenta(db: DbClient, payload: VentaPayload) {
   const client = await db.client.findUnique({ where: { id: payload.clientId } });
   if (!client) {
     throw new Error('Client not found');
+  }
+
+  // El cliente general agrupa ventas sueltas de gente distinta: una deuda a su nombre
+  // no se le podría cobrar a nadie.
+  if (payload.metodoPago === CREDIT_SALE_METHOD && client.esGeneral) {
+    throw new Error('CREDIT_GENERAL_CLIENT');
   }
 
   const sucursalId = await resolveSucursalId(db, payload.sucursalId);

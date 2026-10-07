@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { assertCashOpen } from '@/lib/cash-session';
 import { recalculateDailyBalance } from '@/lib/ledger';
 import { assertSinDocumentoFiscal } from '@/lib/fiscal-document';
+import { ReceivableError, totalAbonadoVenta } from '@/lib/receivables';
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -23,6 +24,14 @@ export async function DELETE(_: Request, { params }: Params) {
       }
 
       await assertSinDocumentoFiscal(tx, 'venta', id);
+      // Los abonos ya recibidos quedarían sin venta a la que aplicarse.
+      if ((await totalAbonadoVenta(tx, id)).gt(0)) {
+        throw new ReceivableError(
+          'Esta venta tiene abonos registrados: elimínalos primero en Cuentas por cobrar.',
+          409,
+          'CONFLICT',
+        );
+      }
       await assertCashOpen(tx, existing.businessDate.toISOString().slice(0, 10), existing.sucursalId);
 
       await tx.saleTransaction.delete({ where: { id } });
@@ -36,6 +45,9 @@ export async function DELETE(_: Request, { params }: Params) {
 
     return success({ deleted: true, id });
   } catch (error) {
+    if (error instanceof ReceivableError) {
+      return failure(error.code, error.message, error.status);
+    }
     return handleApiError(error);
   }
 }

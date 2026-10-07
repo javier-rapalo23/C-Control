@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { parseBusinessDate, toBusinessDateString } from '@/lib/business-date';
-import { CASH_PAYMENT_METHOD, PENDING_PAYMENT_METHOD } from '@/lib/payment-methods';
+import { CASH_PAYMENT_METHOD, CREDIT_SALE_METHOD, PENDING_PAYMENT_METHOD } from '@/lib/payment-methods';
 import type {
   CashEntryDTO,
   CashTransferDTO,
@@ -277,6 +277,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     salidasAgg,
     trasladosRecibidosAgg,
     trasladosEnviadosAgg,
+    cobrosAgg,
   ] = await Promise.all([
     // El método de pago vive en la transacción, no en la línea. Agrupar por él da
     // en una sola consulta el total del día y su desglose: solo el efectivo sacó
@@ -324,6 +325,12 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       where: { businessDate, sucursalOrigenId: sucursalId },
       _sum: { monto: true },
     }),
+    // Abonos de clientes a sus ventas a crédito recibidos hoy en efectivo en esta
+    // bodega: entran a la caja del día del abono, no del de la venta.
+    db.clientPayment.aggregate({
+      where: { businessDate, sucursalId, metodoPago: CASH_PAYMENT_METHOD },
+      _sum: { monto: true },
+    }),
   ]);
 
   const porMetodo = (metodo: string) =>
@@ -339,6 +346,10 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
     ventasAgg.find((grupo) => grupo.metodoPago === CASH_PAYMENT_METHOD)?._sum.total ?? null,
   );
   const totalVentasOtrosMedios = Number((totalVentas - totalVentasEfectivo).toFixed(2));
+  const totalVentasCredito = decimalToNumber(
+    ventasAgg.find((grupo) => grupo.metodoPago === CREDIT_SALE_METHOD)?._sum.total ?? null,
+  );
+  const totalCobros = decimalToNumber(cobrosAgg._sum.monto);
   const totalGastos = decimalToNumber(gastosAgg._sum.monto);
   const totalIngresos = decimalToNumber(ingresosAgg._sum.monto);
   const totalMolido = decimalToNumber(molidoAgg._sum.monto);
@@ -354,6 +365,7 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
   const saldoActual =
     saldoInicial +
     totalVentasEfectivo +
+    totalCobros +
     totalIngresos +
     totalMolido +
     totalTrasladosRecibidos -
@@ -381,6 +393,8 @@ export async function recalculateDailyBalance(db: DbClient, businessDateInput: s
       totalVentas,
       totalVentasEfectivo,
       totalVentasOtrosMedios,
+      totalVentasCredito,
+      totalCobros,
       totalGastos,
       totalIngresos,
       totalMolido,
