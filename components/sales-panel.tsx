@@ -542,7 +542,7 @@ export default function SalesPanel() {
                   <div style={{ fontWeight: 600, fontSize: 14, color: selected ? 'var(--ring)' : 'inherit' }}>
                     {producto.nombre}
                   </div>
-                  <div
+                  {/* <div
                     style={{
                       fontSize: 13,
                       fontWeight: 600,
@@ -551,7 +551,7 @@ export default function SalesPanel() {
                     }}
                   >
                     {stock === undefined ? '…' : stock === null ? 'Stock: —' : `Stock: ${stock.toFixed(2)} lb`}
-                  </div>
+                  </div> */}
                 </button>
               );
             })}
