@@ -201,16 +201,17 @@ describe('InvoiceA4 — venta', () => {
 
   // Lo que se quitó es de la compra: la venta es a un comprador que sí revisa el
   // detalle del lote.
-  it('conserva sacos y factor oro, que la compra ya no imprime', () => {
-    expect(html).toContain('Sacos');
-    expect(html).toContain('<th>Factor</th>');
+  it('no imprime sacos, factor ni quintales oro', () => {
+    expect(html).not.toContain('<th>Sacos</th>');
+    expect(html).not.toContain('<th>Factor</th>');
+    expect(html).not.toContain('<th>QQ oro</th>');
   });
 
   it('el pie de la tabla cuadra en columnas con el encabezado', () => {
     const encabezado = anchoDeFilas(html, 'th')[0];
     const pies = anchoDeFilas(html, 'td').filter((ancho) => ancho !== 0);
-    // Desde que la venta se pesa, lleva las mismas columnas que la compra.
-    expect(encabezado).toBe(9);
+    // Concepto, bruto, tara, neto, precio y valor.
+    expect(encabezado).toBe(6);
     for (const ancho of pies) expect(ancho).toBe(encabezado);
   });
 });

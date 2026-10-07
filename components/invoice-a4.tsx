@@ -306,6 +306,11 @@ function FilaCompra({ linea }: { linea: InvoiceLinea }) {
   );
 }
 
+/**
+ * La venta tampoco imprime sacos, factor ni quintales oro: la tara ya explica lo que se
+ * descuenta del bruto, y el rendimiento es un dato interno. Se siguen capturando y
+ * guardando; solo dejan de salir en el papel.
+ */
 function FilaVenta({ linea }: { linea: InvoiceLinea }) {
   // En modo oro el precio es por quintal oro y no por libra: se rotula distinto
   // para que nadie lea un precio por quintal como si fuera por libra.
@@ -328,11 +333,8 @@ function FilaVenta({ linea }: { linea: InvoiceLinea }) {
         {linea.descripcion ? <div className="invoice-linea-desc">{linea.descripcion}</div> : null}
       </td>
       <td>{linea.pesoBruto !== null ? numero(linea.pesoBruto) : '—'}</td>
-      <td>{linea.numeroSacos ?? '—'}</td>
       <td>{taraTotal !== null ? numero(taraTotal) : '—'}</td>
       <td>{linea.libras > 0 ? numero(linea.libras) : '—'}</td>
-      <td>{linea.porcentajeOro !== null ? `${numero(linea.porcentajeOro)} %` : '—'}</td>
-      <td>{linea.quintalesOro !== null ? numero(linea.quintalesOro) : '—'}</td>
       <td>{precio}</td>
       <td>{lempiras(linea.total)}</td>
     </tr>
@@ -581,11 +583,8 @@ function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
               <tr>
                 <th>Concepto</th>
                 <th>Bruto (lb)</th>
-                <th>Sacos</th>
                 <th>Tara (lb)</th>
                 <th>Neto (lb)</th>
-                <th>Factor</th>
-                <th>QQ oro</th>
                 <th>Precio</th>
                 <th>Valor</th>
               </tr>
@@ -631,10 +630,8 @@ function Hoja({ data, copia, vistaPrevia = false }: HojaProps) {
             ) : (
               <tr>
                 <td>Totales</td>
-                <td colSpan={3} />
+                <td colSpan={2} />
                 <td>{data.totalLibras > 0 ? numero(data.totalLibras) : '—'}</td>
-                <td />
-                <td>{data.totalQuintalesOro !== null ? numero(data.totalQuintalesOro) : '—'}</td>
                 <td />
                 <td>{lempiras(data.subtotal)}</td>
               </tr>
