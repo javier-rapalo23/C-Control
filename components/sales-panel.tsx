@@ -164,8 +164,10 @@ export default function SalesPanel() {
   const fetchClients = useCallback(async () => {
     const response = await fetch('/api/clients', { cache: 'no-store' });
     const data = await parseApiResponse<ClientDTO[]>(response);
-    setClients(data);
-    setSelectedClientId((current) => current || data[0]?.id || '');
+    // Solo los clientes a los que se les vende; el general sirve para todo.
+    const deVenta = data.filter((client) => client.esVenta || client.esGeneral);
+    setClients(deVenta);
+    setSelectedClientId((current) => current || deVenta[0]?.id || '');
   }, []);
 
   const fetchLedger = useCallback(async () => {
@@ -506,6 +508,7 @@ export default function SalesPanel() {
         </article>
 
         <ClientQuickCreateModal
+          tipo="venta"
           open={clientModalOpen}
           onClose={() => setClientModalOpen(false)}
           onCreated={handleClientCreated}

@@ -12,6 +12,11 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
 
 type Props = {
   open: boolean;
+  /**
+   * Desde dónde se crea: un cliente creado en Ventas queda como cliente de venta y uno
+   * creado en Compras, como de compra. Sin indicarlo, el servidor lo deja de compra.
+   */
+  tipo?: 'compra' | 'venta';
   onClose: () => void;
   onCreated: (client: ClientDTO) => void;
 };
@@ -28,7 +33,7 @@ const emptyForm = {
   notas: '',
 };
 
-export default function ClientQuickCreateModal({ open, onClose, onCreated }: Props) {
+export default function ClientQuickCreateModal({ open, onClose, onCreated, tipo }: Props) {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +62,7 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }: Pro
           rtn: form.rtn || undefined,
           cuentaBancaria: form.cuentaBancaria || undefined,
           notas: form.notas || undefined,
+          ...(tipo ? { esCompra: tipo === 'compra', esVenta: tipo === 'venta' } : {}),
         }),
       });
       const client = await parseApiResponse<ClientDTO>(response);
@@ -89,7 +95,7 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }: Pro
         style={{ width: '100%', maxWidth: 420, margin: 0, maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(event) => event.stopPropagation()}
       >
-        <h3>Nuevo cliente</h3>
+        <h3>{tipo === 'venta' ? 'Nuevo cliente de venta' : tipo === 'compra' ? 'Nuevo cliente de compra' : 'Nuevo cliente'}</h3>
         <p style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: -4 }}>
           Solo nombres y apellidos son obligatorios. El resto se puede completar luego en Clientes.
         </p>

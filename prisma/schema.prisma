@@ -101,6 +101,11 @@ model Client {
   cuentaBancaria       String?
   notas                String?
   esGeneral            Boolean               @default(false)
+  /// Para qué se usa el cliente: a quién se le compra (productor) y a quién se le
+  /// vende. Puede ser los dos. Decide en qué selector aparece: Compras muestra los
+  /// `esCompra` y Ventas los `esVenta`. El cliente general aparece en ambos.
+  esCompra             Boolean               @default(true)
+  esVenta              Boolean               @default(false)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   purchaseTransactions PurchaseTransaction[]

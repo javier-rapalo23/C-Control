@@ -1,5 +1,5 @@
 import { createClientSchema } from '@/lib/validations';
-import { handleApiError, success } from '@/lib/api-response';
+import { failure, handleApiError, success } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 
 function mapClient(client: {
@@ -17,6 +17,8 @@ function mapClient(client: {
   registroSag: string | null;
   notas: string | null;
   esGeneral: boolean;
+  esCompra: boolean;
+  esVenta: boolean;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -48,6 +50,8 @@ async function ensureGeneralClient() {
     data: {
       nombre: 'General',
       esGeneral: true,
+      esCompra: true,
+      esVenta: true,
     },
   });
 }
@@ -69,6 +73,12 @@ export async function POST(request: Request) {
   try {
     const payload = createClientSchema.parse(await request.json());
     const nombre = `${payload.nombres} ${payload.apellidos}`.trim();
+    // Sin indicar nada es de compra, que es para lo que se venían creando.
+    const esCompra = payload.esCompra ?? !payload.esVenta;
+    const esVenta = payload.esVenta ?? false;
+    if (!esCompra && !esVenta) {
+      return failure('VALIDATION_ERROR', 'El cliente debe ser de compra, de venta o de ambos', 400);
+    }
 
     const client = await prisma.client.create({
       data: {
@@ -84,6 +94,8 @@ export async function POST(request: Request) {
         registroExonerado: payload.registroExonerado,
         registroSag: payload.registroSag,
         notas: payload.notas,
+        esCompra,
+        esVenta,
       },
     });
 

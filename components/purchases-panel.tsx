@@ -133,8 +133,10 @@ export default function PurchasesPanel() {
   const fetchClients = useCallback(async () => {
     const response = await fetch('/api/clients', { cache: 'no-store' });
     const data = await parseApiResponse<ClientDTO[]>(response);
-    setClients(data);
-    setSelectedClientId((current) => current || data[0]?.id || '');
+    // Solo los clientes a los que se les compra; el general sirve para todo.
+    const deCompra = data.filter((client) => client.esCompra || client.esGeneral);
+    setClients(deCompra);
+    setSelectedClientId((current) => current || deCompra[0]?.id || '');
   }, []);
 
   const fetchLedger = useCallback(async () => {
@@ -472,6 +474,7 @@ export default function PurchasesPanel() {
         </article>
 
         <ClientQuickCreateModal
+          tipo="compra"
           open={clientModalOpen}
           onClose={() => setClientModalOpen(false)}
           onCreated={handleClientCreated}

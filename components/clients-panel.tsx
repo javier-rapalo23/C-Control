@@ -26,7 +26,52 @@ type EditingClient = {
   registroExonerado: string;
   registroSag: string;
   notas: string;
+  esCompra: boolean;
+  esVenta: boolean;
 };
+
+type FiltroTipo = 'todos' | 'compra' | 'venta';
+
+/** Para qué se usa el cliente, en palabras. */
+function tipoLabel(client: Pick<ClientDTO, 'esCompra' | 'esVenta'>) {
+  if (client.esCompra && client.esVenta) return 'Compra y venta';
+  if (client.esVenta) return 'Venta';
+  return 'Compra';
+}
+
+/** Las dos casillas del tipo. Se usan en el alta y en la edición. */
+function TipoCheckboxes({
+  esCompra,
+  esVenta,
+  onChange,
+}: {
+  esCompra: boolean;
+  esVenta: boolean;
+  onChange: (value: { esCompra: boolean; esVenta: boolean }) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, whiteSpace: 'nowrap' }}>
+        <input
+          type="checkbox"
+          checked={esCompra}
+          onChange={(e) => onChange({ esCompra: e.target.checked, esVenta })}
+          style={{ width: 'auto' }}
+        />
+        Compra
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, whiteSpace: 'nowrap' }}>
+        <input
+          type="checkbox"
+          checked={esVenta}
+          onChange={(e) => onChange({ esCompra, esVenta: e.target.checked })}
+          style={{ width: 'auto' }}
+        />
+        Venta
+      </label>
+    </div>
+  );
+}
 
 type NewOriginalForm = {
   nombres: string;
@@ -48,6 +93,9 @@ export default function ClientsPanel() {
   const [newDireccion, setNewDireccion] = useState('');
   const [newRtn, setNewRtn] = useState('');
   const [newTelefono, setNewTelefono] = useState('');
+  // Desde aquí el tipo se elige; por omisión, de compra como los ya existentes.
+  const [newTipo, setNewTipo] = useState({ esCompra: true, esVenta: false });
+  const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
 
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [originalesByClient, setOriginalesByClient] = useState<Record<string, ClienteOriginalDTO[]>>({});
@@ -73,8 +121,16 @@ export default function ClientsPanel() {
     void fetchClients();
   }, [fetchClients]);
 
+  const visibleClients = clients.filter((client) =>
+    filtroTipo === 'todos' ? true : filtroTipo === 'compra' ? client.esCompra : client.esVenta,
+  );
+
   async function createClient(event: React.FormEvent) {
     event.preventDefault();
+    if (!newTipo.esCompra && !newTipo.esVenta) {
+      setError('Marca si el cliente es de compra, de venta o de ambos');
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -89,8 +145,11 @@ export default function ClientsPanel() {
           direccion: newDireccion || undefined,
           rtn: newRtn || undefined,
           telefono: newTelefono || undefined,
+          esCompra: newTipo.esCompra,
+          esVenta: newTipo.esVenta,
         }),
       }).then(parseApiResponse);
+      setNewTipo({ esCompra: true, esVenta: false });
       setNewNombres('');
       setNewApellidos('');
       setNewClaveIhcafe('');
@@ -107,6 +166,10 @@ export default function ClientsPanel() {
 
   async function updateClient(id: string) {
     if (!editingClient) return;
+    if (!editingClient.esCompra && !editingClient.esVenta) {
+      setError('Marca si el cliente es de compra, de venta o de ambos');
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -125,6 +188,8 @@ export default function ClientsPanel() {
           registroExonerado: editingClient.registroExonerado || undefined,
           registroSag: editingClient.registroSag || undefined,
           notas: editingClient.notas || undefined,
+          esCompra: editingClient.esCompra,
+          esVenta: editingClient.esVenta,
         }),
       }).then(parseApiResponse);
       setEditingClient(null);
@@ -224,13 +289,24 @@ export default function ClientsPanel() {
         <ErrorToast message={error} onClose={() => setError(null)} />
 
         <article className="card wide">
-          <h3>Clientes registrados</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>Clientes registrados</h3>
+            <label style={{ minWidth: 180 }}>
+              Mostrar
+              <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as FiltroTipo)}>
+                <option value="todos">Todos</option>
+                <option value="compra">Clientes de compra</option>
+                <option value="venta">Clientes de venta</option>
+              </select>
+            </label>
+          </div>
 
           <table className="table-like">
             <thead>
               <tr>
                 <th>Nombres</th>
                 <th>Apellidos</th>
+                <th>Tipo</th>
                 <th>Clave IHCAFE</th>
                 <th>Finca</th>
                 <th>Dirección</th>
@@ -242,7 +318,7 @@ export default function ClientsPanel() {
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) =>
+              {visibleClients.map((client) =>
                 editingClient?.id === client.id ? (
                   <tr key={client.id}>
                     <td>
@@ -262,6 +338,17 @@ export default function ClientsPanel() {
                         title="Apellidos"
                         aria-label="Apellidos"
                       />
+                    </td>
+                    <td>
+                      {client.esGeneral ? (
+                        tipoLabel(client)
+                      ) : (
+                        <TipoCheckboxes
+                          esCompra={editingClient.esCompra}
+                          esVenta={editingClient.esVenta}
+                          onChange={(tipo) => setEditingClient((prev) => prev && { ...prev, ...tipo })}
+                        />
+                      )}
                     </td>
                     <td>
                       <input
@@ -346,6 +433,7 @@ export default function ClientsPanel() {
                     <tr>
                       <td>{client.nombres ?? client.nombre}</td>
                       <td>{client.apellidos ?? ''}</td>
+                      <td>{tipoLabel(client)}</td>
                       <td>{client.claveIhcafe ?? '—'}</td>
                       <td>{client.nombreFinca ?? '—'}</td>
                       <td>{client.direccion ?? '—'}</td>
@@ -371,6 +459,8 @@ export default function ClientsPanel() {
                               registroExonerado: client.registroExonerado ?? '',
                               registroSag: client.registroSag ?? '',
                               notas: client.notas ?? '',
+                              esCompra: client.esCompra ?? true,
+                              esVenta: client.esVenta ?? false,
                             })
                           }
                         >
@@ -388,7 +478,7 @@ export default function ClientsPanel() {
                     </tr>
                     {expandedClientId === client.id ? (
                       <tr>
-                        <td colSpan={10} style={{ background: 'var(--surface-alt)' }}>
+                        <td colSpan={11} style={{ background: 'var(--surface-alt)' }}>
                           <div style={{ padding: '8px 4px' }}>
                             <strong style={{ fontSize: 13 }}>Productores originales de {client.nombre}</strong>
                             <ErrorToast message={originalesError} onClose={() => setOriginalesError(null)} />
@@ -470,9 +560,9 @@ export default function ClientsPanel() {
                   </Fragment>
                 ),
               )}
-              {clients.length === 0 && !loading ? (
+              {visibleClients.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={10}>No hay clientes registrados.</td>
+                  <td colSpan={11}>No hay clientes registrados.</td>
                 </tr>
               ) : null}
             </tbody>
@@ -511,6 +601,13 @@ export default function ClientsPanel() {
               Dirección
               <input value={newDireccion} onChange={(e) => setNewDireccion(e.target.value)} />
             </label>
+            {/* De compra aparece en Compras; de venta, en Ventas y en Cuentas por cobrar. */}
+            <div style={{ gridColumn: 'span 8' }}>
+              <span style={{ fontSize: 13 }}>Tipo de cliente</span>
+              <div style={{ marginTop: 8 }}>
+                <TipoCheckboxes esCompra={newTipo.esCompra} esVenta={newTipo.esVenta} onChange={setNewTipo} />
+              </div>
+            </div>
             <div style={{ gridColumn: 'span 12' }}>
               <button className="btn-primary" type="submit" disabled={loading}>
                 Agregar cliente

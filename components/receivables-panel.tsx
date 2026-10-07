@@ -64,7 +64,7 @@ export default function ReceivablesPanel() {
 
   const fetchClients = useCallback(async () => {
     const data = await fetch('/api/clients', { cache: 'no-store' }).then(parseApiResponse<ClientDTO[]>);
-    setClients(data.filter((client) => !client.esGeneral));
+    setClients(data.filter((client) => client.esVenta && !client.esGeneral));
   }, []);
 
   const fetchStatement = useCallback(async () => {

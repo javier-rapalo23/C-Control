@@ -1635,6 +1635,7 @@ pnpm dev                    # http://localhost:3000
 | `20260930000000_add_adquiriente_exonerado` | `Client.registroExonerado` y `FiscalDocument.ordenCompraExenta`: los datos del adquiriente exonerado (§10.5). Aditiva. |
 | `20261002000000_remove_thermal_printing` | Quita `PrintJob` y `CompanySettings.printerIp` / `printerPort`, y pasa `termico80` a `a4` (§10.1). **Destructiva**: borra la tabla y las dos columnas. |
 | `20261007000000_add_client_payments` | `ClientPayment` y `ClientPaymentApplication`: abonos de clientes a ventas al crédito (§6.13b). Aditiva. |
+| `20261007010000_add_client_tipo` | `Client.esCompra` y `Client.esVenta`: para qué se usa el cliente. Los existentes quedan de compra; los que ya tenían ventas (y el general), también de venta. |
 
 En producción: `prisma migrate deploy` (incluido en `vercel-build`).
 

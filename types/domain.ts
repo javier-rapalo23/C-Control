@@ -42,6 +42,10 @@ export type ClientDTO = {
   cuentaBancaria?: string | null;
   notas?: string | null;
   esGeneral: boolean;
+  /** Cliente al que se le compra: aparece en Compras. */
+  esCompra?: boolean;
+  /** Cliente al que se le vende: aparece en Ventas. */
+  esVenta?: boolean;
   createdAt: string;
   updatedAt: string;
 };

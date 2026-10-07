@@ -21,6 +21,8 @@ function mapClient(client: {
   registroSag: string | null;
   notas: string | null;
   esGeneral: boolean;
+  esCompra: boolean;
+  esVenta: boolean;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -55,6 +57,10 @@ export async function PATCH(request: Request, { params }: Params) {
     const nombres = payload.nombres ?? existing.nombres ?? undefined;
     const apellidos = payload.apellidos ?? existing.apellidos ?? undefined;
     const nombre = nombres && apellidos ? `${nombres} ${apellidos}`.trim() : existing.nombre;
+
+    if (!(payload.esCompra ?? existing.esCompra) && !(payload.esVenta ?? existing.esVenta)) {
+      return failure('VALIDATION_ERROR', 'El cliente debe ser de compra, de venta o de ambos', 400);
+    }
 
     const client = await prisma.client.update({
       where: { id },

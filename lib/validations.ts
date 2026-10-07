@@ -56,6 +56,9 @@ export const createClientSchema = z.object({
   // Registro de la SAG del adquiriente exonerado; vacío por la misma razón.
   registroSag: z.string().trim().max(60).optional(),
   notas: z.string().trim().max(500).optional(),
+  // Para qué se usa el cliente. Sin ellos se crea como cliente de compra.
+  esCompra: z.boolean().optional(),
+  esVenta: z.boolean().optional(),
 });
 
 export const createClienteOriginalSchema = z.object({
