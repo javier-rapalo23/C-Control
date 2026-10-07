@@ -13,6 +13,7 @@ import type {
   GrindingReportGroupDTO,
   GrindingReportPeriodDTO,
   PurchaseReportBreakdownDTO,
+  PurchaseReportClienteProductoDTO,
   PurchaseReportDTO,
   PurchaseReportPeriodDTO,
   SaleReportBreakdownDTO,
@@ -87,11 +88,28 @@ export function purchaseReportSheets(report: PurchaseReportDTO): Array<Sheet<nev
       rows,
     });
 
+  // Una fila por cliente y café, con el cliente repetido: así se puede filtrar y hacer
+  // tablas dinámicas en Excel sin rellenar celdas a mano.
+  const porClienteProducto = sheet<PurchaseReportClienteProductoDTO>({
+    nombre: 'Cliente y tipo de café',
+    nota,
+    columns: [
+      { header: 'Cliente', value: (row) => row.clienteNombre, width: 30 },
+      { header: 'Tipo de café', value: (row) => row.productoNombre, width: 24 },
+      { header: 'Libras', value: (row) => row.totalLibras, formato: 'numero' },
+      { header: 'QQ oro', value: (row) => row.totalQuintalesOro, formato: 'numero' },
+      { header: 'Total', value: (row) => row.totalLempiras, formato: 'moneda' },
+      { header: 'Compras', value: (row) => row.numeroCompras, formato: 'entero' },
+    ],
+    rows: report.porClienteProducto ?? [],
+  });
+
   return [
     totales,
     porPeriodo,
     desglose('Por producto', 'Producto', report.porProducto),
     desglose('Por cliente', 'Cliente', report.porCliente),
+    porClienteProducto,
   ];
 }
 

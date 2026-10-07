@@ -50,13 +50,25 @@ const COMPRAS: PurchaseReportDTO = {
   porCliente: [
     { id: 'c1', nombre: 'Juan Pérez', totalLibras: 1137, totalQuintalesOro: 6.14, totalLempiras: 25_014, numeroCompras: 2 },
   ],
+  porClienteProducto: [
+    {
+      clienteId: 'c1',
+      clienteNombre: 'Juan Pérez',
+      productoId: 'p1',
+      productoNombre: 'Pergamino seco',
+      totalLibras: 1137,
+      totalQuintalesOro: 6.14,
+      totalLempiras: 25_014,
+      numeroCompras: 2,
+    },
+  ],
 };
 
 describe('purchaseReportSheets', () => {
   it('lleva totales primero y una hoja por tabla', async () => {
     const libro = await hojas(purchaseReportSheets(COMPRAS));
 
-    expect(libro.worksheets.map((hoja) => hoja.name)).toEqual(['Totales', 'Por día', 'Por producto', 'Por cliente']);
+    expect(libro.worksheets.map((hoja) => hoja.name)).toEqual(['Totales', 'Por día', 'Por producto', 'Por cliente', 'Cliente y tipo de café']);
   });
 
   it('la hoja de período se llama como el agrupamiento elegido', async () => {

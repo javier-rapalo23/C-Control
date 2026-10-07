@@ -11,6 +11,7 @@ import InvoicePrintButtons from '@/components/invoice-print-buttons';
 import { useFiscal } from '@/lib/use-fiscal';
 import { usePrintInvoice } from '@/lib/use-print-invoice';
 import { TIPO_DOCUMENTO_POR_ORIGEN } from '@/lib/fiscal';
+import ClientSearchSelect from '@/components/client-search-select';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -248,13 +249,7 @@ export default function GrindingPanel() {
             <label className="stack-on-tablet" style={{ gridColumn: 'span 6' }}>
               Cliente
               <div style={{ display: 'flex', gap: 8 }}>
-                <select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)} style={{ flex: 1 }}>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.esGeneral ? `${client.nombre} (general)` : client.nombre}
-                    </option>
-                  ))}
-                </select>
+                <ClientSearchSelect clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
                 <button
                   className="btn-secondary"
                   type="button"

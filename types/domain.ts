@@ -537,6 +537,18 @@ export type PurchaseReportBreakdownDTO = {
   numeroCompras: number;
 };
 
+/** Una fila del cruce cliente × tipo de café: lo que se le compró a ese cliente de ese café. */
+export type PurchaseReportClienteProductoDTO = {
+  clienteId: string;
+  clienteNombre: string;
+  productoId: string;
+  productoNombre: string;
+  totalLibras: number;
+  totalQuintalesOro: number;
+  totalLempiras: number;
+  numeroCompras: number;
+};
+
 export type PurchaseReportDTO = {
   from: string;
   to: string;
@@ -552,6 +564,11 @@ export type PurchaseReportDTO = {
   periods: PurchaseReportPeriodDTO[];
   porProducto: PurchaseReportBreakdownDTO[];
   porCliente: PurchaseReportBreakdownDTO[];
+  /**
+   * Cruce cliente × tipo de café. Va en el orden de `porCliente` (de mayor a menor
+   * monto) y, dentro de cada cliente, sus cafés de mayor a menor monto.
+   */
+  porClienteProducto: PurchaseReportClienteProductoDTO[];
 };
 
 export type SaleReportPeriodDTO = {

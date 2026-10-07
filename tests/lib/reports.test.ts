@@ -97,6 +97,28 @@ describe('getPurchaseReport', () => {
     expect(report.totals.totalLempiras).toBe(1700);
   });
 
+  it('cruza cliente y tipo de café, en el orden de los clientes', async () => {
+    const ana = { id: 'c1', nombres: 'Ana', apellidos: 'Pérez' };
+    const beto = { id: 'c2', nombres: 'Beto', apellidos: 'Cruz' };
+    const uva = { productoId: 'p1', productoNombre: 'Café uva' };
+    const pergamino = { productoId: 'p2', productoNombre: 'Pergamino' };
+    const report = await getPurchaseReport(
+      fakeDb([
+        { ...cafe('2026-08-17', 100, 1000, ana), ...uva },
+        { ...cafe('2026-08-18', 50, 2000, ana), ...pergamino },
+        { ...cafe('2026-08-19', 30, 300, ana), ...uva },
+        { ...cafe('2026-08-19', 20, 200, beto), ...uva },
+      ]),
+      { from: '2026-08-16', to: '2026-08-22', groupBy: 'day' },
+    );
+
+    expect(report.porClienteProducto).toEqual([
+      expect.objectContaining({ clienteId: 'c1', productoNombre: 'Pergamino', totalLempiras: 2000, numeroCompras: 1 }),
+      expect.objectContaining({ clienteId: 'c1', productoNombre: 'Café uva', totalLibras: 130, totalLempiras: 1300, numeroCompras: 2 }),
+      expect.objectContaining({ clienteId: 'c2', clienteNombre: 'Beto Cruz', productoNombre: 'Café uva', totalLempiras: 200 }),
+    ]);
+  });
+
   it('ordena el desglose por monto descendente', async () => {
     const report = await getPurchaseReport(
       fakeDb([

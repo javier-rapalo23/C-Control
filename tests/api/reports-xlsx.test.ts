@@ -33,6 +33,7 @@ const reporte = {
   porCliente: [
     { id: 'c1', nombre: 'Juan Pérez', totalLibras: 100, totalQuintalesOro: 1, totalLempiras: 2_200, numeroCompras: 1 },
   ],
+  porClienteProducto: [],
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
@@ -59,7 +60,7 @@ describe('GET /api/reports/purchases?formato=xlsx', () => {
 
     const libro = new ExcelJS.Workbook();
     await libro.xlsx.load(await response.arrayBuffer());
-    expect(libro.worksheets.map((hoja) => hoja.name)).toEqual(['Totales', 'Por día', 'Por producto', 'Por cliente']);
+    expect(libro.worksheets.map((hoja) => hoja.name)).toEqual(['Totales', 'Por día', 'Por producto', 'Por cliente', 'Cliente y tipo de café']);
   });
 
   // Sin el parámetro sigue siendo la API de siempre: el panel la consume como JSON.

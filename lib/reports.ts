@@ -15,6 +15,7 @@ import type {
   GrindingReportGroupDTO,
   GrindingReportPeriodDTO,
   PurchaseReportBreakdownDTO,
+  PurchaseReportClienteProductoDTO,
   PurchaseReportDTO,
   PurchaseReportPeriodDTO,
   SaleReportBreakdownDTO,
@@ -155,6 +156,8 @@ export async function getPurchaseReport(
   const byDate = new Map<string, Accumulator>();
   const byProducto = new Map<string, { nombre: string; acc: Accumulator }>();
   const byCliente = new Map<string, { nombre: string; acc: Accumulator }>();
+  // Por cliente, sus tipos de café: cuánto de cada café se le compró a cada productor.
+  const byClienteProducto = new Map<string, Map<string, { nombre: string; acc: Accumulator }>>();
   const totals = emptyAccumulator();
 
   for (const purchase of purchases) {
@@ -179,7 +182,28 @@ export async function getPurchaseReport(
       byCliente.set(client.id, { nombre: `${client.nombres ?? ''} ${client.apellidos ?? ''}`.trim(), acc: emptyAccumulator() });
     }
     accumulate(byCliente.get(client.id)!.acc, libras, quintalesOro, total);
+
+    if (!byClienteProducto.has(client.id)) byClienteProducto.set(client.id, new Map());
+    const cafesDelCliente = byClienteProducto.get(client.id)!;
+    if (!cafesDelCliente.has(purchase.productoId)) {
+      cafesDelCliente.set(purchase.productoId, { nombre: purchase.productoNombre, acc: emptyAccumulator() });
+    }
+    accumulate(cafesDelCliente.get(purchase.productoId)!.acc, libras, quintalesOro, total);
   }
+
+  const porCliente = toPurchaseBreakdown(byCliente);
+  const porClienteProducto: PurchaseReportClienteProductoDTO[] = porCliente.flatMap((cliente) =>
+    toPurchaseBreakdown(byClienteProducto.get(cliente.id)!).map((cafe) => ({
+      clienteId: cliente.id,
+      clienteNombre: cliente.nombre,
+      productoId: cafe.id,
+      productoNombre: cafe.nombre,
+      totalLibras: cafe.totalLibras,
+      totalQuintalesOro: cafe.totalQuintalesOro,
+      totalLempiras: cafe.totalLempiras,
+      numeroCompras: cafe.numeroCompras,
+    })),
+  );
 
   // Los períodos se generan desde el calendario, no desde los datos: así un día o
   // una semana sin compras aparece en cero en vez de desaparecer del reporte.
@@ -208,7 +232,8 @@ export async function getPurchaseReport(
     },
     periods,
     porProducto: toPurchaseBreakdown(byProducto),
-    porCliente: toPurchaseBreakdown(byCliente),
+    porCliente,
+    porClienteProducto,
   };
 }
 

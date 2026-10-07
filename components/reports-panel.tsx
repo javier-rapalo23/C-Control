@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ApiResponse } from '@/types/api';
 import type { ExpenseReportDTO, GrindingReportDTO, PurchaseReportDTO, SaleReportDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
@@ -341,6 +341,64 @@ export default function ReportsPanel() {
                 {report.porCliente.length === 0 ? (
                   <tr>
                     <td colSpan={4} style={{ color: 'var(--text-soft)' }}>
+                      Sin compras en el período.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </section>
+
+          {/* Cruce cliente × tipo de café: cada cliente con su subtotal y, debajo, lo que
+              se le compró de cada café. */}
+          <section className="card" style={{ marginTop: 12 }}>
+            <h3>Por cliente y tipo de café</h3>
+            <table className="table-like" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Cliente / tipo de café</th>
+                  <th>Libras</th>
+                  <th>Qq oro</th>
+                  <th>Total</th>
+                  <th>Compras</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.porCliente.map((cliente) => (
+                  <Fragment key={cliente.id}>
+                    <tr style={{ background: 'var(--surface-alt)' }}>
+                      <td>
+                        <strong>{cliente.nombre}</strong>
+                      </td>
+                      <td>
+                        <strong>{number(cliente.totalLibras)}</strong>
+                      </td>
+                      <td>
+                        <strong>{number(cliente.totalQuintalesOro)}</strong>
+                      </td>
+                      <td>
+                        <strong>{money(cliente.totalLempiras)}</strong>
+                      </td>
+                      <td>
+                        <strong>{cliente.numeroCompras}</strong>
+                      </td>
+                    </tr>
+                    {(report.porClienteProducto ?? [])
+                      .filter((fila) => fila.clienteId === cliente.id)
+                      .map((fila) => (
+                        <tr key={`${fila.clienteId}-${fila.productoId}`}>
+                          <td style={{ paddingLeft: 24 }}>{fila.productoNombre}</td>
+                          <td>{number(fila.totalLibras)}</td>
+                          <td>{number(fila.totalQuintalesOro)}</td>
+                          <td>{money(fila.totalLempiras)}</td>
+                          <td>{fila.numeroCompras}</td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                ))}
+                {report.porCliente.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ color: 'var(--text-soft)' }}>
                       Sin compras en el período.
                     </td>
                   </tr>

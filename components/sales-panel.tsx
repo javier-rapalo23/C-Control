@@ -20,6 +20,7 @@ import {
 } from '@/lib/payment-methods';
 import PurchasePreviewModal, { type PreviewTextos, type PurchasePreview } from '@/components/purchase-preview-modal';
 import type { PrintFormat } from '@/lib/print-formats';
+import ClientSearchSelect from '@/components/client-search-select';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
 
@@ -467,17 +468,7 @@ export default function SalesPanel() {
           <label style={{ marginTop: 8 }}>
             Cliente para la venta
             <div style={{ display: 'flex', gap: 8 }}>
-              <select
-                value={selectedClientId}
-                onChange={(event) => setSelectedClientId(event.target.value)}
-                style={{ flex: 1 }}
-              >
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.esGeneral ? `${client.nombre} (general)` : client.nombre}
-                  </option>
-                ))}
-              </select>
+              <ClientSearchSelect clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
               <button
                 className="btn-secondary"
                 type="button"
