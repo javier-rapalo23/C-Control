@@ -6,6 +6,8 @@ import type { BancoDTO, ExpenseCategoryDTO, LedgerDTO } from '@/types/domain';
 import { useSucursal } from '@/lib/use-sucursal';
 import ErrorToast from '@/components/error-toast';
 import LoadingOverlay from '@/components/loading-overlay';
+import ExpenseCategoryQuickCreateModal from '@/components/expense-category-quick-create-modal';
+import { Plus } from 'lucide-react';
 import { DEFAULT_EXPENSE_CATEGORIA } from '@/lib/expenses';
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -35,6 +37,14 @@ export default function ExpensesPanel() {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [bancos, setBancos] = useState<BancoDTO[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryDTO[]>([]);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+
+  /** La categoría recién creada entra a la lista, en orden, y queda seleccionada. */
+  function handleCategoryCreated(category: ExpenseCategoryDTO) {
+    setCategories((current) => [...current, category].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setExpenseCategory(category.nombre);
+    if (!category.requiereBanco) setExpenseBancoId('');
+  }
 
   // Las de sistema ("Planilla") las escribe otro módulo y el API las rechaza aquí.
   const manualCategories = categories.filter((category) => category.activo && !category.sistema);
@@ -159,21 +169,33 @@ export default function ExpensesPanel() {
         <form onSubmit={(e) => void createExpense(e)} className="row">
           <label style={{ gridColumn: needsBanco ? 'span 6' : 'span 12' }}>
             Categoría
-            <select
-              value={expenseCategory}
-              onChange={(e) => {
-                const categoria = e.target.value;
-                setExpenseCategory(categoria);
-                if (!requiresBanco(categoria)) setExpenseBancoId('');
-              }}
-              required
-            >
-              {manualCategories.map((category) => (
-                <option key={category.id} value={category.nombre}>
-                  {category.nombre}
-                </option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                value={expenseCategory}
+                onChange={(e) => {
+                  const categoria = e.target.value;
+                  setExpenseCategory(categoria);
+                  if (!requiresBanco(categoria)) setExpenseBancoId('');
+                }}
+                required
+              >
+                {manualCategories.map((category) => (
+                  <option key={category.id} value={category.nombre}>
+                    {category.nombre}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setCategoryModalOpen(true)}
+                aria-label="Nueva categoría"
+                title="Nueva categoría"
+                style={{ flexShrink: 0, width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Plus size={16} aria-hidden="true" />
+              </button>
+            </div>
           </label>
           {needsBanco ? (
             <label style={{ gridColumn: 'span 6' }}>
@@ -207,6 +229,12 @@ export default function ExpensesPanel() {
             </button>
           </div>
         </form>
+        {/* Fuera del formulario del gasto: el modal trae su propio <form> y no se anidan. */}
+        <ExpenseCategoryQuickCreateModal
+          open={categoryModalOpen}
+          onClose={() => setCategoryModalOpen(false)}
+          onCreated={handleCategoryCreated}
+        />
       </section>
 
       <section className="card" style={{ marginTop: 12 }}>
