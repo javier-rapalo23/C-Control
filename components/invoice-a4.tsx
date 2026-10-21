@@ -238,16 +238,20 @@ table.invoice-lineas tfoot td { border-bottom: none; border-top: 1.5px solid #11
  * Ajustes del papel continuo: carta continua de 9.5" × 11". Va después del CSS base, así
  * que su `@page` es el que manda.
  *
- * El ancho útil es 7.9": la Epson LX-350 es de carro angosto y no imprime más de 8"
- * de ancho, así que con 8.3" se cortaba el lado derecho. Los márgenes de 0.8" también
- * dejan libres las tiras perforadas del arrastre (~0.5" por lado). En impresión todo va
- * en negro: una matricial imprime los grises como un punteado que se lee peor, y en la
- * copia de carbón se pierden.
+ * La Epson LX-350 es de carro angosto: solo imprime las primeras 8" de la página,
+ * contadas desde el borde izquierdo. Lo que manda es dónde **termina** la factura
+ * (margen izquierdo + ancho), no cuánto mide: con 0.6" + 8.3" se cortaban 0.9" a la
+ * derecha. Por eso los márgenes son asimétricos: 0.6" a la izquierda, lo justo para
+ * salvar la tira perforada (~0.5"), y todo el sobrante a la derecha. La factura queda
+ * en 7.2", igual que en A4, y termina en 7.8".
+ *
+ * En impresión todo va en negro: una matricial imprime los grises como un punteado
+ * que se lee peor, y en la copia de carbón se pierden.
  */
 const CSS_CONTINUO = `
-@page { size: 9.5in 11in; margin: 0.35in 0.8in; }
+@page { size: 9.5in 11in; margin: 0.35in 1.7in 0.35in 0.6in; }
 
-.invoice-copias-continuo .invoice-sheet { max-width: 7.9in; }
+.invoice-copias-continuo .invoice-sheet { max-width: 7.2in; }
 
 @media print {
   .invoice-copias-continuo .invoice-sheet,
